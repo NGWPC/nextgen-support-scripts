@@ -133,10 +133,12 @@ clean_and_encode_project() {
 #
 # Behavior:
 #   - Checks `origin` for refs/heads/main first, then refs/heads/master.
-#   - Returns the found branch name, or an empty string if neither exists.
+#   - On success, echoes the found branch name and returns 0.
+#   - On failure (neither exists), prints an error message itself and returns 1.
 #
 # Returns:
-#   "main" | "master" | "" (empty string if neither exists)
+#   0 and echoes: "main" | "master"
+#   1 on error (prints its own error message; echoes nothing)
 #-----------------------------------------
 determine_release_branch() {
   if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
@@ -147,7 +149,7 @@ determine_release_branch() {
   fi
 
   # Neither found
-  echo ""
+  echo -e "${RED}Error: Neither 'main' nor 'master' branch found on remote 'origin' for repository at $(pwd).${NC}"
   return 1
 }
 
@@ -845,9 +847,8 @@ process_repo() {
     TARGET_BRANCH="release-candidate"
   else
     SOURCE_BRANCH="release-candidate"
-    TARGET_BRANCH=$(determine_release_branch)
-    if [ -z "$TARGET_BRANCH" ]; then
-      echo -e "${RED}Error: Neither 'main' nor 'master' branch found in repository $REPO_PROJECT.${NC}"
+    if ! TARGET_BRANCH=$(determine_release_branch); then
+      # branch not found
       return_code=1
       return
     fi
