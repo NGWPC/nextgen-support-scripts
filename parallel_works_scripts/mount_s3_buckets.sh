@@ -77,7 +77,23 @@ mount_pair "$HF_BUCKET"      "$HF_MOUNT_DIR"
 mount_pair "$FORCING_BUCKET" "$FORCING_MOUNT_DIR"
 mount_pair "$COASTAL_BUCKET" "$COASTAL_MOUNT_DIR"
 
-echo "mounts ready:"
+# verify mounts
+verify_mount() {
+  local target="$1"
+  if findmnt -rn -T "$target" >/dev/null 2>&1; then
+    echo "ok: $target is mounted"
+  else
+    echo "error: $target is not mounted" >&2
+    return 1
+  fi
+}
+fail=0
+verify_mount "$HF_MOUNT_DIR" || fail=1
+verify_mount "$FORCING_MOUNT_DIR" || fail=1
+verify_mount "$COASTAL_MOUNT_DIR" || fail=1
+[ "$fail" -eq 0 ] || exit 1
+
+echo "s3 bucket mounted:"
 echo "  $HF_BUCKET      -> $HF_MOUNT_DIR"
 echo "  $FORCING_BUCKET -> $FORCING_MOUNT_DIR"
 echo "  $COASTAL_BUCKET -> $COASTAL_MOUNT_DIR"
