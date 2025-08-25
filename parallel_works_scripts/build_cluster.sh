@@ -51,7 +51,7 @@ SINGULARITY_DIR="${BASE_PATH}/singularity"
 mkdir -p $SINGULARITY_DIR
 
 # Redirect stdout and stderr to a log file in the Singularity directory
-LOGFILE="${SINGULARITY_DIR}/build_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
+LOGFILE="${SINGULARITY_DIR}/build_cluster$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
 exec > >(tee -i "$LOGFILE") 2>&1
 
 REPOS=(
@@ -62,6 +62,7 @@ REPOS=(
     "ngen-cal"
     "ngen-bmi-forcing"
     "ngen-lumped-forcing"
+    "ngen-coastal"
     "ngen-fcst"
     "ngen-verf"
 )
@@ -165,8 +166,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         ngen-cal)
             read -p "Enter ngen-cal tag: " TAGS[ngen-cal]
             ;;
-        ngen-bmi-forcing | ngen-lumped-forcing)
-            read -p "Enter ngen-forcing tag (shared for both forcing repos): " TAGS[forcing]
+        ngen-bmi-forcing | ngen-lumped-forcing | ngen-coastal)
+            read -p "Enter ngen-forcing tag (shared for ngen forcing and coastal repos): " TAGS[forcing]
             ;;
         ngen-fcst)
             read -p "Enter ngen-fcst tag: " TAGS[ngen-fcst]
@@ -212,15 +213,29 @@ build_singularity_container_update_symlink() {
     #
     # We `cd` into the target directory before creating the symlink so the relative
     # path resolves correctly from the symlink’s point of view.
-    echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
     (
         cd "$sif_dir"
         echo "Removing old ${symlink_name} symlink for $repo..."
         rm -f "${symlink_name}"
 
         echo "Building SIF: ${sif_file} from ${image}"
-        singularity build "${sif_dir}/${sif_file}" "docker-daemon://${image}"
+
+        # create Docker archive file
+        if [[ "$build_type" == "development" ]]; then
+            docker save -o "${repo}.tar" "${repo}-latest"
+
+        else
+            docker save -o "${repo}.tar" "${repo}-${TAGS[$repo]}"
+        fi
+
+        # build Singularity file from Docker archive
+        singularity build "${sif_dir}/${sif_file}" "docker-archive:${repo}.tar"
+
+        echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
         ln -s "${sif_file}" "${symlink_name}"
+
+        # delete the Docker archive file
+        rm -f "${repo}.tar"
     )
 }
 
@@ -236,6 +251,11 @@ update_repo_branch() {
     git checkout "$branch"
     git pull --rebase
     git stash pop || true # prevent exit if nothing to pop
+
+    if [[ "$repo" == "ngen" ]]; then
+        # initialize and update submodules to correct commit
+        git submodule update --init --recursive
+    fi
 }
 
 # checkout repo at specified tag
@@ -247,25 +267,12 @@ checkout_repo_tag() {
     cd "$BASE_PATH/$repo"
     git fetch origin
     git stash save
-    git checkout tags/"$tag"
+    git checkout "$tag"
     git stash pop || true # prevent exit if nothing to pop
 
-    # set ngen submodules to master/main branch
     if [[ "$repo" == "ngen" ]]; then
-        git submodule set-branch --branch master extern/cfe/cfe
-        git submodule set-branch --branch master extern/SoilFreezeThaw/SoilFreezeThaw
-        git submodule set-branch --branch main extern/SoilMoistureProfiles/SoilMoistureProfiles
-        git submodule set-branch --branch master extern/evapotranspiration/evapotranspiration
-        git submodule set-branch --branch main extern/noah-owp-modular/noah-owp-modular
-        git submodule set-branch --branch master extern/topmodel/topmodel
-        git submodule set-branch --branch master extern/t-route
-        git submodule set-branch --branch master extern/sloth
-        git submodule set-branch --branch master extern/LASAM
-        git submodule set-branch --branch master extern/snow17
-        git submodule set-branch --branch master extern/sac-sma/sac-sma
-        git submodule set-branch --branch master extern/ueb-bmi
-
-        git submodule update --remote
+        # initialize and update submodules to correct commit
+        git submodule update --init --recursive
     fi
 }
 
@@ -310,6 +317,11 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         "ngen-lumped-forcing")
             echo "Pulling ngen-lumped-forcing Docker image..."
             docker pull "${REGISTRY}/ngen-forcing/ngen-lumped-forcing:${TAGS[forcing]}"
+            ;;
+
+        "ngen-coastal")
+            echo "Pulling ngen-coastal Docker image..."
+            docker pull "${REGISTRY}/ngen-forcing/ngen-coastal:${TAGS[forcing]}"
             ;;
 
         "ngen-fcst")
@@ -368,7 +380,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
             # update ngencerf* repos to latest from development branch
             update_repo_branch "$repo" "development"
         else
-            if [[ "$repo" == "ngen-bmi-forcing" || "$repo" == "ngen-lumped-forcing" ]]; then
+            if [[ "$repo" == "ngen-bmi-forcing" || "$repo" == "ngen-lumped-forcing"  || "$repo" == "ngen-coastal" ]]; then
                 IMAGE="${REGISTRY}/ngen-forcing/${repo}:latest"
             else
                 IMAGE="${REGISTRY}/${repo}:latest"

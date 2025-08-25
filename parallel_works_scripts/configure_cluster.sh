@@ -58,6 +58,8 @@ for repo in "${REPOS[@]}"; do
     if [[ ! -d "$repo" ]]; then
         if [[ "$repo" == "ngen" ]]; then
             git clone -b development --recurse-submodules https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/$repo.git
+            # initialize and update submodules to correct commit
+            git submodule update --init --recursive
         else
             git clone -b development https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/$repo.git
         fi
