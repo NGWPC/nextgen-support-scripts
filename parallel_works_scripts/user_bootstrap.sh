@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 # set users, dnf packages, and python packages
-ADD_USERS="ngen-pw-user"
+ADD_USERS="$USER ngen-pw-user miguel.pena peter.a.kronenberg khalid.ali bijan.zarean christina.osumi"
 DNF_PACKAGES_EXTRA=""
 PY_PIP_PKGS="Flask gunicorn"
 
+# set singularity cache and tmp dirs
 export SINGULARITY_CACHEDIR=/ngencerf-app/singularity/
 export SINGULARITY_TMPDIR=/ngencerf-app/singularity/
 
@@ -17,7 +19,7 @@ LOCAL_SCRIPT="/tmp/${SCRIPT_PATH}"
 curl -fsSL --retry 3 --retry-connrefused "${REPO_URL}/${SCRIPT_PATH}" -o "$LOCAL_SCRIPT"
 chmod +x "$LOCAL_SCRIPT"
 
-# run with environment variables
+# run script with environment variables
 ADD_USERS="$ADD_USERS" \
 DNF_PACKAGES_EXTRA="$DNF_PACKAGES_EXTRA" \
 PY_PIP_PKGS="$PY_PIP_PKGS" \

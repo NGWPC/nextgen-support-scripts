@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HF_BUCKET="${HF_BUCKET:-}"
-FORCING_BUCKET="${FORCING_BUCKET:-}"
-COASTAL_BUCKET="${COASTAL_BUCKET:-}"
+HF_BUCKET="${HF_BUCKET:-ngwpc-hydrofabric}"
+FORCING_BUCKET="${FORCING_BUCKET:-ngwpc-forcing}"
+COASTAL_BUCKET="${COASTAL_BUCKET:-ngwpc-coastal}"
 
-HF_MOUNT_DIR="${HF_MOUNT_DIR:-}"
-FORCING_MOUNT_DIR="${FORCING_MOUNT_DIR:-}"
-COASTAL_MOUNT_DIR="${COASTAL_MOUNT_DIR:-}"
+HF_MOUNT_DIR="${HF_MOUNT_DIR:-/ngwpc-hydrofabric}"
+FORCING_MOUNT_DIR="${FORCING_MOUNT_DIR:-/ngwpc-forcing}"
+COASTAL_MOUNT_DIR="${COASTAL_MOUNT_DIR:-/ngwpc-coastal}"
 
 AWS_SHARED_CREDENTIALS_FILE="${AWS_SHARED_CREDENTIALS_FILE:-/etc/aws_credentials}"
 
 # prompt for variables
 prompt() {
-  # usage: prompt VAR "message" [silent]
+  # usage: prompt VAR "message"
   local var="$1" msg="$2" silent="${3:-}"
   if [ -z "${!var:-}" ]; then
     if [ "$silent" = "silent" ]; then
@@ -26,9 +26,9 @@ prompt() {
 }
 
 # s3 buckets
-prompt HF_BUCKET       "hydrofabric S3 bucket name (HF_BUCKET)"
-prompt FORCING_BUCKET  "forcing S3 bucket name (FORCING_BUCKET)"
-prompt COASTAL_BUCKET  "coastal S3 bucket name (COASTAL_BUCKET)"
+prompt HF_BUCKET       "hydrofabric S3 bucket name"
+prompt FORCING_BUCKET  "forcing S3 bucket name"
+prompt COASTAL_BUCKET  "coastal S3 bucket name"
 
 # mount paths
 prompt HF_MOUNT_DIR       "local mount dir for hydrofabric (e.g., /ngwpc-hydrofabric)"
