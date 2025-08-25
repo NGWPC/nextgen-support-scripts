@@ -5,6 +5,9 @@ ADD_USERS="ngen-pw-user"
 DNF_PACKAGES_EXTRA=""
 PY_PIP_PKGS="Flask gunicorn"
 
+export SINGULARITY_CACHEDIR=/ngencerf-app/singularity/
+export SINGULARITY_TMPDIR=/ngencerf-app/singularity/
+
 # repo location and script to fetch
 REPO_URL="https://raw.githubusercontent.com/NGWPC/nwm-automation-scripts/pena-pw-updates/parallel_works_scripts"
 SCRIPT_PATH="cluster_startup.sh"
