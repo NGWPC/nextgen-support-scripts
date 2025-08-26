@@ -28,23 +28,20 @@ prompt FORCING_MOUNT_DIR "local dir for forcing (e.g., /ngwpc-forcing)"         
 prompt COASTAL_MOUNT_DIR "local dir for coastal (e.g., /ngwpc-coastal)"         "/ngwpc-coastal"
 
 # create aws creds file
-if [ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
-  echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
-  prompt AWS_ACCESS_KEY_ID     "AWS Access Key ID"
-  prompt AWS_SECRET_ACCESS_KEY "AWS Secret Access Key" "" "silent"
+echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
+prompt AWS_ACCESS_KEY_ID     "AWS Access Key ID"
+prompt AWS_SECRET_ACCESS_KEY "AWS Secret Access Key" "" "silent"
 
-  sudo mkdir -p "$(dirname "$AWS_SHARED_CREDENTIALS_FILE")"
-  sudo touch "$AWS_SHARED_CREDENTIALS_FILE"
-  sudo chmod 600 "$AWS_SHARED_CREDENTIALS_FILE"
-  sudo tee "$AWS_SHARED_CREDENTIALS_FILE" >/dev/null <<EOF
+sudo mkdir -p "$(dirname "$AWS_SHARED_CREDENTIALS_FILE")"
+sudo touch "$AWS_SHARED_CREDENTIALS_FILE"
+sudo chmod 600 "$AWS_SHARED_CREDENTIALS_FILE"
+sudo tee "$AWS_SHARED_CREDENTIALS_FILE" >/dev/null <<EOF
 [default]
 aws_access_key_id=${AWS_ACCESS_KEY_ID}
 aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
-  unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-else
-  echo "using existing aws creds: $AWS_SHARED_CREDENTIALS_FILE"
-fi
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+
 
 # check if mount-s3 is installed
 command -v mount-s3 >/dev/null || { echo "error: mount-s3 not found."; exit 1; }
