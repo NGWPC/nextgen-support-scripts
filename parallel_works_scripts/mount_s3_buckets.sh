@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HF_BUCKET="${HF_BUCKET:-ngwpc-hydrofabric}"
-FORCING_BUCKET="${FORCING_BUCKET:-ngwpc-forcing}"
-COASTAL_BUCKET="${COASTAL_BUCKET:-ngwpc-coastal}"
-
-HF_MOUNT_DIR="${HF_MOUNT_DIR:-/ngwpc-hydrofabric}"
-FORCING_MOUNT_DIR="${FORCING_MOUNT_DIR:-/ngwpc-forcing}"
-COASTAL_MOUNT_DIR="${COASTAL_MOUNT_DIR:-/ngwpc-coastal}"
-
 AWS_SHARED_CREDENTIALS_FILE="${AWS_SHARED_CREDENTIALS_FILE:-/etc/aws_credentials}"
 
 # prompt for variables
@@ -36,19 +28,23 @@ prompt FORCING_MOUNT_DIR  "local mount dir for forcing (e.g., /ngwpc-forcing)"
 prompt COASTAL_MOUNT_DIR  "local mount dir for coastal (e.g., /ngwpc-coastal)"
 
 # create aws creds file
-echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
-prompt AWS_ACCESS_KEY_ID     "AWS Access Key ID"
-prompt AWS_SECRET_ACCESS_KEY "AWS Secret Access Key" "silent"
+if [ ! -f "$AWS_SHARED_CREDENTIALS_FILE" ]; then
+  echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
+  prompt AWS_ACCESS_KEY_ID     "AWS Access Key ID"
+  prompt AWS_SECRET_ACCESS_KEY "AWS Secret Access Key" "silent"
 
-# write to aws creds file
-sudo touch "$AWS_SHARED_CREDENTIALS_FILE"
-sudo chmod 600 "$AWS_SHARED_CREDENTIALS_FILE"
-sudo tee "$AWS_SHARED_CREDENTIALS_FILE" >/dev/null <<EOF
+  sudo mkdir -p "$(dirname "$AWS_SHARED_CREDENTIALS_FILE")"
+  sudo touch "$AWS_SHARED_CREDENTIALS_FILE"
+  sudo chmod 600 "$AWS_SHARED_CREDENTIALS_FILE"
+  sudo tee "$AWS_SHARED_CREDENTIALS_FILE" >/dev/null <<EOF
 [default]
 aws_access_key_id=${AWS_ACCESS_KEY_ID}
 aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
-unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+  unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+else
+  echo "using existing aws creds: $AWS_SHARED_CREDENTIALS_FILE"
+fi
 
 # check if mount-s3 is installed
 if ! command -v mount-s3 >/dev/null 2>&1; then
