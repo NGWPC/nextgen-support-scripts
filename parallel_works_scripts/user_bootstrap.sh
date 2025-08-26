@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# set users, dnf packages, and python packages
+# set sudo users, dnf packages, and python packages
 ADD_USERS="$USER ngen-pw-user miguel.pena peter.a.kronenberg khalid.ali bijan.zarean christina.osumi"
 DNF_PACKAGES_EXTRA=""
 PY_PIP_PKGS="Flask gunicorn"
 
-# set singularity cache and tmp dirs
-export SINGULARITY_CACHEDIR=/ngencerf-app/singularity/
-export SINGULARITY_TMPDIR=/ngencerf-app/singularity/
-
-# repo location and script to fetch
+# set cluster_startup script paths
 REPO_URL="https://raw.githubusercontent.com/NGWPC/nwm-automation-scripts/pena-pw-updates/parallel_works_scripts"
 SCRIPT_PATH="cluster_startup.sh"
 LOCAL_SCRIPT="/tmp/${SCRIPT_PATH}"
 
-# fetch with retries
+# fetch cluster_startup script
 curl -fsSL --retry 3 --retry-connrefused "${REPO_URL}/${SCRIPT_PATH}" -o "$LOCAL_SCRIPT"
 chmod +x "$LOCAL_SCRIPT"
 

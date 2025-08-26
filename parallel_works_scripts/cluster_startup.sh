@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install yum-utils
-sudo dnf -y install yum-utils >/dev/null 2>&1 || true
+# install dnf-plugins-core
+sudo dnf -y install dnf-plugins-core >/dev/null 2>&1 || true
+
+# install gh cli
+if ! command -v gh >/dev/null 2>&1; then
+    curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo | sudo tee /etc/yum.repos.d/github-cli.repo
+    sudo dnf -y install gh
+fi
 
 # install Docker
 if ! command -v docker >/dev/null 2>&1; then
