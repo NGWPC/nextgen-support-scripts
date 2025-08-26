@@ -23,9 +23,9 @@ prompt FORCING_BUCKET "forcing S3 bucket name"     "ngwpc-forcing"
 prompt COASTAL_BUCKET "coastal S3 bucket name"     "ngwpc-coastal"
 
 # mount dirs
-prompt HF_MOUNT_DIR      "local dir for hydrofabric (e.g., /ngwpc-hydrofabric)" "/ngwpc-hydrofabric"
-prompt FORCING_MOUNT_DIR "local dir for forcing (e.g., /ngwpc-forcing)"         "/ngwpc-forcing"
-prompt COASTAL_MOUNT_DIR "local dir for coastal (e.g., /ngwpc-coastal)"         "/ngwpc-coastal"
+prompt HF_MOUNT_DIR      "local dir for hydrofabric" "/ngwpc-hydrofabric"
+prompt FORCING_MOUNT_DIR "local dir for forcing"     "/ngwpc-forcing"
+prompt COASTAL_MOUNT_DIR "local dir for coastal"     "/ngwpc-coastal"
 
 # create aws creds file
 echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
@@ -52,6 +52,7 @@ sudo mkdir -p "$HF_MOUNT_DIR" "$FORCING_MOUNT_DIR" "$COASTAL_MOUNT_DIR"
 # check if mountpoint is empty
 is_empty_dir() { [ -z "$(ls -A "$1" 2>/dev/null)" ]; }
 
+# mount s3 bucket to target dir
 mount_pair() {
   local bucket="$1" target="$2"
   if findmnt -rn -T "$target" >/dev/null 2>&1; then
@@ -92,6 +93,6 @@ verify_mount "$COASTAL_MOUNT_DIR" || fail=1
 [ "$fail" -eq 0 ] || exit 1
 
 echo "s3 buckets mounted:"
-echo "  $HF_BUCKET      -> $HF_MOUNT_DIR"
+echo "  $HF_BUCKET -> $HF_MOUNT_DIR"
 echo "  $FORCING_BUCKET -> $FORCING_MOUNT_DIR"
 echo "  $COASTAL_BUCKET -> $COASTAL_MOUNT_DIR"
