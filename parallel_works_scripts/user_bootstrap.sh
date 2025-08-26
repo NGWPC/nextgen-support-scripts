@@ -20,3 +20,6 @@ ADD_USERS="$ADD_USERS" \
 DNF_PACKAGES_EXTRA="$DNF_PACKAGES_EXTRA" \
 PY_PIP_PKGS="$PY_PIP_PKGS" \
 "$LOCAL_SCRIPT"
+
+# whoami
+echo "whoami: $(whoami)"
