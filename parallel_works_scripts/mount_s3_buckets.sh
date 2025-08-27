@@ -17,21 +17,22 @@ prompt() {
   export "$var"
 }
 
-# buckets
+# prompt for buckets
 prompt HF_BUCKET      "hydrofabric S3 bucket name" "ngwpc-hydrofabric"
 prompt FORCING_BUCKET "forcing S3 bucket name"     "ngwpc-forcing"
 prompt COASTAL_BUCKET "coastal S3 bucket name"     "ngwpc-coastal"
 
-# mount dirs
+# prompt for mount dirs
 prompt HF_MOUNT_DIR      "local dir for hydrofabric" "/ngwpc-hydrofabric"
 prompt FORCING_MOUNT_DIR "local dir for forcing"     "/ngwpc-forcing"
 prompt COASTAL_MOUNT_DIR "local dir for coastal"     "/ngwpc-coastal"
 
-# create aws creds file
+# prompt for aws creds
 echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
 prompt AWS_ACCESS_KEY_ID     "AWS Access Key ID"
 prompt AWS_SECRET_ACCESS_KEY "AWS Secret Access Key" "" "silent"
 
+# create aws creds file
 sudo mkdir -p "$(dirname "$AWS_SHARED_CREDENTIALS_FILE")"
 sudo touch "$AWS_SHARED_CREDENTIALS_FILE"
 sudo chmod 600 "$AWS_SHARED_CREDENTIALS_FILE"
@@ -41,7 +42,6 @@ aws_access_key_id=${AWS_ACCESS_KEY_ID}
 aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-
 
 # check if mount-s3 is installed
 command -v mount-s3 >/dev/null || { echo "error: mount-s3 not found."; exit 1; }

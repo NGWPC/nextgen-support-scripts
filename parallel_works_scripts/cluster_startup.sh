@@ -58,7 +58,7 @@ if [ -n "${ADD_USERS:-}" ]; then
     done
 fi
 
-## add /ngencerf-app/ngencerf-server/cli/bin to all user's PATH
+# add /ngencerf-app/ngencerf-server/cli/bin to all user's PATH
 echo 'export PATH="/ngencerf-app/ngencerf-server/cli/bin:$PATH"' | sudo tee /etc/profile.d/ngencerf-cli.sh
 sudo chmod +x /etc/profile.d/ngencerf-cli.sh
 
