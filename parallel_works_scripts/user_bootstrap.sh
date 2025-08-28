@@ -6,12 +6,12 @@ ADD_USERS="$(whoami) ngen-pw-user miguel.pena peter.a.kronenberg khalid.ali bija
 DNF_PACKAGES_EXTRA=""
 PY_PIP_PKGS="Flask gunicorn"
 
-# set cluster_startup script paths
+# set startup_cluster script paths
 REPO_URL="https://raw.githubusercontent.com/NGWPC/nwm-automation-scripts/pena-pw-updates/parallel_works_scripts"
-SCRIPT_PATH="cluster_startup.sh"
+SCRIPT_PATH="startup_cluster.sh"
 LOCAL_SCRIPT="/tmp/${SCRIPT_PATH}"
 
-# fetch cluster_startup script
+# fetch startup_cluster script
 curl -fsSL --retry 3 --retry-connrefused "${REPO_URL}/${SCRIPT_PATH}" -o "$LOCAL_SCRIPT"
 chmod +x "$LOCAL_SCRIPT"
 
@@ -20,6 +20,3 @@ ADD_USERS="$ADD_USERS" \
 DNF_PACKAGES_EXTRA="$DNF_PACKAGES_EXTRA" \
 PY_PIP_PKGS="$PY_PIP_PKGS" \
 "$LOCAL_SCRIPT"
-
-# whoami
-echo "whoami: $(whoami)"
