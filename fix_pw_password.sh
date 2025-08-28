@@ -11,8 +11,6 @@ sudo chown "${USER}:pwuser" -R /ngencerf-app/ngencerf_ui
 sudo chown "${USER}:pwuser" -R /ngencerf-app/singularity
 sudo chown "${USER}:pwuser" -R /ngencerf-app/.gitlab_token
 
-git config --global url."https://oauth2:$(cat /ngencerf-app/.gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf " https://gitlab.sh.nextgenwaterprediction.com/"
-
 git config --global --add safe.directory /ngencerf-app/nwm-automation-scripts
 git config --global --add safe.directory /ngencerf-app/ngen
 git config --global --add safe.directory /ngencerf-app/ngen-cal
