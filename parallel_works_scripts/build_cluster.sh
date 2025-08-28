@@ -15,16 +15,16 @@ set -o pipefail
 # ------------------------------------------------------------------------------
 #
 # Interactive mode (will prompt for build type and repos):
-#   ./build_ngen_ngencerf.sh
+#   ./build_cluster.sh
 #
 # Development build (non-interactive, builds ngen and ngen-cal):
-#   ./build_ngen_ngencerf.sh --build-type=development ngen ngen-cal
+#   ./build_cluster.sh --build-type=development ngen ngen-cal
 #
 # Build all supported repos (non-interactive):
-#   ./build_ngen_ngencerf.sh --build-type=development all
+#   ./build_cluster.sh --build-type=development all
 #
 # Build for release (will still prompt for tags):
-#   ./build_ngen_ngencerf.sh --build-type=release ngen ngen-cal ngen-verf
+#   ./build_cluster.sh --build-type=release ngen ngen-cal ngen-verf
 #   (will still prompt for tags)
 #
 # ------------------------------------------------------------------------------
@@ -55,18 +55,18 @@ LOGFILE="${SINGULARITY_DIR}/build_cluster$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
 exec > >(tee -i "$LOGFILE") 2>&1
 
 REPOS=(
-    "ngencerf_ui"
+    "ngencerf-ui"
     "ngencerf-server"
     "ngencerf-docker"
     "ngen"
-    "ngen-cal"
+    "nwm-cal-mgr"
     "ngen-bmi-forcing"
     "ngen-lumped-forcing"
     "ngen-coastal"
-    "ngen-fcst"
-    "ngen-verf"
+    "nwm-fcst-mgr"
+    "nwm-verf"
 )
-REGISTRY="registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen"
+REGISTRY="ghcr.io/ngwpc"
 
 BUILD_TYPE=""
 SELECTED_REPOS=()
@@ -151,8 +151,8 @@ declare -A TAGS
 if [[ "$BUILD_TYPE" == "release" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         case $repo in
-        ngencerf_ui)
-            read -p "Enter ngencerf_ui tag: " TAGS[ngencerf_ui]
+        ngencerf-ui)
+            read -p "Enter ngencerf_ui tag: " TAGS[ngencerf-ui]
             ;;
         ngencerf-server)
             read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server]
@@ -163,18 +163,18 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         ngen)
             read -p "Enter ngen tag: " TAGS[ngen]
             ;;
-        ngen-cal)
-            read -p "Enter ngen-cal tag: " TAGS[ngen-cal]
+        nwm-cal-mgr)
+            read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
             ;;
         ngen-bmi-forcing | ngen-lumped-forcing | ngen-coastal)
             read -p "Enter ngen-forcing tag (shared for ngen forcing and coastal repos): " TAGS[forcing]
             ;;
-        ngen-fcst)
-            read -p "Enter ngen-fcst tag: " TAGS[ngen-fcst]
+        nwm-fcst-mgr)
+            read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
             ;;
-        ngen-verf)
-            read -p "Enter ngen-verf tag: " TAGS[ngen-verf]
-            read -p "Enter ngen-eval tag: " TAGS[ngen-eval]
+        nwm-verf)
+            read -p "Enter nwm-verf tag: " TAGS[nwm-verf]
+            read -p "Enter nwm-eval tag: " TAGS[nwm-eval-mgr]
             ;;
         esac
     done
@@ -286,27 +286,25 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         checkout_repo_tag "ngen" "${TAGS[ngen]}"
 
         echo "Building ngen Docker image..."
-        GITLAB_TOKEN=$(cat "${BASE_PATH}/.gitlab_token") docker build \
+        docker build \
             --progress=plain \
             --no-cache \
-            --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN \
             --tag="${REGISTRY}/ngen:${TAGS[ngen]}" \
             "${BASE_PATH}/ngen"
     fi
 
     for repo in "${SELECTED_REPOS[@]}"; do
         case "$repo" in
-        "ngen-cal")
-            # checkout ngen-cal to specified tag
-            checkout_repo_tag "ngen-cal" "${TAGS[ngen - cal]}"
-            echo "Building ngen-cal Docker image..."
-            GITLAB_TOKEN=$(cat "${BASE_PATH}/.gitlab_token") docker build \
+        "nwm-cal-mgr")
+            # checkout nwm-cal-mgr to specified tag
+            checkout_repo_tag "nwm-cal-mgr" "${TAGS[nwm-cal-mgr]}"
+            echo "Building nwm-cal-mgr Docker image..."
+            docker build \
                 --progress=plain \
                 --no-cache \
-                --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN \
-                --build-arg IMAGE_TAG="${TAGS[ngen]}" \
-                --tag="${REGISTRY}/ngen-cal:${TAGS[ngen - cal]}" \
-                "${BASE_PATH}/ngen-cal"
+                --build-arg NGEN_IMAGE_TAG="${TAGS[ngen]}" \
+                --tag="${REGISTRY}/nwm-cal-mgr:${TAGS[nwm - cal - mgr]}" \
+                "${BASE_PATH}/nwm-cal-mgr"
             ;;
 
         "ngen-bmi-forcing")
@@ -324,30 +322,28 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             docker pull "${REGISTRY}/ngen-forcing/ngen-coastal:${TAGS[forcing]}"
             ;;
 
-        "ngen-fcst")
-            # checkout ngen-fcst to specified tag
-            checkout_repo_tag "ngen-fcst" "${TAGS[ngen - fcst]}"
-            echo "Building ngen-fcst Docker image..."
-            GITLAB_TOKEN=$(cat "${BASE_PATH}/.gitlab_token") docker build \
+        "nwm-fcst-mgr")
+            # checkout nwm-fcst-mgr to specified tag
+            checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm - fcst - mgr]}"
+            echo "Building nwm-fcst-mgr Docker image..."
+            docker build \
                 --progress=plain \
                 --no-cache \
-                --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN \
                 --build-arg NGEN_VERSION="${TAGS[ngen]}" \
-                --tag="${REGISTRY}/ngen-fcst:${TAGS[ngen - fcst]}" \
-                "${BASE_PATH}/ngen-fcst"
+                --tag="${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm - fcst - mgr]}" \
+                "${BASE_PATH}/nwm-fcst-mgr"
             ;;
 
-        "ngen-verf")
-            # checkout ngen-verf to specified tag
-            checkout_repo_tag "ngen-verf" "${TAGS[ngen - verf]}"
-            echo "Building ngen-verf Docker image..."
-            GITLAB_TOKEN=$(cat "${BASE_PATH}/.gitlab_token") docker build \
+        "nwm-verf")
+            # checkout nwm-verf to specified tag
+            checkout_repo_tag "nwm-verf" "${TAGS[nwm - verf]}"
+            echo "Building nwm-verf Docker image..."
+            docker build \
                 --progress=plain \
                 --no-cache \
-                --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN \
-                --build-arg NGEN_EVAL_TAG="${TAGS[ngen - eval]}" \
-                --tag="${REGISTRY}/ngen-verf:${TAGS[ngen - verf]}" \
-                "${BASE_PATH}/ngen-verf"
+                --build-arg NWM_EVAL_MGR_TAG="${TAGS[nwm - eval - mgr]}" \
+                --tag="${REGISTRY}/nwm-verf:${TAGS[nwm - verf]}" \
+                "${BASE_PATH}/nwm-verf"
             ;;
 
         ngencerf*)
@@ -357,11 +353,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         esac
 
         if [[ "$repo" != ngencerf* ]]; then
-            if [[ "$repo" == "ngen-bmi-forcing" || "$repo" == "ngen-lumped-forcing" ]]; then
-                IMAGE="${REGISTRY}/ngen-forcing/${repo}:${TAGS[forcing]}"
-            else
-                IMAGE="${REGISTRY}/${repo}:${TAGS[$repo]}"
-            fi
+            IMAGE="${REGISTRY}/${repo}:${TAGS[$repo]}"
             build_singularity_container_update_symlink "$BUILD_TYPE" "$repo" "$IMAGE"
         fi
     done
@@ -380,13 +372,10 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
             # update ngencerf* repos to latest from development branch
             update_repo_branch "$repo" "development"
         else
-            if [[ "$repo" == "ngen-bmi-forcing" || "$repo" == "ngen-lumped-forcing"  || "$repo" == "ngen-coastal" ]]; then
-                IMAGE="${REGISTRY}/ngen-forcing/${repo}:latest"
-            else
-                IMAGE="${REGISTRY}/${repo}:latest"
-            fi
+            IMAGE="${REGISTRY}/${repo}:latest"
 
             echo "Pulling docker image: $IMAGE"
+            # TODO: ngen-coastal image builds are failing
             docker pull "$IMAGE"
             build_singularity_container_update_symlink "$BUILD_TYPE" "$repo" "$IMAGE"
         fi
