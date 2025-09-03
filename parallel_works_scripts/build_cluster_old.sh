@@ -35,7 +35,7 @@ set -o pipefail
 #   repo names              List of repos to build (space-separated), or use "all"
 #
 # Supported repos:
-#   ngencerf-server, ngencerf-ui, ngencerf-docker, ngen, nwm-cal-mgr, ngen-bmi-forcing, ngen-lumped-forcing, ngen-coastal, nwm-fcst-mgr, nwm-verf
+#   ngencerf-server, ngencerf_ui, ngencerf-docker, ngen, ngen-cal, ngen-bmi-forcing, ngen-lumped-forcing, ngen-coastal, ngen-fcst, ngen-verf
 #
 # Notes:
 # - If no arguments are passed, the script runs interactively.
@@ -55,16 +55,16 @@ LOGFILE="${SINGULARITY_DIR}/build_cluster$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
 exec > >(tee -i "$LOGFILE") 2>&1
 
 REPOS=(
-    "ngencerf-ui"
+    "ngencerf_ui"
     "ngencerf-server"
     "ngencerf-docker"
     "ngen"
-    "nwm-cal-mgr"
+    "ngen-cal"
     "ngen-bmi-forcing"
     "ngen-lumped-forcing"
     "ngen-coastal"
-    "nwm-fcst-mgr"
-    "nwm-verf"
+    "ngen-fcst"
+    "ngen-verf"
 )
 REGISTRY="ghcr.io/ngwpc"
 
@@ -151,8 +151,8 @@ declare -A TAGS
 if [[ "$BUILD_TYPE" == "release" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         case $repo in
-        ngencerf-ui)
-            read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui]
+        ngencerf_ui)
+            read -p "Enter ngencerf_ui tag: " TAGS[ngencerf_ui]
             ;;
         ngencerf-server)
             read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server]
@@ -163,17 +163,17 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         ngen)
             read -p "Enter ngen tag: " TAGS[ngen]
             ;;
-        nwm-cal-mgr)
-            read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
+        ngen-cal)
+            read -p "Enter ngen-cal tag: " TAGS[ngen-cal]
             ;;
         ngen-bmi-forcing | ngen-lumped-forcing | ngen-coastal)
             read -p "Enter ngen-forcing tag (shared for ngen forcing and coastal repos): " TAGS[forcing]
             ;;
-        nwm-fcst-mgr)
-            read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
+        ngen-fcst)
+            read -p "Enter ngen-fcst tag: " TAGS[ngen-fcst]
             ;;
-        nwm-verf)
-            read -p "Enter nwm-verf tag: " TAGS[nwm-verf]
+        ngen-verf)
+            read -p "Enter ngen-verf tag: " TAGS[ngen-verf]
             read -p "Enter nwm-eval-mgr tag: " TAGS[nwm-eval-mgr]
             ;;
         esac
@@ -288,16 +288,16 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
 
     for repo in "${SELECTED_REPOS[@]}"; do
         case "$repo" in
-        "nwm-cal-mgr")
-            # checkout nwm-cal-mgr to specified tag
-            checkout_repo_tag "nwm-cal-mgr" "${TAGS[nwm-cal-mgr]}"
-            echo "Building nwm-cal-mgr Docker image..."
+        "ngen-cal")
+            # checkout ngen-cal to specified tag
+            checkout_repo_tag "ngen-cal" "${TAGS[ngen-cal]}"
+            echo "Building ngen-cal Docker image..."
             docker build \
                 --progress=plain \
                 --no-cache \
                 --build-arg NGEN_IMAGE_TAG="${TAGS[ngen]}" \
-                --tag="${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}" \
-                "${BASE_PATH}/nwm-cal-mgr"
+                --tag="${REGISTRY}/ngen-cal:${TAGS[ngen-cal]}" \
+                "${BASE_PATH}/ngen-cal"
             ;;
 
         "ngen-bmi-forcing")
@@ -315,28 +315,28 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             docker pull "${REGISTRY}/ngen-coastal:${TAGS[forcing]}"
             ;;
 
-        "nwm-fcst-mgr")
-            # checkout nwm-fcst-mgr to specified tag
-            checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
-            echo "Building nwm-fcst-mgr Docker image..."
+        "ngen-fcst")
+            # checkout ngen-fcst to specified tag
+            checkout_repo_tag "ngen-fcst" "${TAGS[ngen-fcst]}"
+            echo "Building ngen-fcst Docker image..."
             docker build \
                 --progress=plain \
                 --no-cache \
                 --build-arg NGEN_VERSION="${TAGS[ngen]}" \
-                --tag="${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}" \
-                "${BASE_PATH}/nwm-fcst-mgr"
+                --tag="${REGISTRY}/ngen-fcst:${TAGS[ngen-fcst]}" \
+                "${BASE_PATH}/ngen-fcst"
             ;;
 
-        "nwm-verf")
-            # checkout nwm-verf to specified tag
-            checkout_repo_tag "nwm-verf" "${TAGS[nwm - verf]}"
-            echo "Building nwm-verf Docker image..."
+        "ngen-verf")
+            # checkout ngen-verf to specified tag
+            checkout_repo_tag "ngen-verf" "${TAGS[ngen-verf]}"
+            echo "Building ngen-verf Docker image..."
             docker build \
                 --progress=plain \
                 --no-cache \
-                --build-arg NWM_EVAL_MGR_TAG="${TAGS[nwm-eval-mgr]}" \
-                --tag="${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}" \
-                "${BASE_PATH}/nwm-verf"
+                --build-arg NWM_EVAL_MGR_TAG="${TAGS[ngen-eval]}" \
+                --tag="${REGISTRY}/ngen-verf:${TAGS[ngen-verf]}" \
+                "${BASE_PATH}/ngen-verf"
             ;;
 
         ngencerf*)
