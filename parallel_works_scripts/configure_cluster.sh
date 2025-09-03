@@ -2,14 +2,14 @@
 
 NGENCERF_APP=/ngencerf-app
 REPOS=(
-    "ngencerf_ui"
+    "ngencerf-ui"
     "ngencerf-server"
     "ngencerf-docker"
     "ngen"
-    "ngen-cal"
+    "nmw-cal-mgr"
     "ngen-forcing"
-    "ngen-fcst"
-    "ngen-verf"
+    "nwm-fcst-mgr"
+    "nwm-verf"
 )
 
 # ------------------------------------------------------------------------------
@@ -39,13 +39,6 @@ edit_file_with_message() {
     fi
 }
 
-# ------------------------------------------------------------------------------
-# Prompt user to paste GitLab token
-# ------------------------------------------------------------------------------
-edit_file_with_message "$NGENCERF_APP/.gitlab_token" "Paste your GitLab token into this file."
-
-# Configure Git to use the token
-git config --global url."https://oauth2:$(cat /ngencerf-app/.gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"
 
 cd $NGENCERF_APP
 
@@ -57,11 +50,11 @@ echo
 for repo in "${REPOS[@]}"; do
     if [[ ! -d "$repo" ]]; then
         if [[ "$repo" == "ngen" ]]; then
-            git clone -b development --recurse-submodules https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/$repo.git
+            git clone -b development --recurse-submodules https://github.com/NGWPC/$repo.git
             # initialize and update submodules to correct commit
             git submodule update --init --recursive
         else
-            git clone -b development https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/$repo.git
+            git clone -b development https://github.com/NGWPC/$repo.git
         fi
     else
         echo "$repo already exists, skipping clone."
@@ -84,10 +77,10 @@ fi
 echo
 
 edit_file_with_message "ngencerf_services.override.env" \
-    "Update the database host, password, and EDS URL in this file."
+    "Update database user, password, host and EDFS URL in this file."
 
 edit_file_with_message ".env" \
-    "Update the NGEN_CAL_TAG, NGEN_FORCING_TAG, and GITLAB_TOKEN values in this file."
+    "Update paths and tags in this file."
 
 # ------------------------------------------------------------------------------
 # Load static data
@@ -95,7 +88,7 @@ edit_file_with_message ".env" \
 echo "Loading static data directory..."
 
 STATIC_DIR="$NGENCERF_APP/data/ngen-cal-data/ngen-static-files"
-SOURCE_DIR="$NGENCERF_APP/ngen-cal/module_parameter_files"
+SOURCE_DIR="$NGENCERF_APP/nwm-cal-mgr/module_parameter_files"
 
 if [[ -d "$STATIC_DIR" ]]; then
     echo "Static data directory already exists at $STATIC_DIR"
@@ -121,13 +114,14 @@ else
     echo
     echo "Copying data from NGWPC data bucket..."
     aws s3 sync s3://ngwpc-dev/ngen-static-files "$STATIC_DIR/"
+    rm -f /tmp/aws.credentials
 fi
 
 # ------------------------------------------------------------------------------
 # Pull/build Docker images and build Singularity containers
 # ------------------------------------------------------------------------------
-echo "Logging into Docker. Enter your AWS credentials if prompted..."
-docker login registry.sh.nextgenwaterprediction.com
+echo "Logging into Docker..."
+docker login ghcr.io
 
 echo
 echo "Building Singularity containers..."
