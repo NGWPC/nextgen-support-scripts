@@ -7,6 +7,9 @@ echo "All output will be logged to: $LOGFILE"
 
 declare -a TEMP_BRANCHES
 
+# Unified release branch used across all repositories for OFFICIAL releases.
+RELEASE_BRANCH="ngwpc-release"
+
 # Toggle for printing the exact 'gh' commands being executed.
 # Printed commands go to STDERR so that JSON captures using $(...) are not polluted.
 DEBUG_GH=true
@@ -29,14 +32,14 @@ usage() {
   echo "  4. Merge 'release-candidate' back into 'development' (except for RC1)."
   echo
   echo "🔹 Official Release Process:"
-  echo "  1. Merge from 'release-candidate' to 'main' or 'master'."
+  echo "  1. Merge from 'release-candidate' to '\$RELEASE_BRANCH' (default: '${RELEASE_BRANCH}')."
   echo "  2. If submodules exist, ensure they are on the correct branch."
   echo "  3. Create a GitHub release for the official version."
   echo
   echo "🔹 Handling Submodules:"
-  echo "  - If the repository has submodules, they will be checked out to the correct branch ('release-candidate', 'development', or 'main/master')"
-  echo "    and merged back into the correct branch of the parent repository."
-  echo "  - A temporary branch is created for submodule updates, ensuring consistency across all modules."
+  echo "  - Submodules are checked out to match the parent's target branch"
+  echo "    ('release-candidate', 'development', or '\$RELEASE_BRANCH'), then committed in the parent."
+  echo "  - A temporary branch is created for submodule updates, ensuring consistency across modules."
   echo "  - The temporary branch is then merged back into the appropriate target branch."
   echo
   echo "Arguments:"
@@ -127,31 +130,33 @@ clean_and_encode_project() {
 }
 
 #-----------------------------------------
-# Function: determine_release_branch
+# (Deprecated) Function: determine_release_branch
 # Determines whether the remote repository has a branch named "main" or "master"
 # by querying the Git remote directly (no GitHub API).
 #
 # Behavior:
 #   - Checks `origin` for refs/heads/main first, then refs/heads/master.
 #   - On success, echoes the found branch name and returns 0.
-#   - On failure (neither exists), prints an error message itself and returns 1.
+#   - If neither exists, prints a clear error (to STDERR) and returns 1.
 #
 # Returns:
-#   0 and echoes: "main" | "master"
-#   1 on error (prints its own error message; echoes nothing)
+#   0 with "main" or "master" on stdout; 1 if neither exists.
 #-----------------------------------------
-determine_release_branch() {
-  if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
-    echo "main"; return 0
-  fi
-  if git ls-remote --exit-code --heads origin master >/dev/null 2>&1; then
-    echo "master"; return 0
-  fi
-
-  # Neither found
-  echo -e "${RED}Error: Neither 'main' nor 'master' branch found on remote 'origin' for repository at $(pwd).${NC}"
-  return 1
-}
+# determine_release_branch() {
+#   if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+#     echo "main"
+#     return 0
+#   fi
+#   if git ls-remote --exit-code --heads origin master >/dev/null 2>&1; then
+#     echo "master"
+#     return 0
+#   fi
+#
+#   # Neither found
+#   echo -e "${RED}Error: Neither 'main' nor 'master' branch exists on remote 'origin' for repo $(git rev-parse --show-toplevel 2>/dev/null || echo "(unknown repo)")${NC}" >&2
+#
+#   return 1
+# }
 
 #-----------------------------------------
 # Function: create_merge_request
@@ -355,7 +360,6 @@ create_release() {
 
   local prerelease_flag=""
   [[ "$RELEASE_TYPE" == "RC" ]] && prerelease_flag="--prerelease"
-
 
   # Capture stdout from gh (which is the release URL on success). Our run_gh
   # prints the "Executing:" line to STDERR, so it won't pollute this capture.
@@ -602,12 +606,11 @@ generate_changelog() {
 # Processes all submodules in the repository.
 #
 # Arguments:
-#   $1 - Target branch (e.g., "release-candidate", "development", "main/master")
+#   $1 - Target branch (e.g., "release-candidate", "development", or "\$RELEASE_BRANCH")
 #
 # Behavior:
 #   - Iterates over all submodules.
-#   - If the parent targets main/master, the submodule branch is determined via `determine_release_branch`;
-#     otherwise, the submodule follows the parent's target branch.
+#   - Uses the same branch as the parent's target branch.
 #   - Checks out each valid submodule to that branch and updates it.
 #   - Creates a temporary branch in the parent repository for submodule updates and triggers a merge request.
 #-----------------------------------------
@@ -634,19 +637,7 @@ process_submodules() {
       continue
     fi
 
-    # Decide branch: if parent targets main/master, pick that; else same as parent
-    local submodule_target_branch
-    if [[ "$target_branch" == "main" || "$target_branch" == "master" ]]; then
-      submodule_target_branch=$(determine_release_branch)
-    else
-      submodule_target_branch="$target_branch"
-    fi
-
-    if [[ -z "$submodule_target_branch" ]]; then
-      echo -e "${RED}Error: Neither 'main' nor 'master' branch found in submodule $submodule_path.${NC}"
-      cd - > /dev/null
-      continue # skip to next submodule
-    fi
+    submodule_target_branch="$target_branch"
 
     # Checkout and update submodule
     echo -e "Checking out and pulling submodule ${GREEN}$submodule_path${NC} to branch ${GREEN}$submodule_target_branch${NC}"
@@ -847,11 +838,7 @@ process_repo() {
     TARGET_BRANCH="release-candidate"
   else
     SOURCE_BRANCH="release-candidate"
-    if ! TARGET_BRANCH=$(determine_release_branch); then
-      # branch not found
-      return_code=1
-      return
-    fi
+    TARGET_BRANCH="$RELEASE_BRANCH"
   fi
 
   echo -e "Source branch: ${GREEN}$SOURCE_BRANCH${NC}"
@@ -999,7 +986,6 @@ repo_order=()
 print_summary() {
   local longest_repo_name=0
   local total_elapsed_seconds=$(( SECONDS - ${total_seconds:-$SECONDS} ))
-
 
   # Determine the longest repository name from the repo_order array
   for repo in "${repo_order[@]}"; do
