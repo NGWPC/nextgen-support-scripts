@@ -35,7 +35,7 @@ set -o pipefail
 #   repo names              List of repos to build (space-separated), or use "all"
 #
 # Supported repos:
-#   ngen, ngen-cal, ngen-bmi-forcing, ngen-lumped-forcing, ngen-fcst, ngen-verf
+#   ngencerf-server, ngencerf-ui, ngencerf-docker, ngen, nwm-cal-mgr, ngen-bmi-forcing, ngen-lumped-forcing, ngen-coastal, ngen-fcst, ngen-verf
 #
 # Notes:
 # - If no arguments are passed, the script runs interactively.
@@ -152,7 +152,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         case $repo in
         ngencerf-ui)
-            read -p "Enter ngencerf_ui tag: " TAGS[ngencerf-ui]
+            read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui]
             ;;
         ngencerf-server)
             read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server]
@@ -174,7 +174,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
         nwm-verf)
             read -p "Enter nwm-verf tag: " TAGS[nwm-verf]
-            read -p "Enter nwm-eval tag: " TAGS[nwm-eval-mgr]
+            read -p "Enter nwm-eval-mgr tag: " TAGS[nwm-eval-mgr]
             ;;
         esac
     done
@@ -222,17 +222,17 @@ build_singularity_container_update_symlink() {
 
         # create Docker archive file
         if [[ "$build_type" == "development" ]]; then
-            docker save -o "${repo}.tar" "${repo}-latest"
+            docker save "${repo}-latest" -o "${repo}.tar"
 
         else
-            docker save -o "${repo}.tar" "${repo}-${TAGS[$repo]}"
+            docker save "${repo}-${TAGS[$repo]}" -o "${repo}.tar"
         fi
 
         # build Singularity file from Docker archive
         singularity build "${sif_dir}/${sif_file}" "docker-archive:${repo}.tar"
 
         echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
-        ln -s "${sif_file}" "${symlink_name}"
+        ln -sf "${sif_file}" "${symlink_name}"
 
         # delete the Docker archive file
         rm -f "${repo}.tar"
@@ -249,7 +249,7 @@ update_repo_branch() {
     git fetch origin
     git stash save
     git checkout "$branch"
-    git pull --rebase
+    git pull origin "$branch" --rebase
     git stash pop || true # prevent exit if nothing to pop
 
     if [[ "$repo" == "ngen" ]]; then
@@ -285,12 +285,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         # checkout ngen to specified tag
         checkout_repo_tag "ngen" "${TAGS[ngen]}"
 
-        echo "Building ngen Docker image..."
-        docker build \
-            --progress=plain \
-            --no-cache \
-            --tag="${REGISTRY}/ngen:${TAGS[ngen]}" \
-            "${BASE_PATH}/ngen"
+        echo "Pulling ngen Docker image..."
+        docker pull "${REGISTRY}/ngen:${TAGS[ngen]}"
     fi
 
     for repo in "${SELECTED_REPOS[@]}"; do
@@ -309,17 +305,17 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
 
         "ngen-bmi-forcing")
             echo "Pulling ngen-bmi-forcing Docker image..."
-            docker pull "${REGISTRY}/ngen-forcing/ngen-bmi-forcing:${TAGS[forcing]}"
+            docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[forcing]}"
             ;;
 
         "ngen-lumped-forcing")
             echo "Pulling ngen-lumped-forcing Docker image..."
-            docker pull "${REGISTRY}/ngen-forcing/ngen-lumped-forcing:${TAGS[forcing]}"
+            docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[forcing]}"
             ;;
 
         "ngen-coastal")
             echo "Pulling ngen-coastal Docker image..."
-            docker pull "${REGISTRY}/ngen-forcing/ngen-coastal:${TAGS[forcing]}"
+            docker pull "${REGISTRY}/ngen-coastal:${TAGS[forcing]}"
             ;;
 
         "nwm-fcst-mgr")
