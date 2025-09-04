@@ -60,9 +60,7 @@ REPOS=(
     "ngencerf-docker"
     "ngen"
     "nwm-cal-mgr"
-    "ngen-bmi-forcing"
-    "ngen-lumped-forcing"
-    "ngen-coastal"
+    "ngen-forcing"
     "nwm-fcst-mgr"
     "nwm-verf"
 )
@@ -70,6 +68,30 @@ REGISTRY="ghcr.io/ngwpc"
 
 BUILD_TYPE=""
 SELECTED_REPOS=()
+
+# helper to map a repo to one or more container image basenames for docker and sif
+images_for_repo() {
+    local repo="$1"
+    case "$repo" in
+        ngen) echo "ngen" ;;
+        ngencerf-ui) echo "" ;; # no sif
+        ngencerf-server) echo "" ;; # no sif
+        ngencerf-docker) echo "" ;; # no image or sif
+        nwm-cal-mgr) echo "ngen-cal" ;;
+        ngen-forcing) echo "ngen-bmi-forcing ngen-lumped-forcing ngen-coastal" ;;
+        nwm-fcst-mgr) echo "ngen-fcst" ;;
+        nwm-verf) echo "ngen-verf" ;;
+        *) echo "$repo" ;;
+    esac
+}
+
+# helper to say whether a repo should produce a sif
+repo_has_sif() {
+    case "$1" in
+        ngencerf-server|ngencerf-ui|ngencerf-docker) return 1 ;;
+        *) return 0 ;;
+    esac
+}
 
 # --- Parse command-line args ---
 parse_args() {
@@ -166,8 +188,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         nwm-cal-mgr)
             read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
             ;;
-        ngen-bmi-forcing | ngen-lumped-forcing | ngen-coastal)
-            read -p "Enter ngen-forcing tag (shared for ngen forcing and coastal repos): " TAGS[forcing]
+        ngen-forcing)
+            read -p "Enter ngen-forcing tag (shared for bmi/lumped/coastal): " TAGS[ngen-forcing]
             ;;
         nwm-fcst-mgr)
             read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
@@ -183,59 +205,39 @@ fi
 # function to update symlinks after building SIFs
 build_singularity_container_update_symlink() {
     local build_type="$1"
-    local repo="$2"
-    local image="$3"
+    local sif_base="$2"     # desired base name for sif and symlink (second column)
+    local image_ref="$3"    # full docker image ref (registry/name:tag)
+    local tag="$4"          # tag string used for naming
 
     # Directory where SIFs and symlinks are stored
     local sif_dir="${SINGULARITY_DIR}"
 
-    # the actual .sif filename with a timestamp
-    # use 'latest' tag for development builds and provided tag for release builds
+    # The actual .sif filename with a timestamp
     if [[ "$build_type" == "development" ]]; then
-        local sif_file="${repo}-latest-$(date -u +"%Y-%m-%dT%H:%M:%SZ").sif"
-
+        local sif_file="${sif_base}-latest-$(date -u +"%Y-%m-%dT%H:%M:%SZ").sif"
     else
-        local sif_file="${repo}-${TAGS[$repo]}-$(date -u +"%Y-%m-%dT%H:%M:%SZ").sif"
+        local sif_file="${sif_base}-${tag}-$(date -u +"%Y-%m-%dT%H:%M:%SZ").sif"
     fi
 
-    # the symlink name
-    local symlink_name="${repo}.sif"
+    # The symlink name (e.g., ngen-cal.sif)
+    local symlink_name="${sif_base}.sif"
 
-    # Why we use a relative symlink:
-    # -----------------------------------------
-    # Absolute symlinks (e.g., /ngencerf-app/singularity/file.sif) may break
-    # inside a container if the container does not see the same full path.
-    #
-    # Relative symlinks (e.g., file.sif -> file.sif_2025-03-25...) are resilient
-    # because they are interpreted relative to the symlink’s own location.
-    # This makes them portable and ensures they work inside both the host and
-    # container — as long as the base directory structure is preserved.
-    #
-    # We `cd` into the target directory before creating the symlink so the relative
-    # path resolves correctly from the symlink’s point of view.
     (
         cd "$sif_dir"
-        echo "Removing old ${symlink_name} symlink for $repo..."
+        echo "Removing old ${symlink_name} symlink for $sif_base..."
         rm -f "${symlink_name}"
 
-        echo "Building SIF: ${sif_file} from ${image}"
+        echo "Saving docker image to tar: ${image_ref}"
+        local tar_name="${sif_base}.tar"
+        docker save "${image_ref}" -o "${tar_name}"
 
-        # create Docker archive file
-        if [[ "$build_type" == "development" ]]; then
-            docker save "${repo}-latest" -o "${repo}.tar"
-
-        else
-            docker save "${repo}-${TAGS[$repo]}" -o "${repo}.tar"
-        fi
-
-        # build Singularity file from Docker archive
-        singularity build "${sif_dir}/${sif_file}" "docker-archive:${repo}.tar"
+        echo "Building SIF: ${sif_file} from docker-archive:${tar_name}"
+        singularity build "${sif_dir}/${sif_file}" "docker-archive:${tar_name}"
 
         echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
         ln -sf "${sif_file}" "${symlink_name}"
 
-        # delete the Docker archive file
-        rm -f "${repo}.tar"
+        rm -f "${tar_name}"
     )
 }
 
@@ -287,9 +289,9 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     fi
 
     for repo in "${SELECTED_REPOS[@]}"; do
+        # do per-repo checkout/build/pull
         case "$repo" in
         "nwm-cal-mgr")
-            # checkout nwm-cal-mgr to specified tag
             checkout_repo_tag "nwm-cal-mgr" "${TAGS[nwm-cal-mgr]}"
             echo "Building nwm-cal-mgr Docker image..."
             docker build \
@@ -299,24 +301,15 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 --tag="${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}" \
                 "${BASE_PATH}/nwm-cal-mgr"
             ;;
-
-        "ngen-bmi-forcing")
+        "ngen-forcing")
             echo "Pulling ngen-bmi-forcing Docker image..."
-            docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[forcing]}"
-            ;;
-
-        "ngen-lumped-forcing")
+            docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
             echo "Pulling ngen-lumped-forcing Docker image..."
-            docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[forcing]}"
-            ;;
-
-        "ngen-coastal")
+            docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}"
             echo "Pulling ngen-coastal Docker image..."
-            docker pull "${REGISTRY}/ngen-coastal:${TAGS[forcing]}"
+            docker pull "${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}"
             ;;
-
         "nwm-fcst-mgr")
-            # checkout nwm-fcst-mgr to specified tag
             checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
             echo "Building nwm-fcst-mgr Docker image..."
             docker build \
@@ -326,10 +319,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 --tag="${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}" \
                 "${BASE_PATH}/nwm-fcst-mgr"
             ;;
-
         "nwm-verf")
-            # checkout nwm-verf to specified tag
-            checkout_repo_tag "nwm-verf" "${TAGS[nwm - verf]}"
+            checkout_repo_tag "nwm-verf" "${TAGS[nwm-verf]}"
             echo "Building nwm-verf Docker image..."
             docker build \
                 --progress=plain \
@@ -338,16 +329,25 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 --tag="${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}" \
                 "${BASE_PATH}/nwm-verf"
             ;;
-
+        "ngen")
+            # already pulled above when present
+            :
+            ;;
         ngencerf*)
-            # checkout ngencerf* repos to specified tag
             checkout_repo_tag "$repo" "${TAGS[$repo]}"
             ;;
         esac
 
-        if [[ "$repo" != ngencerf* ]]; then
-            IMAGE="${REGISTRY}/${repo}:${TAGS[$repo]}"
-            build_singularity_container_update_symlink "$BUILD_TYPE" "$repo" "$IMAGE"
+        # build sif(s) according to mapping using second column names
+        if repo_has_sif "$repo"; then
+            # get tag
+            tag_val="${TAGS[$repo]}"
+
+            for img in $(images_for_repo "$repo"); do
+                # skip if no image is defined
+                [[ -z "$img" ]] && continue
+                build_singularity_container_update_symlink "$BUILD_TYPE" "$img" "${REGISTRY}/${img}:${tag_val}" "$tag_val"
+            done
         fi
     done
 
@@ -361,16 +361,21 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
 
     for repo in "${SELECTED_REPOS[@]}"; do
         echo
+        # keep original behavior of updating ngencerf* repos' branches
         if [[ "$repo" == ngencerf* ]]; then
-            # update ngencerf* repos to latest from development branch
             update_repo_branch "$repo" "development"
-        else
-            IMAGE="${REGISTRY}/${repo}:latest"
+        fi
 
-            echo "Pulling docker image: $IMAGE"
-            # TODO: ngen-coastal image builds are failing
-            docker pull "$IMAGE"
-            build_singularity_container_update_symlink "$BUILD_TYPE" "$repo" "$IMAGE"
+        if repo_has_sif "$repo"; then
+            # pull and convert to sif for each mapped image name
+            for img in $(images_for_repo "$repo"); do
+                [[ -z "$img" ]] && continue
+                IMAGE="${REGISTRY}/${img}:latest"
+                echo "Pulling docker image: $IMAGE"
+                # TODO: ngen-coastal image builds are failing
+                docker pull "$IMAGE"
+                build_singularity_container_update_symlink "$BUILD_TYPE" "$img" "$IMAGE" "latest"
+            done
         fi
     done
 
