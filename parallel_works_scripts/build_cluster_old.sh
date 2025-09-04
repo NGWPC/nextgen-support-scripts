@@ -174,7 +174,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
         ngen-verf)
             read -p "Enter ngen-verf tag: " TAGS[ngen-verf]
-            read -p "Enter nwm-eval-mgr tag: " TAGS[nwm-eval-mgr]
+            read -p "Enter ngen-eval tag: " TAGS[ngen-eval]
             ;;
         esac
     done
@@ -334,7 +334,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             docker build \
                 --progress=plain \
                 --no-cache \
-                --build-arg NWM_EVAL_MGR_TAG="${TAGS[ngen-eval]}" \
+                --build-arg NGEN_EVAL_TAG="${TAGS[ngen-eval]}" \
                 --tag="${REGISTRY}/ngen-verf:${TAGS[ngen-verf]}" \
                 "${BASE_PATH}/ngen-verf"
             ;;

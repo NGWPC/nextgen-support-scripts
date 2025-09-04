@@ -6,7 +6,7 @@ REPOS=(
     "ngencerf-server"
     "ngencerf-docker"
     "ngen"
-    "nmw-cal-mgr"
+    "nwm-cal-mgr"
     "ngen-forcing"
     "nwm-fcst-mgr"
     "nwm-verf"
