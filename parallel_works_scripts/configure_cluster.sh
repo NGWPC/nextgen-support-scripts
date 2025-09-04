@@ -100,7 +100,7 @@ else
     sudo chmod -R g+rwx $NGENCERF_APP/data/ngen-cal-data
 
     if [[ ! -d "$STATIC_DIR/module_parameter_files" ]]; then
-        echo "Copying module_parameter_files directory from ngen-cal repo..."
+        echo "Copying module_parameter_files directory from nwm-cal-mgr repo..."
         cp --archive "$SOURCE_DIR" "$STATIC_DIR/"
     else
         echo "Skipping copy: module_parameter_files already exists in $STATIC_DIR"
@@ -120,9 +120,6 @@ fi
 # ------------------------------------------------------------------------------
 # Pull/build Docker images and build Singularity containers
 # ------------------------------------------------------------------------------
-echo "Logging into Docker..."
-docker login ghcr.io
-
 echo
 echo "Building Singularity containers..."
 $NGENCERF_APP/nwm-automation-scripts/parallel_works_scripts/build_cluster.sh --build-type=development all

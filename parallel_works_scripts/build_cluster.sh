@@ -79,7 +79,7 @@ images_for_repo() {
         ngencerf-server) echo "" ;; # no sif
         ngencerf-docker) echo "" ;; # no image or sif
         nwm-cal-mgr) echo "nwm-cal-mgr|ngen-cal" ;; # image vs sif name difference
-        ngen-forcing) echo "ngen-bmi-forcing|ngen-bmi-forcing ngen-lumped-forcing|ngen-lumped-forcing ngen-coastal|ngen-coastal" ;;
+        ngen-forcing) echo "ngen-bmi-forcing|ngen-bmi-forcing ngen-lumped-forcing|ngen-lumped-forcing" ;; # ngen-coastal|ngen-coastal" ;;
         nwm-fcst-mgr) echo "nwm-fcst-mgr|ngen-fcst" ;; # image vs sif name difference
         nwm-verf) echo "nwm-verf|ngen-verf" ;;
         *) echo "$repo|$repo" ;;
@@ -307,8 +307,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
             echo "Pulling ngen-lumped-forcing Docker image..."
             docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}"
-            echo "Pulling ngen-coastal Docker image..."
-            docker pull "${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}"
+            # echo "Pulling ngen-coastal Docker image..."
+            # docker pull "${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}"
             ;;
         "nwm-fcst-mgr")
             checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
