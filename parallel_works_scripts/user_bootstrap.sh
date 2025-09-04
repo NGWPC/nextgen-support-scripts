@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # set sudo users, dnf packages, and python packages
-ADD_USERS="$(whoami) ngen-pw-user miguel.pena peter.a.kronenberg khalid.ali bijan.zarean christina.osumi"
+ADD_USERS="ngen-pw-user miguel.pena peter.a.kronenberg khalid.ali bijan.zarean christina.osumi"
 DNF_PACKAGES_EXTRA=""
 PY_PIP_PKGS="Flask gunicorn"
 
