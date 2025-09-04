@@ -51,7 +51,7 @@ SINGULARITY_DIR="${BASE_PATH}/singularity"
 mkdir -p $SINGULARITY_DIR
 
 # Redirect stdout and stderr to a log file in the Singularity directory
-LOGFILE="${SINGULARITY_DIR}/build_cluster$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
+LOGFILE="${SINGULARITY_DIR}/build_cluster_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
 exec > >(tee -i "$LOGFILE") 2>&1
 
 REPOS=(
