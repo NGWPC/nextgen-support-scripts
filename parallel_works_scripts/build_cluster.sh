@@ -69,19 +69,20 @@ REGISTRY="ghcr.io/ngwpc"
 BUILD_TYPE=""
 SELECTED_REPOS=()
 
-# helper to map a repo to one or more container image basenames for docker and sif
+# helper to map a repo to docker image name(s) and the desired sif name(s)
+# format: "docker_image|sif_name" space separated for multiples
 images_for_repo() {
     local repo="$1"
     case "$repo" in
-        ngen) echo "ngen" ;;
+        ngen) echo "ngen|ngen" ;;
         ngencerf-ui) echo "" ;; # no sif
         ngencerf-server) echo "" ;; # no sif
         ngencerf-docker) echo "" ;; # no image or sif
-        nwm-cal-mgr) echo "ngen-cal" ;;
-        ngen-forcing) echo "ngen-bmi-forcing ngen-lumped-forcing ngen-coastal" ;;
-        nwm-fcst-mgr) echo "ngen-fcst" ;;
-        nwm-verf) echo "ngen-verf" ;;
-        *) echo "$repo" ;;
+        nwm-cal-mgr) echo "nwm-cal-mgr|ngen-cal" ;; # image vs sif name difference
+        ngen-forcing) echo "ngen-bmi-forcing|ngen-bmi-forcing ngen-lumped-forcing|ngen-lumped-forcing ngen-coastal|ngen-coastal" ;;
+        nwm-fcst-mgr) echo "nwm-fcst-mgr|ngen-fcst" ;; # image vs sif name difference
+        nwm-verf) echo "nwm-verf|ngen-verf" ;;
+        *) echo "$repo|$repo" ;;
     esac
 }
 
@@ -330,7 +331,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 "${BASE_PATH}/nwm-verf"
             ;;
         "ngen")
-            # already pulled above when present
+            # already handled above
             :
             ;;
         ngencerf*)
@@ -338,15 +339,14 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
         esac
 
-        # build sif(s) according to mapping using second column names
+        # build sif(s) according to mapping using explicit docker->sif pairs
         if repo_has_sif "$repo"; then
-            # get tag
             tag_val="${TAGS[$repo]}"
-
-            for img in $(images_for_repo "$repo"); do
-                # skip if no image is defined
-                [[ -z "$img" ]] && continue
-                build_singularity_container_update_symlink "$BUILD_TYPE" "$img" "${REGISTRY}/${img}:${tag_val}" "$tag_val"
+            for pair in $(images_for_repo "$repo"); do
+                [[ -z "$pair" ]] && continue
+                docker_img="${pair%%|*}"
+                sif_name="${pair##*|}"
+                build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "${REGISTRY}/${docker_img}:${tag_val}" "$tag_val"
             done
         fi
     done
@@ -361,20 +361,22 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
 
     for repo in "${SELECTED_REPOS[@]}"; do
         echo
-        # keep original behavior of updating ngencerf* repos' branches
+        # update ngencerf* repo's development branch
         if [[ "$repo" == ngencerf* ]]; then
             update_repo_branch "$repo" "development"
         fi
 
         if repo_has_sif "$repo"; then
-            # pull and convert to sif for each mapped image name
-            for img in $(images_for_repo "$repo"); do
-                [[ -z "$img" ]] && continue
-                IMAGE="${REGISTRY}/${img}:latest"
+            # pull and convert to sif for each docker|sif pair
+            for pair in $(images_for_repo "$repo"); do
+                [[ -z "$pair" ]] && continue
+                docker_img="${pair%%|*}"
+                sif_name="${pair##*|}"
+                IMAGE="${REGISTRY}/${docker_img}:latest"
                 echo "Pulling docker image: $IMAGE"
                 # TODO: ngen-coastal image builds are failing
                 docker pull "$IMAGE"
-                build_singularity_container_update_symlink "$BUILD_TYPE" "$img" "$IMAGE" "latest"
+                build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "latest"
             done
         fi
     done
