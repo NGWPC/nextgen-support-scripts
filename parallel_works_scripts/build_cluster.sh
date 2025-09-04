@@ -17,14 +17,14 @@ set -o pipefail
 # Interactive mode (will prompt for build type and repos):
 #   ./build_cluster.sh
 #
-# Development build (non-interactive, builds ngen and ngen-cal):
-#   ./build_cluster.sh --build-type=development ngen ngen-cal
+# Development build (non-interactive, builds ngen and nwm-cal-mgr):
+#   ./build_cluster.sh --build-type=development ngen nwm-cal-mgr
 #
 # Build all supported repos (non-interactive):
 #   ./build_cluster.sh --build-type=development all
 #
 # Build for release (will still prompt for tags):
-#   ./build_cluster.sh --build-type=release ngen ngen-cal ngen-verf
+#   ./build_cluster.sh --build-type=release ngen nwm-cal-mgr ngen-verf
 #   (will still prompt for tags)
 #
 # ------------------------------------------------------------------------------
@@ -189,7 +189,7 @@ build_singularity_container_update_symlink() {
     # Directory where SIFs and symlinks are stored
     local sif_dir="${SINGULARITY_DIR}"
 
-    # The actual .sif filename with a timestamp
+    # the actual .sif filename with a timestamp
     # use 'latest' tag for development builds and provided tag for release builds
     if [[ "$build_type" == "development" ]]; then
         local sif_file="${repo}-latest-$(date -u +"%Y-%m-%dT%H:%M:%SZ").sif"
@@ -198,7 +198,7 @@ build_singularity_container_update_symlink() {
         local sif_file="${repo}-${TAGS[$repo]}-$(date -u +"%Y-%m-%dT%H:%M:%SZ").sif"
     fi
 
-    # The symlink name (e.g., ngen-cal.sif)
+    # the symlink name
     local symlink_name="${repo}.sif"
 
     # Why we use a relative symlink:
