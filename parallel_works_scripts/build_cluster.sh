@@ -106,22 +106,23 @@ repo_has_sif() {
     esac
 }
 
-# defaults for IMAGE_SOURCE by workflow (overridden by --source-default/--source)
+# set workflow (build or pull) default for repos with SIF (overridden by --source-default/--source)
 set_image_source_defaults() {
+    # initialize all to empty
     for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]=''; done
-    if [[ "$BUILD_TYPE" == "release" ]]; then
-        IMAGE_SOURCE["ngen"]="pull"
-        IMAGE_SOURCE["nwm-cal-mgr"]="build"
-        IMAGE_SOURCE["nwm-fcst-mgr"]="build"
-        IMAGE_SOURCE["nwm-verf"]="build"
-        IMAGE_SOURCE["ngen-forcing"]="pull"
-    else
-        for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]="pull"; done
-    fi
+
+    # set default for each repo
+    IMAGE_SOURCE["ngen"]="pull"
+    IMAGE_SOURCE["nwm-cal-mgr"]="build"
+    IMAGE_SOURCE["nwm-fcst-mgr"]="build"
+    IMAGE_SOURCE["nwm-verf"]="build"
+    IMAGE_SOURCE["ngen-forcing"]="pull"
+
     if [[ -n "$IMAGE_SOURCE_DEFAULT" ]]; then
         for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]="$IMAGE_SOURCE_DEFAULT"; done
     fi
 }
+
 
 # --- Parse args ---
 parse_args() {
