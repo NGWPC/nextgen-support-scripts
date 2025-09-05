@@ -24,7 +24,7 @@ set -o pipefail
 #   ./build_cluster.sh --build-type=development all
 #
 # Build for release (will still prompt for tags):
-#   ./build_cluster.sh --build-type=release ngen nwm-cal-mgr ngen-verf
+#   ./build_cluster.sh --build-type=release ngen nwm-cal-mgr nwm-verf
 #
 # Per-repo image source (build|pull), applies to both dev & release:
 #   ./build_cluster.sh --build-type=development \
@@ -90,10 +90,10 @@ images_for_repo() {
         ngencerf-ui)     echo "" ;;
         ngencerf-server) echo "" ;;
         ngencerf-docker) echo "" ;;
-        nwm-cal-mgr)     echo "nwm-cal-mgr|ngen-cal" ;;
+        nwm-cal-mgr)     echo "nwm-cal-mgr|nwm-cal-mgr" ;;
         ngen-forcing)    echo "ngen-bmi-forcing|ngen-bmi-forcing ngen-lumped-forcing|ngen-lumped-forcing" ;;
-        nwm-fcst-mgr)    echo "nwm-fcst-mgr|ngen-fcst" ;;
-        nwm-verf)        echo "nwm-verf|ngen-verf" ;;
+        nwm-fcst-mgr)    echo "nwm-fcst-mgr|nwm-fcst-mgr" ;;
+        nwm-verf)        echo "nwm-verf|nwm-verf" ;;
         *)               echo "$repo|$repo" ;;
     esac
 }
