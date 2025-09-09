@@ -349,23 +349,20 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
             "ngen-forcing")
                 if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
-                    if [[ -d "${BASE_PATH}/ngen-bmi-forcing" ]]; then
+                    if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                         checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}" || true
                         echo "Building ngen-bmi-forcing Docker image..."
                         docker build --progress=plain --no-cache \
                         --tag="${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" \
                         "${BASE_PATH}/ngen-bmi-forcing"
-                    else
-                        echo "Error: ${BASE_PATH}/ngen-bmi-forcing not found; cannot build."; exit 1
-                    fi
-                    if [[ -d "${BASE_PATH}/ngen-lumped-forcing" ]]; then
+
                         checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}" || true
                         echo "Building ngen-lumped-forcing Docker image..."
                         docker build --progress=plain --no-cache \
                         --tag="${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}" \
                         "${BASE_PATH}/ngen-lumped-forcing"
                     else
-                        echo "Error: ${BASE_PATH}/ngen-lumped-forcing not found; cannot build."; exit 1
+                        echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                     fi
                 else
                     echo "Pulling ngen-bmi-forcing Docker image..."
@@ -493,23 +490,20 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
             ;;
             "ngen-forcing")
                 if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
-                    if [[ -d "${BASE_PATH}/ngen-bmi-forcing" ]]; then
+                    if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                         update_repo_branch "ngen-forcing" "development"
                         echo "Building ngen-bmi-forcing (development) Docker image..."
                         docker build --progress=plain --no-cache \
                         --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
                         "${BASE_PATH}/ngen-bmi-forcing"
-                    else
-                        echo "Error: ${BASE_PATH}/ngen-bmi-forcing not found; cannot build."; exit 1
-                    fi
-                    if [[ -d "${BASE_PATH}/ngen-lumped-forcing" ]]; then
+
                         update_repo_branch "ngen-forcing" "development"
                         echo "Building ngen-lumped-forcing (development) Docker image..."
                         docker build --progress=plain --no-cache \
                         --tag="${REGISTRY}/ngen-lumped-forcing:latest" \
                         "${BASE_PATH}/ngen-lumped-forcing"
                     else
-                        echo "Error: ${BASE_PATH}/ngen-lumped-forcing not found; cannot build."; exit 1
+                        echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                     fi
                 fi
             ;;
