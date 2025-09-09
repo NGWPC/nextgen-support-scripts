@@ -5,8 +5,14 @@ LOGFILE="createRelease_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$LOGFILE")) 2>&1
 echo "All output will be logged to: $LOGFILE"
 
-
 declare -a TEMP_BRANCHES
+
+# Unified release branch used across all repositories for OFFICIAL releases.
+RELEASE_BRANCH="ngwpc-release"
+
+# Toggle for printing the exact 'gh' commands being executed.
+# Printed commands go to STDERR so that JSON captures using $(...) are not polluted.
+DEBUG_GH=true
 
 #-----------------------------------------
 # Function: usage
@@ -15,26 +21,25 @@ declare -a TEMP_BRANCHES
 usage() {
   echo "Usage: $(basename "$0") <RELEASE_TYPE> [JSON_FILE] [WAIT_TIME]"
   echo
-  echo "This script automates the release process for GitLab repositories, handling merges,"
+  echo "This script automates the release process for GitHub repositories, handling merges,"
   echo "submodules, and versioning."
   echo "It performs the following steps based on the release type:"
   echo
   echo "🔹 RC (Release Candidate) Process:"
   echo "  1. Merge from 'development' to 'release-candidate' (except for RC1)."
   echo "  2. If submodules exist, ensure they are on the correct branch."
-  echo "  3. Create a GitLab release for the RC."
+  echo "  3. Create a GitHub release for the RC."
   echo "  4. Merge 'release-candidate' back into 'development' (except for RC1)."
   echo
   echo "🔹 Official Release Process:"
-  echo "  1. Merge from 'release-candidate' to 'main' or 'master'."
+  echo "  1. Merge from 'release-candidate' to '\$RELEASE_BRANCH' (default: '${RELEASE_BRANCH}')."
   echo "  2. If submodules exist, ensure they are on the correct branch."
-  echo "  3. Create a GitLab release for the official version."
-  echo "  4. Merge the final release changes back into 'development'."
+  echo "  3. Create a GitHub release for the official version."
   echo
   echo "🔹 Handling Submodules:"
-  echo "  - If the repository has submodules, they will be checked out to the correct branch ('release-candidate', 'development', or 'main/master')"
-  echo "    and merged back into the correct branch of the parent repository."
-  echo "  - A temporary branch is created for submodule updates, ensuring consistency across all modules."
+  echo "  - Submodules are checked out to match the parent's target branch"
+  echo "    ('release-candidate', 'development', or '\$RELEASE_BRANCH'), then committed in the parent."
+  echo "  - A temporary branch is created for submodule updates, ensuring consistency across modules."
   echo "  - The temporary branch is then merged back into the appropriate target branch."
   echo
   echo "Arguments:"
@@ -55,7 +60,6 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
 fi
 
-
 # Define color codes
 RED='\033[1;31m'
 GREEN='\033[1;32m'
@@ -64,258 +68,213 @@ BLUE='\033[1;34m'
 NC='\033[0m' # No Color
 
 #-----------------------------------------
-# Function: read_token
-# Reads the GitLab token from ~/.gitlab_token.
+# Function: git_push
+# Quiet wrapper around `git push` that suppresses routine output
+# (e.g., GitHub's "Create a pull request" hint) but still surfaces
+# real errors. It:
+#   - runs `git push -q` with all arguments passed through
+#   - captures stderr/stdout on failure and prints them
+#
+# Arguments:
+#   $@ - Arguments passed directly to `git push`
 #
 # Returns:
-#   Sets the global variable GITLAB_TOKEN.
+#   0 on success; 1 on failure (after printing the captured error output)
 #-----------------------------------------
-read_token() {
-  GITLAB_TOKEN=$(cat ~/.gitlab_token)
+git_push() {
+  if ! out=$(git push -q "$@" 2>&1); then
+    echo -e "${RED}git push failed: git push $*${NC}"
+    echo "$out" >&2
+    return 1
+  fi
+  return 0
+}
+
+#-----------------------------------------
+# Function: run_gh
+# Prints and executes a `gh` command.
+#
+# WHY:
+#   We want to see the exact `gh` command lines that run (for debugging).
+#
+# BEHAVIOR:
+#   - If DEBUG_GH=true, prints:  Executing: gh <args...>
+#   - The print goes to STDERR so that callers that capture STDOUT via $(...) do not
+#     get the "Executing:" line mixed into JSON or other command output.
+#   - Returns `gh`'s exit status and streams `gh`'s STDOUT/STDERR unchanged.
+#
+# USAGE:
+#   run_gh release create ...
+#   json=$(run_gh pr create --json number)
+#-----------------------------------------
+run_gh() {
+  local args=("$@")
+  if [ "$DEBUG_GH" = true ]; then
+    printf 'Executing: ' >&2; printf '%q ' gh "${args[@]}" >&2; echo >&2
+  fi
+  gh "${args[@]}"
 }
 
 #-----------------------------------------
 # Function: clean_and_encode_project
-# Removes optional authentication info, the fixed GitLab prefix, and the trailing .git from a URL,
-# then returns the URL‑encoded project string.
-#
-# Parameters:
-#   $1 - The raw remote URL (e.g., "https://username:password@gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/my-project.git")
-#
-# Returns:
-#   The URL‑encoded project path (e.g., "NGWPC%2Fnwm-ngen%2Fmy-project")
+# Normalizes a GitHub remote URL to the canonical "owner/repo" form.
+# Works for HTTPS and SSH remotes, and strips embedded credentials and .git suffix.
 #-----------------------------------------
 clean_and_encode_project() {
   local project_url="$1"
-
-  # Remove authentication details (username and password) if present
   project_url=$(echo "$project_url" | sed -e 's#^https\?://[^/]*@#https://#')
-
-  # Remove the fixed GitLab prefix.
-  project_url=$(echo "$project_url" | sed -e 's#^https://gitlab\.sh\.nextgenwaterprediction\.com/##')
-
-  # Remove the '.git' suffix if present
+  project_url=$(echo "$project_url" | sed -e 's#^https://github\.com/##')
+  project_url=$(echo "$project_url" | sed -e 's#^git@github\.com:##')
   project_url=$(echo "$project_url" | sed -e 's#\.git$##')
-
-  # URL encode the project path
-  jq -nr --arg v "$project_url" '$v|@uri'
+  echo "$project_url"
 }
 
 #-----------------------------------------
-# Function: determine_release_branch
-# Determines whether the repository has a "main" or "master" branch by querying the GitLab API.
+# (Deprecated) Function: determine_release_branch
+# Determines whether the remote repository has a branch named "main" or "master"
+# by querying the Git remote directly (no GitHub API).
 #
-# Parameters:
-#   $1 - Repository API URL (with encoded project path)
-#
-# Uses:
-#   Global variable GITLAB_TOKEN.
+# Behavior:
+#   - Checks `origin` for refs/heads/main first, then refs/heads/master.
+#   - On success, echoes the found branch name and returns 0.
+#   - If neither exists, prints a clear error (to STDERR) and returns 1.
 #
 # Returns:
-#   The branch name ("main" or "master"), or an empty string if neither exists.
+#   0 with "main" or "master" on stdout; 1 if neither exists.
 #-----------------------------------------
-determine_release_branch() {
-  local repo_url="$1"
-
-  # Check for the existence of the "main" branch.
-  branch_main=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_TOKEN" "$repo_url/repository/branches/main" | jq -r '.name')
-  if [ "$branch_main" == "main" ]; then
-    echo "main"
-    return 0
-  fi
-
-  # If not found, check for the "master" branch.
-  branch_master=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_TOKEN" "$repo_url/repository/branches/master" | jq -r '.name')
-  if [ "$branch_master" == "master" ]; then
-    echo "master"
-    return 0
-  fi
-
-  # Neither branch was found.
-  echo ""
-}
+# determine_release_branch() {
+#   if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+#     echo "main"
+#     return 0
+#   fi
+#   if git ls-remote --exit-code --heads origin master >/dev/null 2>&1; then
+#     echo "master"
+#     return 0
+#   fi
+#
+#   # Neither found
+#   echo -e "${RED}Error: Neither 'main' nor 'master' branch exists on remote 'origin' for repo $(git rev-parse --show-toplevel 2>/dev/null || echo "(unknown repo)")${NC}" >&2
+#
+#   return 1
+# }
 
 #-----------------------------------------
 # Function: create_merge_request
-# Creates a merge request using the GitLab API.
+# Creates a pull request using the GitHub CLI (`gh`).
 #
 # Arguments:
-#   $1 - Repository API URL (e.g., "https://gitlab.sh.nextgenwaterprediction.com/api/v4/projects/ENCODED_PROJECT")
-#   $2 - Source branch
-#   $3 - Target branch
-#   $4 - Title for the merge request
-#   $5 - should_remove_source_branch (true or false)
+#   $1 - Source branch (head)
+#   $2 - Target branch (base)
+#   $3 - Title for the pull request
 #
 # Behavior:
-#   Sends a POST request to create a merge request.
-#   If successful, echoes the merge request IID.
-#   If a 409 Conflict occurs (i.e. another open MR exists for the source branch),
-#     it extracts the IID from the error message (expected to contain a pattern like "!10")
-#     and echoes that value.
+#   - Uses `gh api` to POST the PR and echoes the PR number on success.
+#   - If a matching open PR already exists (HTTP 422 case), queries for it and echoes its number.
+#
+# Requires:
+#   REPO_PROJECT to be set to "owner/repo".
 #
 # Returns:
-#   0 if the merge request was created successfully (or an existing MR was detected),
-#   1 if creation failed.
+#   0 if a PR was created or an existing one was found; 1 otherwise.
 #-----------------------------------------
 create_merge_request() {
-  local repo_url="$1"
-  local source_branch="$2"
-  local target_branch="$3"
-  local title="$4"
-  local should_remove_source_branch="$5"
-
-  # Build the JSON payload for the curl command.
-  local data_payload
-  data_payload=$(cat <<EOF
-{
-  "source_branch": "${source_branch}",
-  "target_branch": "${target_branch}",
-  "title": "${title}",
-  "should_remove_source_branch": ${should_remove_source_branch}
-}
-EOF
-)
+  local source_branch="$1"
+  local target_branch="$2"
+  local title="$3"
 
   echo
-  echo -e "Creating merge request from ${GREEN}$source_branch${NC} to ${GREEN}$target_branch${NC} (remove source branch: $should_remove_source_branch)" >&2
-  local curl_cmd
-  curl_cmd="curl --silent --request POST \
-    --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \
-    --header \"Content-Type: application/json\" \
-    --data '$data_payload' \
-    \"$repo_url/merge_requests\" \
-    -w \"\nHTTP Response Code: %{http_code}\""
+  echo -e "Creating pull request from ${GREEN}$source_branch${NC} to ${GREEN}$target_branch${NC}" >&2
 
-  # Echo the entire curl command for debugging.
-  # echo "Executing create_merge_request command: $curl_cmd" >&2
-
-  # Execute the curl command.
-  local response
-  response=$(eval "$curl_cmd")
-
-  # Extract the HTTP code using our known output format.
-  local http_code
-  http_code=$(echo "$response" | grep -o "HTTP Response Code: [0-9]*" | awk '{print $4}' | tr -d '\n')
-  local json_response
-  json_response=$(echo "$response" | sed '$d')
-
-  if [[ $http_code =~ ^2 ]]; then
-    local iid
-    iid=$(echo "$json_response" | jq -r '.iid')
-    if [[ "$iid" != "null" && -n "$iid" ]]; then
-      # Return this in stdout
-      echo "$iid"
-      return 0
-    else
-      echo -e "${RED}HTTP success but no valid merge request IID found.${NC}" >&2
-      return 1
-    fi
-  elif [ "$http_code" -eq 409 ]; then
-    # Conflict: extract the merge request IID from the error message.
-    local conflict_msg conflict_iid
-    # Retrieve the first error message from the JSON response.
-    conflict_msg=$(echo "$json_response" | jq -r '.message[0]')
-    echo "$conflict_msg" >&2
-    # Extract the pattern: an exclamation mark followed by one or more digits.
-    # Then remove the exclamation mark so only the IID remains.
-    conflict_iid=$(echo "$conflict_msg" | grep -oE '!([0-9]+)' | tr -d '!')
-    if [ -n "$conflict_iid" ]; then
-      echo "$conflict_iid"
+  # Try to create PR via REST API and capture its number
+  if pr_num=$(run_gh api \
+        -X POST "repos/$REPO_PROJECT/pulls" \
+        -f title="$title" \
+        -f head="$source_branch" \
+        -f base="$target_branch" \
+        --jq '.number'); then
+    if [[ -n "$pr_num" && "$pr_num" != "null" ]]; then
+      echo "$pr_num"
       return 0
     fi
   fi
 
-  # Print errors if we reach here.
-  if echo "$json_response" | jq -e '.message | type=="array"' >/dev/null 2>&1; then
-    echo -e "${RED}Error creating Merge Request (HTTP $http_code):${NC}" >&2
-    echo -e "${RED}$(echo "$json_response" | jq -r '.message[]')${NC}" >&2
-
-  else
-    local error_message
-    error_message=$(echo "$json_response" | jq -r '.message')
-    echo -e "${RED}Error creating Merge Request (HTTP $http_code): $error_message${NC}" >&2
+  # If it already exists (typical 422 case), look up the open PR matching head/base
+  local owner="${REPO_PROJECT%%/*}"
+  if pr_num=$(run_gh api \
+        -X GET "repos/$REPO_PROJECT/pulls?state=open&head=${owner}:${source_branch}&base=${target_branch}" \
+        --jq '.[0].number' 2>/dev/null); then
+    if [[ -n "$pr_num" && "$pr_num" != "null" ]]; then
+      echo "$pr_num"
+      return 0
+    fi
   fi
+
+  echo -e "${RED}Error creating Pull Request from $source_branch to $target_branch${NC}" >&2
   return 1
 }
 
 #-----------------------------------------
 # Function: trigger_merge
-# Triggers the merge for a given merge request.
+# Triggers merging a pull request using the GitHub CLI (`gh`).
 #
 # Arguments:
-#   $1 - Repository API URL
-#   $2 - Merge request IID
+#   $1 - Pull request number
+#
+# Behavior:
+#   - Attempts auto-merge (`--auto`) first; if not allowed, falls back to an immediate merge.
 #
 # Returns:
 #   0 on success, 1 on failure.
 #-----------------------------------------
 trigger_merge() {
-  local repo_url="$1"
-  local merge_iid="$2"
-  local data_payload='{"should_remove_source_branch": false}'
+  local pr_number="$1"
 
-  # Build the curl command as a string.
-  local curl_cmd
-  curl_cmd="curl --silent --request PUT \
-    --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \
-    --header \"Content-Type: application/json\" \
-    --data '$data_payload' \
-    \"$repo_url/merge_requests/${merge_iid}/merge\" \
-    -w \"\nHTTP Response Code: %{http_code}\""
-
-  # Echo the entire curl command for debugging.
-  # echo "Executing trigger_merge command: $curl_cmd"
-
-  echo "Triggering merge for MR IID: $merge_iid..."
-  local merge_response
-  merge_response=$(eval "$curl_cmd")
-  local http_code
-  http_code=$(echo "$merge_response" | grep -o "HTTP Response Code: [0-9]*" | awk '{print $4}')
-
-  if [[ $http_code =~ ^2 ]]; then
+  echo "Triggering merge for PR #: $pr_number..."
+  if run_gh pr merge "$pr_number" --merge --auto --delete-branch >/dev/null 2>&1; then
     echo "Merge triggered successfully."
-    echo 
+    echo
     return 0
-  else
-    echo -e "${RED}Error triggering merge (HTTP $http_code). Response:${NC}"
-    echo -e "${RED}$(echo "$merge_response" | sed '$d')${NC}"
-    echo "Trigger merge command: $curl_cmd"
-    return 1
   fi
+
+  # Fall back to non-auto if auto-merge not allowed
+  if run_gh pr merge "$pr_number" --merge --delete-branch -y; then
+    echo "Merged successfully."
+    echo
+    return 0
+  fi
+
+  echo -e "${RED}Error triggering merge for PR $pr_number.${NC}"
+  return 1
 }
 
 #-----------------------------------------
 # Function: poll_merge_status
-# Polls the merge request until its status is either "merged" or "closed".
+# Polls the pull request via `gh` until its status is either "MERGED" or "CLOSED".
 #
 # Arguments:
-#   $1 - Repository API URL
-#   $2 - Merge request IID
+#   $1 - Pull request number
 #
 # Behavior:
-#   Continuously queries the merge request status and displays progress until the status
-#   is either "merged" or "closed".
+#   Continuously queries the pull request state and displays progress until the state
+#   is either "MERGED" or "CLOSED".
 #-----------------------------------------
 poll_merge_status() {
-  local repo_url="$1"
-  local merge_iid="$2"
+  local pr_number="$1"
 
-  echo "Waiting for merge request $merge_iid to complete..."
+  echo "Waiting for pull request $pr_number to complete..."
   while true; do
-    local merge_response
-    merge_response=$(curl --silent --header "PRIVATE-TOKEN: $GITLAB_TOKEN" "$repo_url/merge_requests/${merge_iid}")
     local state
-    state=$(echo "$merge_response" | jq -r '.state')
-    
-    if [ "$state" == "merged" ]; then
+    # We suppress gh's own stderr here to keep logs tidy; the wrapper's
+    # "Executing:" line is printed to STDERR and will also be suppressed.
+    state=$(run_gh pr view "$pr_number" --json state -q '.state' 2>/dev/null || echo "")
+    if [[ "$state" == "MERGED" ]]; then
       echo "Merge is complete."
-      echo
       break
-    elif [ "$state" == "closed" ]; then
-      echo "Merge request closed without merging."
+    elif [[ "$state" == "CLOSED" ]]; then
+      echo "Pull request closed without merging."
       break
     else
-      echo "Current merge request state: $state. Waiting 10 seconds..."
+      echo "Current pull request state: ${state:-unknown}. Waiting 10 seconds..."
       sleep 10
     fi
   done
@@ -323,207 +282,151 @@ poll_merge_status() {
 
 #-----------------------------------------
 # Function: wait_until_mergeable
-# Waits until the merge request is mergeable, or until a timeout is reached.
+# Waits until the pull request is mergeable, or until a timeout is reached.
 #
 # Arguments:
-#   $1 - Repository API URL
-#   $2 - Merge request IID
-#   $3 - Maximum wait time in seconds
+#   $1 - Pull Request number
+#   $2 - Maximum wait time in seconds
+#
+# GitHub/gh behavior:
+#   - `gh pr view --json mergeStateStatus` reports a summary of mergeability such as:
+#     CLEAN, BLOCKED, DIRTY, DRAFT, UNKNOWN.
+#   - We treat "CLEAN" as mergeable.
 #
 # Behavior:
-#   Retrieves the merge request details and checks:
-#     - That merge_status is not empty.
-#     - If detailed_merge_status contains "broken_status" (case-insensitive),
-#       it indicates there are no changes to merge, so the function prints an error message and returns 2.
-#       (GitLab doesn't document the possible values, so we're assuming that "broken_status" means the MR is permanently unmergeable.)
-#     - Otherwise, if merge_status equals "can_be_merged", it returns 0.
+#   - Polls the PR and returns success when the merge state is CLEAN.
+#   - If the timeout is reached, prompts to Continue waiting or Skip.
 #
 # Returns:
-#   0 if the merge request becomes mergeable within the timeout,
-#   2 if there are no changes to merge (detailed_merge_status is "broken_status"),
-#   1 otherwise.
+#   0 if the PR becomes mergeable within the timeout,
+#   1 on timeout (if user chooses Skip).
 #-----------------------------------------
 wait_until_mergeable() {
-  local repo_url="$1"
-  local merge_id="$2"
-  local max_wait="$3"
+  local pr_number="$1"
+  local max_wait="$2"
   local elapsed=0
 
   while true; do
-    local curl_cmd
-    curl_cmd="curl --silent --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \"$repo_url/merge_requests/${merge_id}\""
-    # Echo the entire curl command for debugging.
-    # echo "Executing wait_until_mergeable command: $curl_cmd"
-    
-    local json_resp mr_status detailed_status
-    json_resp=$(eval "$curl_cmd")
-
-    # Validate that the response is not empty.
-    if [ -z "$json_resp" ]; then
-      echo "Error: Empty response received."
-      return 1
-    fi
-
-    mr_status=$(echo "$json_resp" | jq -r '.merge_status')
-    detailed_status=$(echo "$json_resp" | jq -r '.detailed_merge_status')
-
-    # Validate that mr_status is not empty.
-    if [ -z "$mr_status" ]; then
-      echo "Error: merge_status field is empty in the response:"
-      echo "$json_resp"
-      return 1
-    fi
-
-    # Check if detailed_merge_status contains "broken_status" (case-insensitive).
-    if echo "$detailed_status" | grep -qi "broken_status"; then
-      echo -e "${RED}Merge request cannot be completed - either no changes to merge or a conflict (detailed status: $detailed_status).${NC}"
-      return 2
-    fi
-
-    # Need to check for both statuses to avoid a 405
-    if [ "$mr_status" == "can_be_merged" ] && [ "$detailed_status" == "mergeable" ]; then
-      echo "Merge request can be merged (merge_status: $mr_status, detailed_merge_status: $detailed_status)"
+    # gh exposes merge state summary as mergeStateStatus
+    local checks_state
+    checks_state=$(gh pr view "$pr_number" --json mergeStateStatus -q '.mergeStateStatus' 2>/dev/null || echo "")
+    # Common values: CLEAN, BLOCKED, DIRTY, DRAFT, UNKNOWN
+    if [[ "$checks_state" == "CLEAN" ]]; then
+      echo "Pull request appears mergeable (state: $checks_state)"
       return 0
     fi
 
-    if [ "$elapsed" -ge "$max_wait" ]; then
+    if (( elapsed >= max_wait )); then
       while true; do
-        read -n 1 -s -r -p "Merge request $merge_id is still not mergeable. (C)ontinue waiting, (S)kip this repo: " choice
+        read -n 1 -s -r -p "Pull Request $pr_number not ready (state: ${checks_state:-unknown}). (C)ontinue waiting, (S)kip: " choice
         echo
         choice=$(echo "$choice" | tr '[:lower:]' '[:upper:]')
         case "$choice" in
-          C) echo "Continuing to wait..."; elapsed=0;;  # Reset elapsed time and keep waiting
-          S) echo "Skipping repository due to timeout."; return 1;;  # Exit with failure
+          C) echo "Continuing to wait..."; elapsed=0; break;;
+          S) echo "Skipping repository due to timeout."; return 1;;
           *) echo "Invalid option. Please enter C to continue waiting or S to skip.";;
         esac
       done
     fi
 
-    echo "Waiting for MR to be mergeable (current merge_status: $mr_status, detailed_merge_status: $detailed_status)..."
+    echo "Waiting for PR to be mergeable (state: ${checks_state:-unknown})..."
     sleep 2
     elapsed=$((elapsed + 2))
   done
 }
 
-
 #-----------------------------------------
 # Function: create_release
-# Creates an official GitLab release.
+# Creates a GitHub release using the GitHub CLI (`gh release create`).
 #
 # Arguments:
-#   $1 - Repository API URL (e.g., "https://gitlab.sh.nextgenwaterprediction.com/api/v4/projects/ENCODED_PROJECT")
-#   $2 - Release tag (e.g., "v1.1")
-#   $3 - Release name (e.g., "Release 1.1")
-#   $4 - Release notes (description)
-#   $5 - Ref branch (the branch to base the release on)
+#   $1 - Release tag (e.g., "v1.1")
+#   $2 - Release name (e.g., "Release 1.1")
+#   $3 - Release notes (description)
+#   $4 - Ref branch (the branch to base the release on)
+#
+# Behavior:
+#   - Invokes `gh release create` and captures its stdout (the release URL).
+#   - Prints the URL with a clear label: "New release: <url>".
 #
 # Returns:
 #   0 on success, 1 on failure.
 #-----------------------------------------
 create_release() {
-  local repo_url="$1"
-  local release_tag="$2"
-  local release_name="$3"
-  local release_notes="$4"
-  local ref_branch="$5"
+  local release_tag="$1"
+  local release_name="$2"
+  local release_notes="$3"
+  local ref_branch="$4"
 
-  local data_payload
-  data_payload=$(cat <<EOF
-{
-  "tag_name": "${release_tag}",
-  "name": "${release_name}",
-  "description": "${release_notes}",
-  "ref": "${ref_branch}"
-}
-EOF
-)
+  local prerelease_flag=""
+  [[ "$RELEASE_TYPE" == "RC" ]] && prerelease_flag="--prerelease"
 
-
-  local curl_cmd
-  curl_cmd="curl --silent --request POST \
-    --header \"PRIVATE-TOKEN: $GITLAB_TOKEN\" \
-    --header \"Content-Type: application/json\" \
-    --data '$data_payload' \
-    \"$repo_url/releases\" \
-    -w \"\nHTTP Response Code: %{http_code}\""
-
-  # Echo the entire curl command for debugging.
-  # echo "Executing create_release command: $curl_cmd"
-  local response
-  response=$(eval "$curl_cmd")
-  local http_code
-  http_code=$(echo "$response" | grep -o "HTTP Response Code: [0-9]*" | awk '{print $4}' | tr -d '\n')
-  local json_response
-  json_response=$(echo "$response" | sed '$d')
-
-  if [[ $http_code =~ ^2 ]]; then
-    echo -e "${GREEN}Release created successfully.${NC}"
-    echo
+  # Capture stdout from gh (which is the release URL on success). Our run_gh
+  # prints the "Executing:" line to STDERR, so it won't pollute this capture.
+  local release_url
+  if release_url=$(run_gh release create "$release_tag" \
+        --title "$release_name" \
+        --notes "$release_notes" \
+        --target "$ref_branch" \
+        $prerelease_flag); then
+    # Print with context so the URL isn't a naked line in logs
+    echo -e "Release ${GREEN}$release_url${NC} created successfully."
     return 0
-  else
-    echo -e "${RED}Error creating release (HTTP $http_code):${NC}"
-    echo -e "${RED}$json_response${NC}"
-    return 1
   fi
+
+  echo -e "${RED}Error creating release.${NC}"
+  return 1
 }
 
 #-----------------------------------------
 # Function: execute_merge_request
-# Combines creating a merge request, waiting until it becomes mergeable, and triggering the merge.
-# We validate it before creating it, to better ensure that it will succeed.
+# Combines creating a pull request, waiting until it becomes mergeable, and triggering the merge.
+# We validate it locally before creating the PR to better ensure that it will succeed.
 #
 # Arguments:
-#   $1 - Repository API URL
-#   $2 - Source branch
-#   $3 - Target branch
-#   $4 - Title for the merge request
-#   $5 - should_remove_source_branch (true or false)
-#   $6 - wait time
+#   $1 - Source branch
+#   $2 - Target branch
+#   $3 - Title for the pull request
+#   $4 - Wait time (seconds)
 #
 # Behavior:
 #   - Checks if the source branch has changes compared to the target.
-#   - Attempts a local merge to detect conflicts before creating a merge request.
-#   - Only proceeds with the GitLab API call if the merge is clean.
+#   - Attempts a local merge to detect conflicts before creating a pull request.
+#   - Only proceeds to create the PR (via `gh`) if the merge is clean or only submodule-pointer conflicts exist.
 #
 # Returns:
 #   0 on success; 1 on failure.
 #-----------------------------------------
 execute_merge_request() {
-  local repo_url="$1"
-  local source_branch="$2"
-  local target_branch="$3"
-  local title="$4"
-  local remove_flag="$5"
-  local wait_time="$6"
+  local source_branch="$1"
+  local target_branch="$2"
+  local title="$3"
+  local wait_time="$4"
 
   local branch_created=0  # Flag to track if the target branch was just created
   local previous_branch
   previous_branch=$(git rev-parse --abbrev-ref HEAD)  # Save current branch
 
   # Check if the target branch exists in the remote repository
-  echo Checking if $target_branch exists...
+  # echo Checking if $target_branch exists...
   if ! git ls-remote --exit-code --heads origin "$target_branch" > /dev/null 2>&1; then
     ### for debugging
-    git ls-remote --exit-code --heads origin "$target_branch"
+    git ls-remote --exit-code --heads origin "$target_branch" || true
     ###
     echo -e "${YELLOW}Target branch $target_branch does not exist. Creating it from $source_branch...${NC}"
 
     # Create the target branch locally from the source branch
     git checkout --quiet "$source_branch"
     git checkout --quiet -b "$target_branch"
-    git push --set-upstream origin "$target_branch"
-
-    # Push the new branch to origin
-    git push origin "$target_branch"
+    git_push --set-upstream origin "$target_branch" || return 1
 
     echo -e "${GREEN}Successfully created and pushed branch $target_branch from $source_branch.${NC}"
-    
     branch_created=1  # Mark that we just created the branch
   fi
 
-  # If the target branch was just created, skip the merge request
+  # If the target branch was just created, skip the pull request
   if [ "$branch_created" -eq 1 ]; then
-    echo -e "${YELLOW}Skipping merge request since $target_branch was just created from $source_branch.${NC}"
+    echo -e "${YELLOW}Skipping pull request since $target_branch was just created from $source_branch.${NC}"
     git checkout --quiet "$previous_branch"  # Restore original branch
     return 0
   fi
@@ -531,40 +434,38 @@ execute_merge_request() {
   echo
   echo -e "${YELLOW}Checking merge viability between $source_branch and $target_branch...${NC}"
 
-  # Ensure we have the latest updates for source branch
+  # Ensure we have the latest updates for source and target branches
   git checkout --quiet "$source_branch"
   git pull --quiet
+  git fetch --quiet origin "$target_branch"    # <- ensure target is up-to-date
 
-  # Determine merge base (GitLab considers this as the common ancestor)
-  local merge_base
-  merge_base=$(git merge-base origin/"$source_branch" origin/"$target_branch")
-
-  # Check if there's an actual difference from the merge base
-  if git diff --quiet "$merge_base" origin/"$source_branch"; then
-    echo -e "${RED}No changes detected in $source_branch relative to $target_branch. Skipping merge request.${NC}"
-    git checkout --quiet "$previous_branch"  # Restore original branch
-    return 1
+  # Definitive check: is source actually ahead of target?
+  # Format: "behind ahead" (target behind source, source ahead of target)
+  local behind ahead
+  read behind ahead < <(git rev-list --left-right --count "origin/$target_branch...origin/$source_branch")
+  if [[ "${ahead:-0}" -eq 0 ]]; then
+    echo -e "${YELLOW}No changes detected in $source_branch relative to $target_branch (ahead=$ahead). Skipping pull request.${NC}"
+    git checkout --quiet "$previous_branch"
+    return 0
   fi
 
-  # Save the currently checked-out branch so we can restore it later
-  local previous_branch
-  previous_branch=$(git rev-parse --abbrev-ref HEAD)
-
-  # Create a temporary test merge branch
+  # Create a temporary test merge branch (delete if it already exists)
   local temp_merge_branch="merge_test_${source_branch}_to_${target_branch}"
-  git checkout --quiet -b "$temp_merge_branch" origin/"$target_branch"
+  git branch --quiet -D "$temp_merge_branch" >/dev/null 2>&1 || true
+  git checkout --quiet -b "$temp_merge_branch" "origin/$target_branch"
   TEMP_BRANCHES+=("$temp_merge_branch")
 
   # Attempt to merge the source branch into the target branch quietly
-  if ! git merge --no-commit --no-ff origin/"$source_branch" ; then
+  if ! git merge --no-commit --no-ff "origin/$source_branch" ; then
     echo -e "${YELLOW}Merge conflicts detected between $source_branch and $target_branch.. Checking if they are only submodule pointers...${NC}"
 
     # Get list of conflicting files
+    local conflict_files non_submodule_conflicts
     conflict_files=$(git diff --name-only --diff-filter=U)
     non_submodule_conflicts=$(echo "$conflict_files" | grep -vE '^extern/[^/]+(/[^/]+)?$' || true)
 
     if [[ -n "$non_submodule_conflicts" ]]; then
-      echo -e "${RED}Merge has conflicts outside submodules. Merge request will not be created.${NC}"
+      echo -e "${RED}Merge has conflicts outside submodules. Pull request will not be created.${NC}"
       echo
       echo -e "${YELLOW}Conflicting files:${NC}"
       echo "$conflict_files"
@@ -577,36 +478,36 @@ execute_merge_request() {
     fi
   fi
 
-
-  echo -e "${GREEN}Local merge test successful. Proceeding with API call to create merge request...${NC}"
+  echo -e "${GREEN}Local merge test successful. Proceeding with create pull request...${NC}"
   echo
   git checkout --quiet "$previous_branch"
   git branch --quiet -D "$temp_merge_branch"
 
-  # Now, create the merge request via GitLab API
-  local mr_iid
-  mr_iid=$(create_merge_request "$repo_url" "$source_branch" "$target_branch" "$title" "$remove_flag" | tr -d '\n')
-  # Our return code check isn't always working, so also check if we have an mr_iid
-  if [ $? -ne 0 ] || [ -z "$mr_iid" ]; then
-    echo -e "${RED}Error: Merge Request creation failed for merging $source_branch into $target_branch.${NC}"
+  # Now, create the pull request
+  local pr_number
+  pr_number=$(create_merge_request "$source_branch" "$target_branch" "$title" | tr -d '\n')
+  # Our return code check isn't always working, so also check if we have a pr_number
+  if [ $? -ne 0 ] || [ -z "$pr_number" ]; then
+    echo -e "${RED}Error: Pull Request creation failed for merging $source_branch into $target_branch.${NC}"
     return 1
   fi
 
-  echo "Waiting up to $wait_time seconds for merge request $mr_iid to become mergeable..."
-  wait_until_mergeable "$repo_url" "$mr_iid" "$wait_time"
+  echo "Waiting up to $wait_time seconds for pull request $pr_number to become mergeable..."
+  wait_until_mergeable "$pr_number" "$wait_time"
   local ret=$?
 
+  # Leave these as if statements.  It is clearer that way
   if [ $ret -ne 0 ]; then
-    echo -e "${RED}Timeout or error waiting for merge request $mr_iid to become mergeable.${NC}"
+    echo -e "${RED}Timeout or error waiting for pull request $pr_number to become mergeable.${NC}"
     return 1
   fi
 
-  if ! trigger_merge "$repo_url" "$mr_iid"; then
-    echo -e "${RED}Merge trigger failed for MR $mr_iid.${NC}"
+  if ! trigger_merge "$pr_number"; then
+    echo -e "${RED}Merge trigger failed for PR $pr_number.${NC}"
     return 1
   fi
 
-  poll_merge_status "$repo_url" "$mr_iid"
+  poll_merge_status "$pr_number"
   return 0
 }
 
@@ -633,7 +534,8 @@ get_next_rc_number() {
   git fetch --tags --prune --prune-tags
 
   # List tags, filter for those matching "<release_number>-rcX", extract the X part
-  local highest_rc=$(git tag | grep -E "^${release_number}-rc[0-9]+$" | sed -E "s/^${release_number}-rc([0-9]+)$/\1/" | sort -nr | head -n1)
+  local highest_rc
+  highest_rc=$(git tag | grep -E "^${release_number}-rc[0-9]+$" | sed -E "s/^${release_number}-rc([0-9]+)$/\1/" | sort -nr | head -n1)
 
   # Determine the next rc number
   if [[ -z "$highest_rc" ]]; then
@@ -643,7 +545,6 @@ get_next_rc_number() {
     echo "${release_number}-rc${next_rc}"
   fi
 }
-
 
 #-----------------------------------------
 # Function: generate_changelog
@@ -705,12 +606,11 @@ generate_changelog() {
 # Processes all submodules in the repository.
 #
 # Arguments:
-#   $1 - Target branch (e.g., "release-candidate", "development", "main/master")
+#   $1 - Target branch (e.g., "release-candidate", "development", or "\$RELEASE_BRANCH")
 #
 # Behavior:
 #   - Iterates over all submodules.
-#   - For each submodule, it uses clean_and_encode_project to obtain the encoded project path
-#     and then calls determine_release_branch (if needed) to set the correct branch.
+#   - Uses the same branch as the parent's target branch.
 #   - Checks out each valid submodule to that branch and updates it.
 #   - Creates a temporary branch in the parent repository for submodule updates and triggers a merge request.
 #-----------------------------------------
@@ -737,24 +637,7 @@ process_submodules() {
       continue
     fi
 
-    # Get the remote URL of the submodule and encode the project path
-    submodule_repo_url=$(git remote get-url origin)
-    # Use clean_and_encode_project to process the submodule's remote URL.
-    local submodule_encoded_project
-    submodule_encoded_project=$(clean_and_encode_project "$submodule_repo_url")
-   
-    # Determine the submodule target branch based on the parent's target branch
-    if [[ "$target_branch" == "main" || "$target_branch" == "master" ]]; then
-      submodule_target_branch=$(determine_release_branch "https://gitlab.sh.nextgenwaterprediction.com/api/v4/projects/${submodule_encoded_project}")
-    else
-      submodule_target_branch="$target_branch"
-    fi
-
-    if [[ -z "$submodule_target_branch" ]]; then
-      echo -e "${RED}Error: Neither 'main' nor 'master' branch found in submodule $submodule_path.${NC}"
-      cd - > /dev/null
-      continue # skip to next submodule
-    fi
+    submodule_target_branch="$target_branch"
 
     # Checkout and update submodule
     echo -e "Checking out and pulling submodule ${GREEN}$submodule_path${NC} to branch ${GREEN}$submodule_target_branch${NC}"
@@ -772,9 +655,10 @@ process_submodules() {
       fi
 
       git commit -m "Auto-merge $submodule_source_branch into $submodule_target_branch (resolved in favor of $submodule_target_branch)" 2>/dev/null || true
-      git push origin "$submodule_target_branch"
+      if ! git_push origin "$submodule_target_branch"; then
+        return 1
+      fi
     fi
-
 
     # Diagnostic: confirm current submodule state
     current_branch=$(git symbolic-ref --short -q HEAD || echo "(detached HEAD)")
@@ -802,14 +686,16 @@ process_submodules() {
   echo -e "Creating temporary branch '${GREEN}$temp_submodule_branch${NC}' to commit submodule updates"
   git checkout --quiet -b "$temp_submodule_branch"
   TEMP_BRANCHES+=("$temp_submodule_branch")
-  git add $(git config --file .gitmodules --get-regexp path | awk '{print $2}')
+  git config --file .gitmodules --get-regexp path | awk '{print $2}' | while read -r p; do
+    git add -- "$p"
+  done
 
   if ! git diff --cached --quiet; then
     git commit -m "Update submodules to $target_branch branch"
-    git push --set-upstream origin "$temp_submodule_branch"
+    git_push --set-upstream origin "$temp_submodule_branch" || return 1
 
-    if ! execute_merge_request "$REPO_URL" "$temp_submodule_branch" "$target_branch" \
-        "Merge submodule updates into $target_branch" true "$WAIT_TIME"; then
+    if ! execute_merge_request "$temp_submodule_branch" "$target_branch" \
+        "Merge submodule updates into $target_branch" "$WAIT_TIME"; then
       return 1
     fi
   else
@@ -828,8 +714,8 @@ process_submodules() {
 # For RC releases the base number is processed through get_next_rc_number so that RELEASE_NUMBER
 # is set (e.g. “10.2-rc1” or “10.2-rc2”). Then, if RELEASE_NUMBER ends with "-rc1" (or if the release
 # is OFFICIAL), the script creates an initial merge request from the source branch to the target
-# branch and tags the source branch. For subsequent RC releases (i.e. not candidate 1), the initial merge
-# and tagging are skipped (assuming the target branch already has all required changes).
+# branch. For subsequent RC releases (i.e. not candidate 1), the initial merge is skipped
+# (assuming the target branch already has all required changes).  Tagging/release creation still occurs
 #
 # Arguments:
 #   $1 - Repository directory
@@ -843,9 +729,12 @@ process_repo() {
   local release_notes="$3"
   local has_submodules="$4"
 
-  local start_time=$(date +"%Y-%m-%d %H:%M:%S")
+  local start_time
+  start_time=$(date +"%Y-%m-%d %H:%M:%S")
   local start_seconds=$SECONDS  # Capture start time in seconds
   export start_seconds
+
+  TEMP_BRANCHES=()
 
   echo "----------------------------------------------------------"
 
@@ -854,9 +743,32 @@ process_repo() {
   # Convert full path to tilde-prefixed path if it starts with $HOME
   if [[ $repo_directory == "$HOME"* ]]; then
     repo_directory_short="~${repo_directory#$HOME}"
+  else
+    repo_directory_short="$repo_directory"
   fi
 
-  cd "$repo_directory" || { echo "Cannot cd to $repo_directory"; return_code=1; return; }
+  # Expand "~" to $HOME for the actual filesystem path
+  if [[ $repo_directory == ~* ]]; then
+    repo_directory="${repo_directory/#\~/$HOME}"
+  fi
+
+  # If the directory doesn't exist, record a FAILED status and continue
+  if [[ ! -d "$repo_directory" ]]; then
+    echo -e "${RED}Path does not exist:${NC} $repo_directory"
+    # Record a failed entry so the summary table isn't empty
+    repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (no repo)"
+    repo_order+=("$repo_directory_short")
+    return 1
+  fi
+
+  # Always cd into the repository before any gh/git calls
+  if ! cd "$repo_directory"; then
+    echo "Cannot cd to $repo_directory"
+    # Record a failed entry so the summary table isn't empty
+    repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (cd failed)"
+    repo_order+=("$repo_directory_short")
+    return 1
+  fi
 
   # Set the global RELEASE_NUMBER based on RELEASE_TYPE
   if [ "$RELEASE_TYPE" = "RC" ]; then
@@ -869,9 +781,6 @@ process_repo() {
   # We echo here so we can show the full release number.  So technically, we are missing out the timing for the get_next_rc_number
   echo -e "$start_time ${GREEN}Processing repository: $repo_directory (Release: $RELEASE_NUMBER)${NC}"
   echo
-
-
-  echo -e "$start_time ${GREEN}Processing repository: $repo_directory (Release: $RELEASE_NUMBER)${NC}"
 
   echo -e "${YELLOW}Proceed with processing this repository? (C)ontinue, (S)kip, (Q)uit [default: C in 60s]:${NC}"
   read -t 60 -n 1 -s -r user_input
@@ -897,21 +806,21 @@ process_repo() {
 
   # Get the remote URL.
   repo_remote=$(git remote get-url origin)
-  REPO_PROJECT=$(echo "$repo_remote" | sed -E 's|.*/([^/]+/[^/.]+)(\.git)?$|\1|')
 
+  # Derive the canonical "owner/repo" once and use it everywhere.
+  REPO_PROJECT=$(clean_and_encode_project "$repo_remote")
 
   echo "Remote URL: $repo_remote"
 
   # Ensure cleanup_repo always runs when this function returns
   trap "cleanup_repo '$REPO_PROJECT' '$repo_directory_short'; trap - RETURN" RETURN
 
-  # URL-encode the project path using url_encode_project.
-  local ENCODED_PROJECT
-  ENCODED_PROJECT=$(clean_and_encode_project "$repo_remote")
-
-  # Build the API URL.
-  local REPO_URL="https://gitlab.sh.nextgenwaterprediction.com/api/v4/projects/${ENCODED_PROJECT}"
-  echo "Repository API URL: $REPO_URL"
+  # Ensure gh is operating on this repo (sanity)
+  if ! run_gh repo view >/dev/null 2>&1; then
+    echo -e "${RED}gh cannot determine repository context in $repo_directory. Is this a GitHub repo and are you authenticated?${NC}"
+    return_code=1
+    return
+  fi
 
   # Fetch the list of tags from the remote repository and check if the release tag already exists.
   local remote_tags
@@ -929,12 +838,7 @@ process_repo() {
     TARGET_BRANCH="release-candidate"
   else
     SOURCE_BRANCH="release-candidate"
-    TARGET_BRANCH=$(determine_release_branch "$REPO_URL")
-    if [ -z "$TARGET_BRANCH" ]; then
-      echo -e "${RED}Error: Neither 'main' nor 'master' branch found in repository $REPO_URL.${NC}"
-      return_code=1
-      return
-    fi
+    TARGET_BRANCH="$RELEASE_BRANCH"
   fi
 
   echo -e "Source branch: ${GREEN}$SOURCE_BRANCH${NC}"
@@ -943,17 +847,16 @@ process_repo() {
   echo -e "Pulling latest updates for branch ${GREEN}${SOURCE_BRANCH}${NC}..."
   git checkout --quiet "$SOURCE_BRANCH" && git pull --quiet
 
-
   # Perform the merge request for the initial RC1 or Official release
   if [ "$RELEASE_TYPE" = "OFFICIAL" ] || [[ "$RELEASE_NUMBER" =~ -rc1$ ]]; then
-    if ! execute_merge_request "$REPO_URL" "$SOURCE_BRANCH" "$TARGET_BRANCH" \
-         "Merge $SOURCE_BRANCH into $TARGET_BRANCH for release $RELEASE_NUMBER" false "$WAIT_TIME"; then
+    if ! execute_merge_request "$SOURCE_BRANCH" "$TARGET_BRANCH" \
+         "Merge $SOURCE_BRANCH into $TARGET_BRANCH for release $RELEASE_NUMBER" "$WAIT_TIME"; then
       return_code=1
       return
     fi
   else
     # For subsequent RC releases, we assume that TARGET_BRANCH already has all needed changes.
-    echo -e "${YELLOW}Subsequent RC release detected. Skipping merge from $SOURCE_BRANCH.${NC}"
+    echo -e "${YELLOW}Subsequent RC (> RC1) release detected. Skipping merge from $SOURCE_BRANCH.${NC}"
   fi
 
   # Pull the latest updates for the target branch.
@@ -966,7 +869,6 @@ process_repo() {
     process_submodules "$TARGET_BRANCH"
   fi
 
-
   # Create changelog for OFFICIAL releases
   if [ "$RELEASE_TYPE" = "OFFICIAL" ]; then
     echo
@@ -975,28 +877,24 @@ process_repo() {
     generate_changelog
   fi
 
-
-  # Create GitLab release
-  echo
-  echo -e "${GREEN}Creating official GitLab release for $REPO_PROJECT...${NC}"
-  if ! create_release "$REPO_URL" "$RELEASE_NUMBER" "Release $RELEASE_NUMBER" "$release_notes" "$TARGET_BRANCH"; then
-    echo -e "${RED}Error: Official release creation for $REPO_PROJECT failed.${NC}"
+  # Create GitHub release
+  echo -e "${GREEN}Creating GitHub release for $REPO_PROJECT $RELEASE_NUMBER...${NC}"
+  if ! create_release "$RELEASE_NUMBER" "Release $RELEASE_NUMBER" "$release_notes" "$TARGET_BRANCH"; then
+    echo -e "${RED}Error: GitHub release creation for $REPO_PROJECT $RELEASE_NUMBER failed.${NC}"
     return_code=1
     return
   fi
 
-
   # Merge the target branch back to development only for RC releases that are not -rc1
   if [[ "$RELEASE_TYPE" == "RC" && ! "$RELEASE_NUMBER" =~ -rc1$ ]]; then
     # Even if merge request fails, we continue
-    execute_merge_request "$REPO_URL" "$TARGET_BRANCH" "development" \
-      "Merge $TARGET_BRANCH into development for release $RELEASE_NUMBER" false "$WAIT_TIME"
+    execute_merge_request "$TARGET_BRANCH" "development" \
+      "Merge $TARGET_BRANCH into development for release $RELEASE_NUMBER" "$WAIT_TIME"
   fi
-
 
   # If submodules exist, set all submodules to development
   if [ "$has_submodules" = "true" ]; then
-    echo Setting submodules to devleopment
+    echo Setting submodules to development
     process_submodules "development"
   fi
 
@@ -1032,13 +930,15 @@ process_repo() {
 #   - Sets a global return code variable (GLOBAL_RETURN_CODE) to reflect the overall status.
 #-----------------------------------------
 cleanup_repo() {
-  local repo_project="$1"
-  local repo_short="$2"
+  local repo_project="$1"   # e.g., owner/repo
+  local repo_short="$2"     # the "~..." path you passed in trap
 
   local exit_code=$return_code  # Preserve the return code
-  local end_time=$(date +"%Y-%m-%d %H:%M:%S")
+  local end_time
+  end_time=$(date +"%Y-%m-%d %H:%M:%S")
   local elapsed_seconds=$(( SECONDS - start_seconds ))
 
+  # Park on development to avoid detached state surprises
   git checkout --quiet development && git pull --quiet
 
   # Retrieve the latest commit hash for the release
@@ -1051,23 +951,26 @@ cleanup_repo() {
     status="SUCCESS"
   fi
 
-  repo_status["$repo_directory"]="$RELEASE_NUMBER | $status | ${elapsed_seconds}s | $latest_commit_hash"
+  # Key by the short path you passed in
+  repo_status["$repo_short"]="$RELEASE_NUMBER | $status | ${elapsed_seconds}s | $latest_commit_hash"
 
   # Iterate through TEMP_BRANCHES and delete them
   for temp_branch in "${TEMP_BRANCHES[@]}"; do
-    if git branch --list | grep -q "$temp_branch"; then
+    # Local: match either "* " (current) or "  " (not current) then the exact branch name
+    if git branch --list | grep -qE "^[* ]\s*${temp_branch}$"; then
       echo "Deleting local branch: $temp_branch"
-      git branch -D "$temp_branch"
+      git branch -D "$temp_branch" >/dev/null 2>&1 || true
     fi
 
+    # Remote
     if git ls-remote --heads origin "$temp_branch" | grep -q "$temp_branch"; then
       echo "Deleting remote branch: $temp_branch"
-      git push origin --delete "$temp_branch"
+      git_push origin --delete "$temp_branch" || true
     fi
   done
 
-  repo_order+=("$repo_directory")
-  echo -e "$end_time ${GREEN}Finished processing: $REPO_PROJECT ($repo_directory_short)${NC} (Elapsed time: $elapsed_seconds seconds)"
+  repo_order+=("$repo_short")
+  echo -e "$end_time ${GREEN}Finished processing: $repo_project ($repo_short)${NC} (Elapsed time: $elapsed_seconds seconds)"
 
   # Simply returning the return code doesn't see to work.  Need to use a global variable.  It might be Trap that is getting in the way
   GLOBAL_RETURN_CODE=$exit_code  # Set the global return code instead of returning
@@ -1082,7 +985,7 @@ repo_order=()
 
 print_summary() {
   local longest_repo_name=0
-  local total_elapsed_seconds=$(( SECONDS - total_seconds ))
+  local total_elapsed_seconds=$(( SECONDS - ${total_seconds:-$SECONDS} ))
 
   # Determine the longest repository name from the repo_order array
   for repo in "${repo_order[@]}"; do
@@ -1170,7 +1073,13 @@ main() {
   echo -e "${GREEN}Reading from $json_file${NC}"
   echo
 
-  read_token
+  # Ensure gh is installed/authed
+  if ! command -v gh >/dev/null 2>&1; then
+    echo -e "${RED}The GitHub CLI (gh) is not installed. Please install and run 'gh auth login'.${NC}"
+    exit 1
+  fi
+  # Status is informational; use wrapper for consistent "Executing:" line (may be redirected away).
+  run_gh auth status || true
 
   # Read JSON data once and display the list of repos that will be processed
   json_data=$(cat "$json_file")
@@ -1182,10 +1091,21 @@ main() {
     release=$(echo "$json_data" | jq -r ".[$i].release")
     # Read the skip flag (default to false)
     skip=$(echo "$json_data" | jq -r ".[$i].skip // false")
+
+    display_dir="$repo_directory"
+    resolved_dir="$repo_directory"
+    if [[ $resolved_dir == ~* ]]; then
+      resolved_dir="${resolved_dir/#\~/$HOME}"
+    fi
+    exists_note=""
+    if [[ ! -d "$resolved_dir" ]]; then
+      exists_note=" ${RED}(missing)${NC}"
+    fi
+
     if [ "$skip" = "true" ]; then
-      echo -e "${YELLOW}Repo: $repo_directory (Release: $release) (skipping)${NC}"
+      echo -e "${YELLOW}Repo: $display_dir (Release: $release) (skipping)${NC}${exists_note}"
     else
-      echo -e "${GREEN}Repo: $repo_directory (Release: $release)${NC}"
+      echo -e "${GREEN}Repo: $display_dir (Release: $release)${NC}${exists_note}"
     fi
   done
 
