@@ -312,7 +312,7 @@ wait_until_mergeable() {
     checks_state=$(gh pr view "$pr_number" --json mergeStateStatus -q '.mergeStateStatus' 2>/dev/null || echo "")
     # Common values: CLEAN, BLOCKED, DIRTY, DRAFT, UNKNOWN
     if [[ "$checks_state" == "CLEAN" ]]; then
-      echo "Pull request appears mergeable (state: $checks_state)"
+      echo "Pull request $pr_number appears mergeable (state: $checks_state)"
       return 0
     fi
 
@@ -329,7 +329,7 @@ wait_until_mergeable() {
       done
     fi
 
-    echo "Waiting for PR to be mergeable (state: ${checks_state:-unknown})..."
+    echo "Waiting for PR $pr_number to be mergeable (state: ${checks_state:-unknown})..."
     sleep 2
     elapsed=$((elapsed + 2))
   done
