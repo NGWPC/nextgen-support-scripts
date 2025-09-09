@@ -282,8 +282,16 @@ poll_merge_status() {
 
 #-----------------------------------------
 # Function: wait_until_mergeable
-# Waits until the pull request is mergeable, or until a timeout is reached.
+# Waits until a PR is "merge-button eligible":
+#   - NOT a draft, and
+#   - NOT in conflict (mergeStateStatus != DIRTY), and
+#   - NOT explicitly blocked (mergeStateStatus != BLOCKED)
 #
+# We DO allow: CLEAN, UNSTABLE, BEHIND, HAS_HOOKS, UNKNOWN
+# Rationale: The UI shows the "Merge" button for those states when branch
+#            protection doesn’t require passing checks. The merge API will
+#            still 405 if rules block you, so don’t pre-block here.
+
 # Arguments:
 #   $1 - Pull Request number
 #   $2 - Maximum wait time in seconds
@@ -306,19 +314,26 @@ wait_until_mergeable() {
   local max_wait="$2"
   local elapsed=0
 
+  echo "Waiting up to $max_wait seconds for PR $pr_number to be mergeable..."
+
   while true; do
     # gh exposes merge state summary as mergeStateStatus
     local checks_state
-    checks_state=$(gh pr view "$pr_number" --json mergeStateStatus -q '.mergeStateStatus' 2>/dev/null || echo "")
-    # Common values: CLEAN, BLOCKED, DIRTY, DRAFT, UNKNOWN
-    if [[ "$checks_state" == "CLEAN" ]]; then
-      echo "Pull request $pr_number appears mergeable (state: $checks_state)"
+    checks_state=$(gh pr view "$pr_number" --json isDraft,mergeStateStatus \
+                     -q '[.isDraft, .mergeStateStatus]' 2>/dev/null || echo '["",""]')
+    local is_draft state
+    is_draft=$(echo "$checks_state" | jq -r '.[0]')
+    state=$(echo "$checks_state"   | jq -r '.[1] // "UNKNOWN"')
+
+    # CHANGE: allow merge if not a draft, not DIRTY, not BLOCKED
+    if [[ "$is_draft" != "true" && "$state" != "DIRTY" && "$state" != "BLOCKED" ]]; then
+      echo "Pull request $pr_number appears mergeable (state: $state)"
       return 0
     fi
 
     if (( elapsed >= max_wait )); then
       while true; do
-        read -n 1 -s -r -p "Pull Request $pr_number not ready (state: ${checks_state:-unknown}). (C)ontinue waiting, (S)kip: " choice
+        read -n 1 -s -r -p "Pull Request $pr_number not ready (state: ${state:-unknown}). (C)ontinue waiting, (S)kip: " choice
         echo
         choice=$(echo "$choice" | tr '[:lower:]' '[:upper:]')
         case "$choice" in
@@ -329,7 +344,7 @@ wait_until_mergeable() {
       done
     fi
 
-    echo "Waiting for PR $pr_number to be mergeable (state: ${checks_state:-unknown})..."
+    echo "Waiting for PR $pr_number to be mergeable (state: ${state:-unknown})..."
     sleep 2
     elapsed=$((elapsed + 2))
   done
@@ -1066,8 +1081,8 @@ main() {
     exit 1
   fi
 
-  # Third argument: wait time for mergeable check (default to 5 minutes)
-  WAIT_TIME="${3:-300}"
+  # Third argument: wait time for mergeable check (default to 1 minute)
+  WAIT_TIME="${3:-60}"
   echo "Wait time for merges is $WAIT_TIME seconds"
 
   echo -e "${GREEN}Reading from $json_file${NC}"
