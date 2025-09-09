@@ -652,92 +652,35 @@ process_submodules() {
 
   echo -e "${GREEN}Processing all submodules for target branch: $target_branch${NC}"
 
-  # Get a list of all submodule paths
-  local submodule_paths
-  submodule_paths=$(git config --file .gitmodules --get-regexp path | awk '{print $2}')
+  echo "------------------------------------------------------------"
+  echo " Submodule Processing Required "
+  echo "------------------------------------------------------------"
+  echo
+  echo "This repository has submodules that must be updated, committed,"
+  echo "and pushed before proceeding with the release process."
+  echo
+  echo "Please perform the following manually:"
+  echo "  1. Enter each submodule directory."
+  echo "  2. Checkout or update to the correct branch/tag."
+  echo "  3. Commit any changes in the submodule."
+  echo "  4. Push those commits to the remote."
+  echo "  5. Update the submodule reference in the parent repo and commit it."
+  echo
+  echo "When all submodules are ready and committed in the parent repo,"
+  echo "return here to continue."
+  echo
 
-  # Loop through each submodule
-  for submodule_path in $submodule_paths; do
-    echo
-    echo "Processing submodule: $submodule_path"
-
-    cd "$submodule_path"
-
-    # Skip specific submodules
-    if [[ "$submodule_path" == "test/googletest" || "$submodule_path" == "extern/pybind11" || "$submodule_path" == "extern/netcdf-cxx4/netcdf-cxx4" ]]; then
-      echo -e "${YELLOW}Skipping submodule: $submodule_path${NC}"
-      cd - > /dev/null
-      continue
-    fi
-
-    submodule_target_branch="$target_branch"
-
-    # Checkout and update submodule
-    echo -e "Checking out and pulling submodule ${GREEN}$submodule_path${NC} to branch ${GREEN}$submodule_target_branch${NC}"
-    git checkout --quiet "$submodule_target_branch" && git pull --quiet origin "$submodule_target_branch"
-
-    # Resolve conflicts in favor of target
-    submodule_source_branch=$(git for-each-ref --format='%(upstream:short)' "refs/heads/$submodule_target_branch" 2>/dev/null | sed 's|origin/||')
-
-    if [[ -n "$submodule_source_branch" && "$submodule_source_branch" != "$submodule_target_branch" ]]; then
-      echo "Attempting to merge $submodule_source_branch into $submodule_target_branch in submodule $submodule_path"
-      git fetch origin "$submodule_source_branch"
-
-      if ! git merge -X ours --no-edit "origin/$submodule_source_branch"; then
-        echo -e "${YELLOW}Conflicts occurred in submodule. Resolved in favor of ${GREEN}$submodule_target_branch${NC}"
-      fi
-
-      git commit -m "Auto-merge $submodule_source_branch into $submodule_target_branch (resolved in favor of $submodule_target_branch)" 2>/dev/null || true
-      if ! git_push origin "$submodule_target_branch"; then
-        return 1
-      fi
-    fi
-
-    # Diagnostic: confirm current submodule state
-    current_branch=$(git symbolic-ref --short -q HEAD || echo "(detached HEAD)")
-    current_commit=$(git rev-parse --short HEAD)
-    tracking_info=$(git for-each-ref --format='%(upstream:short)' "$(git symbolic-ref -q HEAD)" 2>/dev/null)
-
-    echo -e "${BLUE}Submodule: $submodule_path${NC}"
-    echo -e "  Branch: ${GREEN}$current_branch${NC}"
-    echo -e "  Commit: $current_commit"
-    if [[ -n "$tracking_info" ]]; then
-      echo -e "  Tracking: $tracking_info"
-    else
-      echo -e "  Tracking: (not tracking any upstream)"
-    fi
-
-    if [[ "$current_branch" != "$submodule_target_branch" ]]; then
-      echo -e "${YELLOW}  Warning: Expected branch '$submodule_target_branch', but on '$current_branch'${NC}"
-    fi
-
-    cd - > /dev/null  # Go back to the main repository
+    # Wait for user confirmation
+  while true; do
+    read -r -p "Have you finished handling all submodules? (Y to continue, N to abort): " ans
+    case "$ans" in
+      [Yy]* ) echo "Continuing with release process..."; return 0 ;;
+      [Nn]* ) echo "Aborting as requested."; return 1 ;;
+      * ) echo "Please answer Y or N." ;;
+    esac
   done
 
-  # Create a temporary branch to commit the submodule changes in the parent repo
-  local temp_submodule_branch="temp_submodules_${target_branch}_${RELEASE_NUMBER}"
-  echo -e "Creating temporary branch '${GREEN}$temp_submodule_branch${NC}' to commit submodule updates"
-  git checkout --quiet -b "$temp_submodule_branch"
-  TEMP_BRANCHES+=("$temp_submodule_branch")
-  git config --file .gitmodules --get-regexp path | awk '{print $2}' | while read -r p; do
-    git add -- "$p"
-  done
 
-  if ! git diff --cached --quiet; then
-    git commit -m "Update submodules to $target_branch branch"
-    git_push --set-upstream origin "$temp_submodule_branch" || return 1
-
-    if ! execute_merge_request "$temp_submodule_branch" "$target_branch" \
-        "Merge submodule updates into $target_branch" "$WAIT_TIME"; then
-      return 1
-    fi
-  else
-    echo -e "${YELLOW}No submodule changes detected. Skipping merge request.${NC}"
-    git checkout --quiet "$target_branch"
-    git branch --quiet -D "$temp_submodule_branch"
-  fi
-
-  return 0
 }
 
 #-----------------------------------------
@@ -772,6 +715,7 @@ process_repo() {
   echo "----------------------------------------------------------"
 
   local return_code=0  # Default to success
+  local quit_requested=false  # Track if user chose Quit
 
   # Convert full path to tilde-prefixed path if it starts with $HOME
   if [[ $repo_directory == "$HOME"* ]]; then
@@ -825,8 +769,8 @@ process_repo() {
 
   case "$user_input" in
     Q)
-      echo -e "${RED}Quitting script.${NC}"
-      exit 2
+      echo -e "${RED}Quit requested. Will exit after summary.${NC}"
+      quit_requested=true
       ;;
     S)
       echo -e "${YELLOW}Skipping this repository.${NC}"
@@ -846,7 +790,8 @@ process_repo() {
   echo "Remote URL: $repo_remote"
 
   # Ensure cleanup_repo always runs when this function returns
-  trap "cleanup_repo '$REPO_PROJECT' '$repo_directory_short'; trap - RETURN" RETURN
+  trap "cleanup_repo '$REPO_PROJECT' '$repo_directory_short'; trap - RETURN; if [ \"$quit_requested\" = true ]; then exit 2; fi" RETURN
+
 
   # Ensure gh is operating on this repo (sanity)
   if ! run_gh repo view >/dev/null 2>&1; then
