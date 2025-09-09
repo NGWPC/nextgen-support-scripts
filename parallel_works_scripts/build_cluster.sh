@@ -482,7 +482,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                         update_repo_branch "nwm-verf" "development"
                         echo "Building nwm-verf (development) Docker image..."
                         docker build --progress=plain --no-cache \
-                        --build-arg NWM_EVAL_MGR_TAG="latest" \
+                        --build-arg NWM_EVAL_MGR_TAG="development" \
                         --tag="${REGISTRY}/nwm-verf:latest" \
                         "${BASE_PATH}/nwm-verf"
                     else
