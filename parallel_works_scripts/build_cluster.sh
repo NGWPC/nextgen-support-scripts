@@ -233,11 +233,31 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ngencerf-ui)     read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui] ;;
             ngencerf-server) read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server] ;;
             ngencerf-docker) read -p "Enter ngencerf-docker tag: " TAGS[ngencerf-docker] ;;
-            ngen)            read -p "Enter ngen tag: " TAGS[ngen] ;;
-            nwm-cal-mgr)     read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr] ;;
+            # if ngen itself is selected, prompt once (may be required by other repos)
+            ngen)
+                if [[ -z "${TAGS[ngen]:-}" ]]; then
+                    read -p "Enter ngen tag: " TAGS[ngen]
+                fi
+            ;;
+            # require ngen tag when nwm-cal-mgr is selected for release
+            nwm-cal-mgr)
+                read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
+                if [[ -z "${TAGS[ngen]:-}" ]]; then
+                    read -p "Enter ngen tag (required by nwm-cal-mgr): " TAGS[ngen]
+                fi
+            ;;
             ngen-forcing)    read -p "Enter ngen-forcing tag (shared for bmi/lumped/coastal): " TAGS[ngen-forcing] ;;
-            nwm-fcst-mgr)    read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr] ;;
-            nwm-verf)        read -p "Enter nwm-verf tag: " TAGS[nwm-verf]; read -p "Enter nwm-eval-mgr tag: " TAGS[nwm-eval-mgr] ;;
+            # require ngen tag when nwm-fcst-mgr is selected for release
+            nwm-fcst-mgr)
+                read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
+                if [[ -z "${TAGS[ngen]:-}" ]]; then
+                    read -p "Enter ngen tag (required by nwm-fcst-mgr): " TAGS[ngen]
+                fi
+            ;;
+            nwm-verf)
+                read -p "Enter nwm-verf tag: " TAGS[nwm-verf]
+                read -p "Enter nwm-eval-mgr tag: " TAGS[nwm-eval-mgr]
+            ;;
         esac
     done
 fi
