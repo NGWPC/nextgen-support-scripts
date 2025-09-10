@@ -9,6 +9,7 @@ declare -a TEMP_BRANCHES
 
 # Unified release branch used across all repositories for OFFICIAL releases.
 RELEASE_BRANCH="ngwpc-release"
+RELEASE_CANDIDATE_BRANCH='ngwpc-candidate'
 
 # Toggle for printing the exact 'gh' commands being executed.
 # Printed commands go to STDERR so that JSON captures using $(...) are not polluted.
@@ -26,19 +27,19 @@ usage() {
   echo "It performs the following steps based on the release type:"
   echo
   echo "🔹 RC (Release Candidate) Process:"
-  echo "  1. Merge from 'development' to 'release-candidate' (except for RC1)."
+  echo "  1. Merge from 'development' to '\$RELEASE_CANDIDATE_BRANCH' (except for RC1)."
   echo "  2. If submodules exist, ensure they are on the correct branch."
   echo "  3. Create a GitHub release for the RC."
-  echo "  4. Merge 'release-candidate' back into 'development' (except for RC1)."
+  echo "  4. Merge '\$RELEASE_CANDIDATE_BRANCH' back into 'development' (except for RC1)."
   echo
   echo "🔹 Official Release Process:"
-  echo "  1. Merge from 'release-candidate' to '\$RELEASE_BRANCH' (default: '${RELEASE_BRANCH}')."
+  echo "  1. Merge from '\$RELEASE_CANDIDATE_BRANCH' to '\$RELEASE_BRANCH'."
   echo "  2. If submodules exist, ensure they are on the correct branch."
   echo "  3. Create a GitHub release for the official version."
   echo
   echo "🔹 Handling Submodules:"
   echo "  - Submodules are checked out to match the parent's target branch"
-  echo "    ('release-candidate', 'development', or '\$RELEASE_BRANCH'), then committed in the parent."
+  echo "    ('\$RELEASE_CANDIDATE_BRANCH', 'development', or '\$RELEASE_BRANCH'), then committed in the parent."
   echo "  - A temporary branch is created for submodule updates, ensuring consistency across modules."
   echo "  - The temporary branch is then merged back into the appropriate target branch."
   echo
@@ -639,7 +640,7 @@ generate_changelog() {
 # Processes all submodules in the repository.
 #
 # Arguments:
-#   $1 - Target branch (e.g., "release-candidate", "development", or "\$RELEASE_BRANCH")
+#   $1 - Target branch (e.g., "$RELEASE_CANDIDATE_BRANCH", "development", or "$RELEASE_BRANCH")
 #
 # Behavior:
 #   - Iterates over all submodules.
@@ -813,9 +814,9 @@ process_repo() {
   local SOURCE_BRANCH TARGET_BRANCH
   if [ "$RELEASE_TYPE" = "RC" ]; then
     SOURCE_BRANCH="development"
-    TARGET_BRANCH="release-candidate"
+    TARGET_BRANCH="$RELEASE_CANDIDATE_BRANCH"
   else
-    SOURCE_BRANCH="release-candidate"
+    SOURCE_BRANCH="$RELEASE_CANDIDATE_BRANCH"
     TARGET_BRANCH="$RELEASE_BRANCH"
   fi
 
