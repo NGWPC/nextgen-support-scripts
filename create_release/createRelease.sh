@@ -220,27 +220,40 @@ create_merge_request() {
 #
 # Arguments:
 #   $1 - Pull request number
+#   $2 - (Optional) delete branch flag:
+#        "true"  -> delete source branch after merge (default)
+#        "false" -> preserve source branch
 #
 # Behavior:
-#   - Attempts auto-merge (`--auto`) first; if not allowed, falls back to an immediate merge.
+#   - If delete flag is true, passes --delete-branch to gh.
+#   - Attempts immediate merge first; if not allowed, falls back to auto-merge.
+#   - Logs clearly whether the branch will be deleted or preserved.
 #
 # Returns:
 #   0 on success, 1 on failure.
 #-----------------------------------------
 trigger_merge() {
   local pr_number="$1"
+  local delete_branch="${2:-true}"   # default: true
+  local delete_flag=()
 
-  echo "Triggering merge for PR #: $pr_number..."
+  if [[ "$delete_branch" == "true" ]]; then
+    delete_flag=(--delete-branch)
+    echo "Triggering merge for PR #$pr_number (source branch WILL be deleted)..."
+  else
+    echo "Triggering merge for PR #$pr_number (source branch will be PRESERVED)..."
+  fi
+
 
   # 1) Try to merge immediately (non-auto). Deletes source branch on success.
-  if run_gh pr merge "$pr_number" --merge --delete-branch >/dev/null 2>&1; then
+  if run_gh pr merge "$pr_number" --merge "${delete_flag[@]}" >/dev/null 2>&1; then
     echo "Merge triggered successfully."
     echo
     return 0
   fi
 
   # 2) Fall back to auto-merge (queues merge once requirements are met).
-  if run_gh pr merge "$pr_number" --merge --auto --delete-branch >/dev/null 2>&1; then
+  if run_gh pr merge "$pr_number" --merge --auto "${delete_flag[@]}" >/dev/null 2>&1; then
     echo "Auto-merge enabled (will merge when requirements are met)."
     echo
     return 0
@@ -536,7 +549,13 @@ execute_merge_request() {
     return 1
   fi
 
-  if ! trigger_merge "$pr_number"; then
+  # Decide whether to delete the source branch
+  if [[ "$source_branch" == "$RELEASE_CANDIDATE_BRANCH" || "$source_branch" == "$RELEASE_BRANCH" ]]; then
+    trigger_merge "$pr_number" false
+  else
+    trigger_merge "$pr_number" true
+  fi
+  if [ $? -ne 0 ]; then
     echo -e "${RED}Merge trigger failed for PR $pr_number.${NC}"
     return 1
   fi
