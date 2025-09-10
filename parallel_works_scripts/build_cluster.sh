@@ -243,6 +243,19 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
 fi
 
 # build SIF and update symlink
+# only rebuild when docker image digest/id changes; always delete temp tar
+# keeps a tiny .meta file to remember the last image key and built sif filename
+get_image_key() {
+    local ref="$1"
+    local dig
+    dig="$(docker inspect --format='{{index .RepoDigests 0}}' "$ref" 2>/dev/null || true)"
+    if [[ -n "$dig" && "$dig" != "<no value>" ]]; then
+        echo "${dig##*@}"   # sha256:...
+        return 0
+    fi
+    docker inspect --format='{{.Id}}' "$ref" 2>/dev/null || true
+}
+
 build_singularity_container_update_symlink() {
     local build_type="$1"
     local sif_base="$2"
@@ -253,6 +266,7 @@ build_singularity_container_update_symlink() {
     local symlink_name="${sif_base}.sif"
     local ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     local sif_file
+    local meta_file="${sif_dir}/${sif_base}.meta"
 
     if [[ "$build_type" == "development" ]]; then
         sif_file="${sif_base}-latest-${ts}.sif"
@@ -260,13 +274,35 @@ build_singularity_container_update_symlink() {
         sif_file="${sif_base}-${tag}-${ts}.sif"
     fi
 
+    # compute current image key and read previous if available
+    local current_key prev_key="" prev_sif=""
+    current_key="$(get_image_key "$image_ref")"
+    if [[ -z "$current_key" ]]; then
+        echo "could not inspect '$image_ref' to compute image key"; exit 1
+    fi
+    if [[ -f "$meta_file" ]]; then
+        # shellcheck disable=SC1090
+        source "$meta_file"
+        prev_key="${IMAGE_KEY:-}"
+        prev_sif="${SIF_FILE:-}"
+    fi
+
+    # skip rebuild if image unchanged and previous sif exists; just refresh symlink
+    if [[ -n "$prev_key" && "$prev_key" == "$current_key" && -n "$prev_sif" && -f "${sif_dir}/${prev_sif}" ]]; then
+        ln -sfn "$prev_sif" "${sif_dir}/${symlink_name}"
+        echo "no image change for ${image_ref} (${current_key}); kept existing SIF: ${symlink_name} -> ${prev_sif}"
+        return 0
+    fi
+
     (
         cd "$sif_dir"
-        echo "Removing old ${symlink_name} symlink for $sif_base..."
-        rm -f "${symlink_name}"
+        # create temp tar name and ensure cleanup on any exit
+        local tar_name
+        tar_name="$(mktemp -p "$sif_dir" "${sif_base}.XXXXXXXX.tar")"
+        cleanup() { rm -f "$tar_name"; }
+        trap cleanup EXIT INT TERM
 
         echo "Saving docker image to tar: ${image_ref}"
-        local tar_name="${sif_base}.tar"
         docker save "${image_ref}" -o "${tar_name}"
 
         echo "Building SIF: ${sif_file} from docker-archive:${tar_name}"
@@ -275,7 +311,15 @@ build_singularity_container_update_symlink() {
         echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
         ln -sf "${sif_file}" "${symlink_name}"
 
-        rm -f "${tar_name}"
+        # write/update meta so future runs can skip when unchanged
+        {
+            echo "IMAGE_REF=${image_ref}"
+            echo "IMAGE_KEY=${current_key}"
+            echo "TIMESTAMP=${ts}"
+            echo "SIF_FILE=${sif_file}"
+            echo "BUILD_TYPE=${build_type}"
+            echo "TAG=${tag}"
+        } > "${meta_file}"
     )
 }
 
@@ -381,7 +425,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                     checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
                     echo "Building nwm-fcst-mgr Docker image..."
                     docker build --progress=plain --no-cache \
-                    --build-arg NGEN_VERSION="${TAGS[ngen]}" \
+                    --build-arg NGEN_IMAGE_TAG="${TAGS[ngen]}" \
                     --tag="${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}" \
                     "${BASE_PATH}/nwm-fcst-mgr"
                 fi
@@ -468,7 +512,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                         update_repo_branch "nwm-fcst-mgr" "development"
                         echo "Building nwm-fcst-mgr (development) Docker image..."
                         docker build --progress=plain --no-cache \
-                        --build-arg NGEN_VERSION="latest" \
+                        --build-arg NGEN_IMAGE_TAG="latest" \
                         --tag="${REGISTRY}/nwm-fcst-mgr:latest" \
                         "${BASE_PATH}/nwm-fcst-mgr"
                     else
