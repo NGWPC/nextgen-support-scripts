@@ -26,7 +26,11 @@ set -o pipefail
 # Build for release (will still prompt for tags):
 #   ./build_cluster.sh --build-type=release ngen nwm-cal-mgr nwm-verf
 #
-# Per-repo image source (build|pull), applies to both dev & release:
+# Release-candidate build (mirrors development but uses the release-candidate branch
+# and tags images as :release-candidate):
+#   ./build_cluster.sh --build-type=release-candidate ngen nwm-cal-mgr
+#
+# Per-repo image source (build|pull), applies to dev/rc/release:
 #   ./build_cluster.sh --build-type=development \
 #     --source=ngen:build --source=nwm-cal-mgr:build ngen nwm-cal-mgr
 #   ./build_cluster.sh --build-type=release \
@@ -36,7 +40,7 @@ set -o pipefail
 # ARGUMENTS
 # ------------------------------------------------------------------------------
 #
-#   --build-type=TYPE        One of: development, release
+#   --build-type=TYPE        One of: development, release, release-candidate
 #   --source=REPO:MODE       For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
 #                            MODE is build or pull. Can be repeated.
 #   --source-default=MODE    Global default (build|pull) for the above repos (optional).
@@ -58,7 +62,7 @@ BASE_PATH="/ngencerf-app"
 SINGULARITY_DIR="${BASE_PATH}/singularity"
 mkdir -p "$SINGULARITY_DIR"
 
-# Redirect stdout and stderr to a log file in the Singularity directory
+# redirect stdout and stderr to a log file in the singularity directory
 LOGFILE="${SINGULARITY_DIR}/build_cluster_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
 exec > >(tee -i "$LOGFILE") 2>&1
 
@@ -123,7 +127,6 @@ set_image_source_defaults() {
     fi
 }
 
-
 # --- Parse args ---
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -167,10 +170,12 @@ if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
     echo "Select build type:"
     echo "1) development"
     echo "2) release"
-    read -p "Enter number [1-2]: " build_choice
+    echo "3) release-candidate"
+    read -p "Enter number [1-3]: " build_choice
     case $build_choice in
         1) BUILD_TYPE="development" ;;
         2) BUILD_TYPE="release" ;;
+        3) BUILD_TYPE="release-candidate" ;;
         *) echo "Invalid choice, exiting."; exit 1 ;;
     esac
 fi
@@ -233,13 +238,11 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ngencerf-ui)     read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui] ;;
             ngencerf-server) read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server] ;;
             ngencerf-docker) read -p "Enter ngencerf-docker tag: " TAGS[ngencerf-docker] ;;
-            # if ngen itself is selected, prompt once (may be required by other repos)
             ngen)
                 if [[ -z "${TAGS[ngen]:-}" ]]; then
                     read -p "Enter ngen tag: " TAGS[ngen]
                 fi
             ;;
-            # require ngen tag when nwm-cal-mgr is selected for release
             nwm-cal-mgr)
                 read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
                 if [[ -z "${TAGS[ngen]:-}" ]]; then
@@ -247,7 +250,6 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 fi
             ;;
             ngen-forcing)    read -p "Enter ngen-forcing tag (shared for bmi/lumped/coastal): " TAGS[ngen-forcing] ;;
-            # require ngen tag when nwm-fcst-mgr is selected for release
             nwm-fcst-mgr)
                 read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
                 if [[ -z "${TAGS[ngen]:-}" ]]; then
@@ -288,8 +290,11 @@ build_singularity_container_update_symlink() {
     local sif_file
     local meta_file="${sif_dir}/${sif_base}.meta"
 
+    # naming: dev -> latest; rc -> release-candidate; release -> explicit tag
     if [[ "$build_type" == "development" ]]; then
         sif_file="${sif_base}-latest-${ts}.sif"
+    elif [[ "$build_type" == "release-candidate" ]]; then
+        sif_file="${sif_base}-release-candidate-${ts}.sif"
     else
         sif_file="${sif_base}-${tag}-${ts}.sif"
     fi
@@ -580,8 +585,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
             ;;
         esac
 
-        # For each repo that produces a SIF, use the locally built image if mode==build,
-        # otherwise PULL the image
+        # for each repo that produces a SIF, use the locally built image if mode==build,
+        # otherwise pull the image
         if repo_has_sif "$repo"; then
             for pair in $(images_for_repo "$repo"); do
                 [[ -z "$pair" ]] && continue
@@ -602,4 +607,125 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
     done
 
     echo "Development build completed successfully!"
+    exit 0
+fi
+
+# ---- RELEASE-CANDIDATE WORKFLOW ----
+if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
+    cd "$BASE_PATH"
+
+    # build ngen locally first so downstream builds may use ngen:release-candidate
+    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " && "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
+        if [[ -d "${BASE_PATH}/ngen" ]]; then
+            update_repo_branch "ngen" "release-candidate"
+            echo "Building ngen (release-candidate) Docker image..."
+            docker build --progress=plain --no-cache \
+            --tag="${REGISTRY}/ngen:release-candidate" \
+            "${BASE_PATH}/ngen"
+        else
+            echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
+        fi
+    fi
+
+    for repo in "${SELECTED_REPOS[@]}"; do
+        echo
+
+        # update ngencerf* repo's release-candidate branch
+        if [[ "$repo" == ngencerf* ]]; then
+            update_repo_branch "$repo" "release-candidate"
+        fi
+
+        # per-repo local build paths (mirrors development but with rc tags/args)
+        case "$repo" in
+            "nwm-cal-mgr")
+                if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "build" ]]; then
+                    if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
+                        update_repo_branch "nwm-cal-mgr" "release-candidate"
+                        echo "Building nwm-cal-mgr (release-candidate) Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --build-arg NGEN_IMAGE_TAG="release-candidate" \
+                        --tag="${REGISTRY}/nwm-cal-mgr:release-candidate" \
+                        "${BASE_PATH}/nwm-cal-mgr"
+                    else
+                        echo "Error: ${BASE_PATH}/nwm-cal-mgr not found; cannot build."; exit 1
+                    fi
+                fi
+            ;;
+            "nwm-fcst-mgr")
+                if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "build" ]]; then
+                    if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
+                        update_repo_branch "nwm-fcst-mgr" "release-candidate"
+                        echo "Building nwm-fcst-mgr (release-candidate) Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --build-arg NGEN_IMAGE_TAG="release-candidate" \
+                        --tag="${REGISTRY}/nwm-fcst-mgr:release-candidate" \
+                        "${BASE_PATH}/nwm-fcst-mgr"
+                    else
+                        echo "Error: ${BASE_PATH}/nwm-fcst-mgr not found; cannot build."; exit 1
+                    fi
+                fi
+            ;;
+            "nwm-verf")
+                if [[ "${IMAGE_SOURCE[nwm-verf]}" == "build" ]]; then
+                    if [[ -d "${BASE_PATH}/nwm-verf" ]]; then
+                        update_repo_branch "nwm-verf" "release-candidate"
+                        echo "Building nwm-verf (release-candidate) Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --build-arg NWM_EVAL_MGR_TAG="release-candidate" \
+                        --tag="${REGISTRY}/nwm-verf:release-candidate" \
+                        "${BASE_PATH}/nwm-verf"
+                    else
+                        echo "Error: ${BASE_PATH}/nwm-verf not found; cannot build."; exit 1
+                    fi
+                fi
+            ;;
+            "ngen-forcing")
+                if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
+                    if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
+                        update_repo_branch "ngen-forcing" "release-candidate"
+                        echo "Building ngen-bmi-forcing (release-candidate) Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
+                        --tag="${REGISTRY}/ngen-bmi-forcing:release-candidate" \
+                        "${BASE_PATH}/ngen-forcing"
+
+                        update_repo_branch "ngen-forcing" "release-candidate"
+                        echo "Building ngen-lumped-forcing (release-candidate) Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
+                        --tag="${REGISTRY}/ngen-lumped-forcing:release-candidate" \
+                        "${BASE_PATH}/ngen-forcing"
+                    else
+                        echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
+                    fi
+                fi
+            ;;
+            "ngen")
+                : # handled above if building
+            ;;
+        esac
+
+        # for each repo that produces a SIF, use the locally built image if mode==build,
+        # otherwise pull the :release-candidate image
+        if repo_has_sif "$repo"; then
+            for pair in $(images_for_repo "$repo"); do
+                [[ -z "$pair" ]] && continue
+                docker_img="${pair%%|*}"
+                sif_name="${pair##*|}"
+                IMAGE="${REGISTRY}/${docker_img}:release-candidate"
+
+                if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
+                    echo "Pulling docker image for SIF: $IMAGE"
+                    docker pull "$IMAGE"
+                else
+                    echo "Using locally built image for SIF: $IMAGE"
+                fi
+
+                build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "release-candidate"
+            done
+        fi
+    done
+
+    echo "release-candidate build completed successfully!"
+    exit 0
 fi
