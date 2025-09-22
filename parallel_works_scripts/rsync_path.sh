@@ -55,7 +55,7 @@ DESTS_CLEAN="$(echo "$DESTS" | tr ',' ' ')"
 read -r -a DEST_ARR <<< "$DESTS_CLEAN"
 
 # create local temp dir
-TMPDIR="$(mktemp -d -p "$HOME" awscreds.XXXXXX)"
+TMPDIR="$(mktemp -d -p "$HOME" copytmp.XXXXXX)"
 chmod 700 "$TMPDIR"
 
 echo "[1/3] pulling from ${SOURCE}:${SRC_PATH}/ -> $TMPDIR/"
