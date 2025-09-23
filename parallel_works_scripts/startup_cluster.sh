@@ -62,4 +62,9 @@ fi
 echo 'export PATH="/ngencerf-app/ngencerf-server/cli/bin:$PATH"' | sudo tee /etc/profile.d/ngencerf-cli.sh
 sudo chmod +x /etc/profile.d/ngencerf-cli.sh
 
+# add ngencerf-server logrotate job to root's crontab
+CRON_ENTRY='0 10,22 * * * [ -f /ngencerf-app/ngencerf-server/logrotate-ngencerf.prod.conf ] && /usr/sbin/logrotate -f /ngencerf-app/ngencerf-server/logrotate-ngencerf.prod.conf'
+
+( sudo crontab -l 2>/dev/null; echo "$CRON_ENTRY" ) | sudo crontab -
+
 echo "cluster startup complete"
