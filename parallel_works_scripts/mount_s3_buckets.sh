@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_SHARED_CREDENTIALS_FILE="${AWS_SHARED_CREDENTIALS_FILE:-/etc/aws_credentials}"
+AWS_SHARED_CREDENTIALS_FILE="${AWS_SHARED_CREDENTIALS_FILE:-/ngencerf-app/aws/credentials}"
 
 # prompt for variables
 prompt() {
   local var="$1" msg="$2" def="${3:-}" silent="${4:-}" cur="${!var:-}" input
-  [ -n "$cur" ] && return 0
+  [ -n "${cur:-}" ] && return 0
   local p="$msg"; [ -n "$def" ] && p="$msg [default: $def]"
   if [ "$silent" = "silent" ]; then read -r -s -p "$p: " input; echo
   else read -r -p "$p: " input
@@ -27,21 +27,37 @@ prompt HF_MOUNT_DIR      "local dir for hydrofabric" "/ngwpc-hydrofabric"
 prompt FORCING_MOUNT_DIR "local dir for forcing"     "/ngwpc-forcing"
 prompt COASTAL_MOUNT_DIR "local dir for coastal"     "/ngwpc-coastal"
 
-# prompt for aws creds
-echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
-prompt AWS_ACCESS_KEY_ID     "AWS Access Key ID"
-prompt AWS_SECRET_ACCESS_KEY "AWS Secret Access Key" "" "silent"
+# try to find an existing, root-readable AWS credentials file
+find_existing_creds() {
+  local p
 
-# create aws creds file
-sudo mkdir -p "$(dirname "$AWS_SHARED_CREDENTIALS_FILE")"
-sudo touch "$AWS_SHARED_CREDENTIALS_FILE"
-sudo chmod 600 "$AWS_SHARED_CREDENTIALS_FILE"
-sudo tee "$AWS_SHARED_CREDENTIALS_FILE" >/dev/null <<EOF
+  # 1) respect env if it already points to a readable file (as root)
+  if sudo test -r "$AWS_SHARED_CREDENTIALS_FILE"; then
+    echo "$AWS_SHARED_CREDENTIALS_FILE"; return 0
+  fi
+
+  return 1
+}
+
+CREDS_FOUND_PATH=""
+if CREDS_FOUND_PATH="$(find_existing_creds)"; then
+  echo "using existing AWS creds at: $CREDS_FOUND_PATH"
+  AWS_SHARED_CREDENTIALS_FILE="$CREDS_FOUND_PATH"
+else
+  # fall back: prompt and create the credentials file (owned by root, 600)
+  echo "aws creds will be written to: $AWS_SHARED_CREDENTIALS_FILE"
+  prompt AWS_ACCESS_KEY_ID     "AWS Access Key ID"
+  prompt AWS_SECRET_ACCESS_KEY "AWS Secret Access Key" "" "silent"
+
+  sudo mkdir -p "$(dirname "$AWS_SHARED_CREDENTIALS_FILE")"
+  sudo install -m 600 /dev/null "$AWS_SHARED_CREDENTIALS_FILE"
+  sudo tee "$AWS_SHARED_CREDENTIALS_FILE" >/dev/null <<EOF
 [default]
 aws_access_key_id=${AWS_ACCESS_KEY_ID}
 aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
-unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+  unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+fi
 
 # check if mount-s3 is installed
 command -v mount-s3 >/dev/null || { echo "error: mount-s3 not found."; exit 1; }
