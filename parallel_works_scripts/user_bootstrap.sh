@@ -7,7 +7,7 @@ DNF_PACKAGES_EXTRA=""
 PY_PIP_PKGS="Flask gunicorn"
 
 # set startup_cluster script paths
-REPO_URL="https://raw.githubusercontent.com/NGWPC/nwm-automation-scripts/pena-pw-updates/parallel_works_scripts"
+REPO_URL="https://raw.githubusercontent.com/NGWPC/nwm-automation-scripts/development/parallel_works_scripts"
 SCRIPT_PATH="startup_cluster.sh"
 LOCAL_SCRIPT="/tmp/${SCRIPT_PATH}"
 
