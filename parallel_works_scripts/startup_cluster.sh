@@ -62,6 +62,14 @@ fi
 echo 'export PATH="/ngencerf-app/ngencerf-server/cli/bin:$PATH"' | sudo tee /etc/profile.d/ngencerf-cli.sh
 sudo chmod +x /etc/profile.d/ngencerf-cli.sh
 
+# add ngen CLI wrapper to /usr/local/bin/ngen from extract_ngen_cli.sh
+SRC_NGEN_SCRIPT="$(dirname "$0")/extract_ngen_cli.sh"
+if [ -r "$SRC_NGEN_SCRIPT" ]; then
+    sudo install -m 0755 "$SRC_NGEN_SCRIPT" /usr/local/bin/ngen
+else
+    echo "warn: $SRC_NGEN_SCRIPT not found or unreadable; skipping /usr/local/bin/ngen installation" >&2
+fi
+
 # add ngencerf-server logrotate job to root's crontab
 CRON_ENTRY='0 10,22 * * * [ -f /ngencerf-app/ngencerf-server/logrotate-ngencerf.prod.conf ] && /usr/sbin/logrotate -f /ngencerf-app/ngencerf-server/logrotate-ngencerf.prod.conf'
 
