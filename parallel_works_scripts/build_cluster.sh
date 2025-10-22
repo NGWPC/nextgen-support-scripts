@@ -95,7 +95,7 @@ images_for_repo() {
         ngencerf-server) echo "" ;;
         ngencerf-docker) echo "" ;;
         nwm-cal-mgr)     echo "nwm-cal-mgr|nwm-cal-mgr" ;;
-        ngen-forcing)    echo "ngen-bmi-forcing|ngen-bmi-forcing ngen-lumped-forcing|ngen-lumped-forcing" ;;
+        ngen-forcing)    echo "ngen-bmi-forcing|ngen-bmi-forcing ngen-lumped-forcing|ngen-lumped-forcing ngen-coastal|ngen-coastal" ;;
         nwm-fcst-mgr)    echo "nwm-fcst-mgr|nwm-fcst-mgr" ;;
         nwm-verf)        echo "nwm-verf|nwm-verf" ;;
         *)               echo "$repo|$repo" ;;
@@ -432,14 +432,25 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
                         --tag="${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}" \
                         "${BASE_PATH}/ngen-forcing"
+
+                        checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}" || true
+                        echo "Building ngen-coastal Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
+                        --tag="${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}" \
+                        "${BASE_PATH}/ngen-forcing"
                     else
                         echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                     fi
                 else
                     echo "Pulling ngen-bmi-forcing Docker image..."
                     docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
+
                     echo "Pulling ngen-lumped-forcing Docker image..."
                     docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}"
+
+                    echo "Pulling ngen-coastal Docker image..."
+                    docker pull "${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}"
                 fi
             ;;
             "nwm-fcst-mgr")
@@ -575,6 +586,13 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
                         --tag="${REGISTRY}/ngen-lumped-forcing:latest" \
                         "${BASE_PATH}/ngen-forcing"
+
+                        update_repo_branch "ngen-forcing" "development"
+                        echo "Building ngen-coastal (development) Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
+                        --tag="${REGISTRY}/ngen-coastal:latest" \
+                        "${BASE_PATH}/ngen-forcing"
                     else
                         echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                     fi
@@ -694,6 +712,13 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
                         docker build --progress=plain --no-cache \
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
                         --tag="${REGISTRY}/ngen-lumped-forcing:release-candidate" \
+                        "${BASE_PATH}/ngen-forcing"
+
+                        update_repo_branch "ngen-forcing" "release-candidate"
+                        echo "Building ngen-coastal (release-candidate) Docker image..."
+                        docker build --progress=plain --no-cache \
+                        --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
+                        --tag="${REGISTRY}/ngen-coastal:release-candidate" \
                         "${BASE_PATH}/ngen-forcing"
                     else
                         echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
