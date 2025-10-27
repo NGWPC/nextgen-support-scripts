@@ -3,6 +3,8 @@ set -euo pipefail
 
 # install dnf-plugins-core
 sudo dnf -y install dnf-plugins-core >/dev/null 2>&1 || true
+sudo dnf config-manager --set-disabled cuda-rhel8-x86_64 || true
+sudo dnf clean all && sudo dnf makecache
 
 # install gh cli
 if ! command -v gh >/dev/null 2>&1; then
