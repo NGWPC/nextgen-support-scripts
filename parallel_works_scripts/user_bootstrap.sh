@@ -3,7 +3,6 @@ set -euo pipefail
 
 # set sudo users, dnf packages, and python packages
 ADD_USERS="ngen-pw-user miguel.pena peter.a.kronenberg khalid.ali bijan.zarean christina.osumi mohammed.karim"
-DNF_PACKAGES_EXTRA=""
 PY_PIP_PKGS="Flask gunicorn"
 
 # set startup_cluster script paths
@@ -25,6 +24,5 @@ chmod +x "$EXTRACT_SCRIPT_PATH"
 
 # run script with environment variables
 ADD_USERS="$ADD_USERS" \
-DNF_PACKAGES_EXTRA="$DNF_PACKAGES_EXTRA" \
 PY_PIP_PKGS="$PY_PIP_PKGS" \
 "$STARTUP_SCRIPT_PATH"

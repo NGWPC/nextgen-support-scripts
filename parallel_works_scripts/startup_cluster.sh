@@ -26,10 +26,18 @@ if ! command -v mount-s3 >/dev/null 2>&1; then
     sudo dnf -y install https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.rpm
 fi
 
-# install dnf packages
-if [ -n "${DNF_PACKAGES_EXTRA:-}" ]; then
-    sudo dnf -y install ${DNF_PACKAGES_EXTRA}
-fi
+# install openmpi
+sudo dnf -y install openmpi \
+ && sudo dnf clean all \
+ && sudo rm -rf /var/cache/dnf
+
+# make bin visible for new shells (optional but convenient)
+echo 'export PATH="/usr/lib64/openmpi/bin:$PATH"' | sudo tee /etc/profile.d/openmpi.sh >/dev/null
+sudo chmod +x /etc/profile.d/openmpi.sh
+
+# ensure libs are cached
+echo "/usr/lib64/openmpi/lib" | sudo tee /etc/ld.so.conf.d/openmpi.conf >/dev/null
+sudo ldconfig
 
 # install python packages
 if [ -n "${PY_PIP_PKGS:-}" ]; then
