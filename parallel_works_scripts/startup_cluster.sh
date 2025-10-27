@@ -28,13 +28,13 @@ if ! command -v mount-s3 >/dev/null 2>&1; then
     sudo dnf -y install https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.rpm
 fi
 
-# call mount_s3_buckets.sh to mount S3 buckets
-SRC_MOUNT_SCRIPT="$(dirname "$0")/mount_s3_buckets.sh"
-if [ -r "$SRC_MOUNT_SCRIPT" ]; then
-    sudo "$SRC_MOUNT_SCRIPT"
-else
-    echo "warn: $SRC_MOUNT_SCRIPT not found or unreadable; skipping S3 bucket mounting" >&2
-fi
+# # call mount_s3_buckets.sh to mount S3 buckets
+# SRC_MOUNT_SCRIPT="$(dirname "$0")/mount_s3_buckets.sh"
+# if [ -r "$SRC_MOUNT_SCRIPT" ]; then
+#     sudo "$SRC_MOUNT_SCRIPT"
+# else
+#     echo "warn: $SRC_MOUNT_SCRIPT not found or unreadable; skipping S3 bucket mounting" >&2
+# fi
 
 # install openmpi
 sudo dnf -y install openmpi \
