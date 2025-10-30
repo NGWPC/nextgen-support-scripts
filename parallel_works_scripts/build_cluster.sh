@@ -149,6 +149,9 @@ parse_args() {
             ;;
             --source-default=*)
                 IMAGE_SOURCE_DEFAULT="${1#*=}" # build|pull
+                if [[ "$IMAGE_SOURCE_DEFAULT" != "build" && "$IMAGE_SOURCE_DEFAULT" != "pull" ]]; then
+                    echo "Error: --source-default must be 'build' or 'pull', got '${IMAGE_SOURCE_DEFAULT}'"; exit 1
+                fi
             ;;
             --source=*)
                 local kv="${1#*=}"
@@ -174,6 +177,12 @@ parse_args() {
 }
 
 parse_args "$@"
+
+# validate BUILD_TYPE if provided via CLI
+if [[ -n "$BUILD_TYPE" ]] && [[ "$BUILD_TYPE" != "development" ]] && [[ "$BUILD_TYPE" != "release" ]] && [[ "$BUILD_TYPE" != "release-candidate" ]]; then
+    echo "Error: Invalid --build-type '${BUILD_TYPE}'. Must be one of: development, release, release-candidate"
+    exit 1
+fi
 
 # --- Interactive prompts if needed ---
 if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
@@ -276,6 +285,18 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
         esac
     done
+
+    # validate that all required tags have been provided
+    for repo in "${SELECTED_REPOS[@]}"; do
+        if [[ -z "${TAGS[$repo]:-}" ]] && [[ "$repo" != "ngen" ]]; then
+            echo "Error: Tag for '$repo' cannot be empty"; exit 1
+        fi
+    done
+
+    # special validation for nwm-verf which requires nwm-eval-mgr tag
+    if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]] && [[ -z "${TAGS[nwm-eval-mgr]:-}" ]]; then
+        echo "Error: nwm-eval-mgr tag is required when building nwm-verf"; exit 1
+    fi
 fi
 
 # build SIF and update symlink
@@ -320,10 +341,15 @@ build_singularity_container_update_symlink() {
         echo "could not inspect '$image_ref' to compute image key"; exit 1
     fi
     if [[ -f "$meta_file" ]]; then
-        # shellcheck disable=SC1090
-        source "$meta_file"
-        prev_key="${IMAGE_KEY:-}"
-        prev_sif="${SIF_FILE:-}"
+        # validate meta file contains only expected variable assignments
+        if grep -Eq '^[A-Z_]+=' "$meta_file" && ! grep -Eq '[;&|$(){}<>`]' "$meta_file"; then
+            # shellcheck disable=SC1090
+            source "$meta_file"
+            prev_key="${IMAGE_KEY:-}"
+            prev_sif="${SIF_FILE:-}"
+        else
+            echo "Warning: meta file '$meta_file' appears corrupted or unsafe, ignoring it."
+        fi
     fi
 
     # skip rebuild if image unchanged and previous sif exists; just refresh symlink
@@ -345,10 +371,10 @@ build_singularity_container_update_symlink() {
         docker save "${image_ref}" -o "${tar_name}"
 
         echo "Building SIF: ${sif_file} from docker-archive:${tar_name}"
-        singularity build "${sif_dir}/${sif_file}" "docker-archive:${tar_name}"
+        singularity build "${sif_file}" "docker-archive:${tar_name}"
 
         echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
-        ln -sf "${sif_file}" "${symlink_name}"
+        ln -sfn "${sif_file}" "${symlink_name}"
 
         # write/update meta so future runs can skip when unchanged
         {
@@ -369,12 +395,22 @@ update_repo_branch() {
 
     local branch_to_use="${CUSTOM_BRANCH:-$default_branch}"
     echo "Updating $repo to latest from $branch_to_use branch..."
+    if [[ ! -d "$BASE_PATH/$repo" ]]; then
+        echo "Error: Repository directory '$BASE_PATH/$repo' does not exist"; exit 1
+    fi
     cd "$BASE_PATH/$repo"
     git fetch origin
-    git stash save
-    git checkout "$branch_to_use"
+    local stash_result
+    stash_result="$(git stash push 2>&1)"
+    if ! git checkout "$branch_to_use"; then
+        echo "Error: Branch '$branch_to_use' does not exist in $repo"; exit 1
+    fi
     git pull origin "$branch_to_use" --rebase
-    git stash pop || true # prevent exit if no stash
+    if [[ "$stash_result" != "No local changes to save" ]]; then
+        if ! git stash pop; then
+            echo "Warning: git stash pop failed, likely due to conflicts. Stashed changes remain in stash."
+        fi
+    fi
     if [[ "$repo" == "ngen" ]]; then
         git submodule update --init --recursive
     fi
@@ -386,11 +422,21 @@ checkout_repo_tag() {
     local tag="$2"
 
     echo "Checking out $repo at tag $tag..."
+    if [[ ! -d "$BASE_PATH/$repo" ]]; then
+        echo "Error: Repository directory '$BASE_PATH/$repo' does not exist"; exit 1
+    fi
     cd "$BASE_PATH/$repo"
     git fetch origin
-    git stash save
-    git checkout "$tag"
-    git stash pop || true # prevent exit if no stash
+    local stash_result
+    stash_result="$(git stash push 2>&1)"
+    if ! git checkout "$tag"; then
+        echo "Error: Tag '$tag' does not exist in $repo"; exit 1
+    fi
+    if [[ "$stash_result" != "No local changes to save" ]]; then
+        if ! git stash pop; then
+            echo "Warning: git stash pop failed, likely due to conflicts. Stashed changes remain in stash."
+        fi
+    fi
 
     if [[ "$repo" == "ngen" ]]; then
         # initialize and update submodules to correct commit
@@ -402,8 +448,11 @@ checkout_repo_tag() {
 if [[ "$BUILD_TYPE" == "release" ]]; then
     cd "$BASE_PATH"
 
-    # ngen first
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+    # ngen first (build/pull even if not explicitly selected, if needed by other repos)
+    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] || [[ -n "${TAGS[ngen]:-}" ]]; then
+        if [[ -z "${TAGS[ngen]:-}" ]]; then
+            echo "Error: ngen is selected but no tag was provided."; exit 1
+        fi
         if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
             checkout_repo_tag "ngen" "${TAGS[ngen]}"
             echo "Building ngen Docker image..."
@@ -434,14 +483,13 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             "ngen-forcing")
                 if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
-                        checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}" || true
+                        checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}"
                         echo "Building ngen-bmi-forcing Docker image..."
                         docker build --progress=plain --no-cache \
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                         --tag="${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" \
                         "${BASE_PATH}/ngen-forcing"
 
-                        checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}" || true
                         echo "Building ngen-lumped-forcing Docker image..."
                         docker build --progress=plain --no-cache \
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
@@ -520,16 +568,30 @@ fi
 if [[ "$BUILD_TYPE" == "development" ]]; then
     cd "$BASE_PATH"
 
-    # build ngen locally first so downstream builds may use ngen:latest
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " && "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
-        if [[ -d "${BASE_PATH}/ngen" ]]; then
-            update_repo_branch "ngen" "development"
-            echo "Building ngen (development) Docker image..."
-            docker build --progress=plain --no-cache \
-            --tag="${REGISTRY}/ngen:latest" \
-            "${BASE_PATH}/ngen"
+    # check if ngen is needed as a dependency for other repos
+    NGEN_NEEDED=false
+    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+        NGEN_NEEDED=true
+    elif [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
+        NGEN_NEEDED=true
+        echo "Note: ngen is required as a dependency for nwm-cal-mgr/nwm-fcst-mgr"
+    fi
+
+    # build or pull ngen first so downstream builds may use ngen:latest
+    if [[ "$NGEN_NEEDED" == "true" ]]; then
+        if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
+            if [[ -d "${BASE_PATH}/ngen" ]]; then
+                update_repo_branch "ngen" "development"
+                echo "Building ngen (development) Docker image..."
+                docker build --progress=plain --no-cache \
+                --tag="${REGISTRY}/ngen:latest" \
+                "${BASE_PATH}/ngen"
+            else
+                echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
+            fi
         else
-            echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
+            echo "Pulling ngen (development) Docker image..."
+            docker pull "${REGISTRY}/ngen:latest"
         fi
     fi
 
@@ -595,7 +657,6 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                         --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
                         "${BASE_PATH}/ngen-forcing"
 
-                        update_repo_branch "ngen-forcing" "development"
                         echo "Building ngen-lumped-forcing (development) Docker image..."
                         docker build --progress=plain --no-cache \
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
@@ -647,16 +708,30 @@ fi
 if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
     cd "$BASE_PATH"
 
-    # build ngen locally first so downstream builds may use ngen:release-candidate
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " && "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
-        if [[ -d "${BASE_PATH}/ngen" ]]; then
-            update_repo_branch "ngen" "release-candidate"
-            echo "Building ngen (release-candidate) Docker image..."
-            docker build --progress=plain --no-cache \
-            --tag="${REGISTRY}/ngen:release-candidate" \
-            "${BASE_PATH}/ngen"
+    # check if ngen is needed as a dependency for other repos
+    NGEN_NEEDED=false
+    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+        NGEN_NEEDED=true
+    elif [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
+        NGEN_NEEDED=true
+        echo "Note: ngen is required as a dependency for nwm-cal-mgr/nwm-fcst-mgr"
+    fi
+
+    # build or pull ngen first so downstream builds may use ngen:release-candidate
+    if [[ "$NGEN_NEEDED" == "true" ]]; then
+        if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
+            if [[ -d "${BASE_PATH}/ngen" ]]; then
+                update_repo_branch "ngen" "release-candidate"
+                echo "Building ngen (release-candidate) Docker image..."
+                docker build --progress=plain --no-cache \
+                --tag="${REGISTRY}/ngen:release-candidate" \
+                "${BASE_PATH}/ngen"
+            else
+                echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
+            fi
         else
-            echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
+            echo "Pulling ngen (release-candidate) Docker image..."
+            docker pull "${REGISTRY}/ngen:release-candidate"
         fi
     fi
 
@@ -722,7 +797,6 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
                         --tag="${REGISTRY}/ngen-bmi-forcing:release-candidate" \
                         "${BASE_PATH}/ngen-forcing"
 
-                        update_repo_branch "ngen-forcing" "release-candidate"
                         echo "Building ngen-lumped-forcing (release-candidate) Docker image..."
                         docker build --progress=plain --no-cache \
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
@@ -769,3 +843,7 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
     echo "release-candidate build completed successfully!"
     exit 0
 fi
+
+# --- INVALID BUILD_TYPE ---
+echo "Error: Invalid BUILD_TYPE '${BUILD_TYPE}'. Must be one of: development, release, release-candidate"
+exit 1
