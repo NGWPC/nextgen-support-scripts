@@ -3,6 +3,8 @@ set -euo pipefail
 
 # install dnf-plugins-core
 sudo dnf -y install dnf-plugins-core >/dev/null 2>&1 || true
+sudo dnf config-manager --set-disabled cuda-rhel8-x86_64 || true
+sudo dnf clean all && sudo dnf makecache
 
 # install gh cli
 if ! command -v gh >/dev/null 2>&1; then
@@ -26,10 +28,26 @@ if ! command -v mount-s3 >/dev/null 2>&1; then
     sudo dnf -y install https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.rpm
 fi
 
-# install dnf packages
-if [ -n "${DNF_PACKAGES_EXTRA:-}" ]; then
-    sudo dnf -y install ${DNF_PACKAGES_EXTRA}
-fi
+# # call mount_s3_buckets.sh to mount S3 buckets
+# SRC_MOUNT_SCRIPT="$(dirname "$0")/mount_s3_buckets.sh"
+# if [ -r "$SRC_MOUNT_SCRIPT" ]; then
+#     sudo "$SRC_MOUNT_SCRIPT"
+# else
+#     echo "warn: $SRC_MOUNT_SCRIPT not found or unreadable; skipping S3 bucket mounting" >&2
+# fi
+
+# install openmpi
+sudo dnf -y install openmpi \
+ && sudo dnf clean all \
+ && sudo rm -rf /var/cache/dnf
+
+# make bin visible for new shells (optional but convenient)
+echo 'export PATH="/usr/lib64/openmpi/bin:$PATH"' | sudo tee /etc/profile.d/openmpi.sh >/dev/null
+sudo chmod +x /etc/profile.d/openmpi.sh
+
+# ensure libs are cached
+echo "/usr/lib64/openmpi/lib" | sudo tee /etc/ld.so.conf.d/openmpi.conf >/dev/null
+sudo ldconfig
 
 # install python packages
 if [ -n "${PY_PIP_PKGS:-}" ]; then

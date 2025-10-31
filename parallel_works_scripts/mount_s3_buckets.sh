@@ -57,6 +57,7 @@ aws_access_key_id=${AWS_ACCESS_KEY_ID}
 aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
   unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+  echo "error: no existing AWS creds found; please mount s3 buckets manually." >&2
 fi
 
 # check if mount-s3 is installed
