@@ -131,10 +131,68 @@ set_image_source_defaults() {
     fi
 }
 
+# --- Help function ---
+show_help() {
+    cat <<'EOF'
+NGEN/NGENCERF Build Script
+
+This script builds and symlinks Singularity containers for selected NGEN repos.
+It supports both interactive use and non-interactive (automated) use via CLI.
+
+USAGE:
+  ./build_cluster.sh [OPTIONS] [REPOS...]
+
+OPTIONS:
+  --build-type=TYPE        One of: development, release, release-candidate
+  --branch=BRANCH          Specify a custom branch to build from (optional)
+  --source=REPO:MODE       For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
+                           MODE is build or pull. Can be repeated.
+  --source-default=MODE    Global default (build|pull) for the above repos (optional)
+  --help, -h               Show this help message and exit
+
+REPOS:
+  Supported repos: ngencerf-server, ngencerf-ui, ngencerf-docker, ngen, nwm-cal-mgr,
+                   ngen-forcing, nwm-fcst-mgr, nwm-verf
+  Use "all" to build all supported repos
+
+EXAMPLES:
+  Interactive mode (will prompt for build type, repos, and optional per-repo source):
+    ./build_cluster.sh
+
+  Development build (non-interactive, builds ngen and nwm-cal-mgr):
+    ./build_cluster.sh --build-type=development ngen nwm-cal-mgr
+
+  Build all supported repos (non-interactive):
+    ./build_cluster.sh --build-type=development all
+
+  Build for release (will still prompt for tags):
+    ./build_cluster.sh --build-type=release ngen nwm-cal-mgr nwm-verf
+
+  Release-candidate build (mirrors development but uses the release-candidate branch):
+    ./build_cluster.sh --build-type=release-candidate ngen nwm-cal-mgr
+
+  Per-repo image source (build|pull), applies to dev/rc/release:
+    ./build_cluster.sh --build-type=development \
+      --source=ngen:build --source=nwm-cal-mgr:build ngen nwm-cal-mgr
+    ./build_cluster.sh --build-type=release \
+      --source-default=build ngen nwm-cal-mgr ngen-forcing nwm-fcst-mgr nwm-verf
+
+NOTES:
+  - If no arguments are passed, the script runs interactively
+  - If "all" is passed as a repo, it expands to all supported repos
+  - For release, tag prompts will appear
+  - Logs are written to: ${SINGULARITY_DIR}/build_cluster_<timestamp>.log
+EOF
+}
+
 # --- Parse args ---
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --help|-h)
+                show_help
+                exit 0
+            ;;
             --build-type=*)
                 BUILD_TYPE="${1#*=}"
             ;;
