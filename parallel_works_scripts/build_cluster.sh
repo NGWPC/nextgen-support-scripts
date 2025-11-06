@@ -58,17 +58,13 @@ set -o pipefail
 #
 # ==============================================================================
 
-# --- BASE DIRECTORY SETUP ---
+# --- BASE DIRECTORY SETUP (paths only, actual creation happens after arg parsing) ---
 BASE_PATH="/ngencerf-app"
 SINGULARITY_DIR="${BASE_PATH}/singularity"
-mkdir -p "$SINGULARITY_DIR"
 
-# redirect stdout and stderr to a log file in the singularity directory
-LOGFILE="${SINGULARITY_DIR}/build_cluster_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
-exec > >(tee -i "$LOGFILE") 2>&1
-
-# Branch selection for building
-CUSTOM_BRANCH=""
+# Branch selection for building - now per-repo
+declare -A REPO_BRANCHES   # map: repo -> branch
+BRANCH_DEFAULT=""          # global default branch (optional)
 
 REPOS=(
     "ngencerf-ui"
@@ -143,12 +139,14 @@ USAGE:
   ./build_cluster.sh [OPTIONS] [REPOS...]
 
 OPTIONS:
-  --build-type=TYPE        One of: development, release, release-candidate
-  --branch=BRANCH          Specify a custom branch to build from (optional)
-  --source=REPO:MODE       For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
-                           MODE is build or pull. Can be repeated.
-  --source-default=MODE    Global default (build|pull) for the above repos (optional)
-  --help, -h               Show this help message and exit
+  --build-type=TYPE          One of: development, release, release-candidate
+  --branch=REPO:BRANCH       Specify a branch for a specific repo. Can be repeated.
+                             Example: --branch=ngen:feature/my-feature
+  --branch-default=BRANCH    Global default branch for all repos (optional)
+  --source=REPO:MODE         For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
+                             MODE is build or pull. Can be repeated.
+  --source-default=MODE      Global default (build|pull) for the above repos (optional)
+  --help, -h                 Show this help message and exit
 
 REPOS:
   Supported repos: ngencerf-server, ngencerf-ui, ngencerf-docker, ngen, nwm-cal-mgr,
@@ -156,31 +154,39 @@ REPOS:
   Use "all" to build all supported repos
 
 EXAMPLES:
-  Interactive mode (will prompt for build type, repos, and optional per-repo source):
+  Interactive mode (will prompt for build type, repos, branches, and sources):
     ./build_cluster.sh
 
-  Development build (non-interactive, builds ngen and nwm-cal-mgr):
+  Development build with default branches:
     ./build_cluster.sh --build-type=development ngen nwm-cal-mgr
 
-  Build all supported repos (non-interactive):
-    ./build_cluster.sh --build-type=development all
+  Development build with custom branches per repo:
+    ./build_cluster.sh --build-type=development \
+      --branch=ngen:feature/new-hydro --branch=nwm-cal-mgr:bugfix/123 \
+      ngen nwm-cal-mgr
+
+  Development build with global default branch:
+    ./build_cluster.sh --build-type=development --branch-default=my-feature \
+      ngen nwm-cal-mgr ngen-forcing
+
+  Build all repos with custom branch and source options:
+    ./build_cluster.sh --build-type=development \
+      --branch-default=feature/test \
+      --branch=ngen:main \
+      --source=ngen:pull --source-default=build \
+      all
 
   Build for release (will still prompt for tags):
     ./build_cluster.sh --build-type=release ngen nwm-cal-mgr nwm-verf
 
-  Release-candidate build (mirrors development but uses the release-candidate branch):
+  Release-candidate build:
     ./build_cluster.sh --build-type=release-candidate ngen nwm-cal-mgr
-
-  Per-repo image source (build|pull), applies to dev/rc/release:
-    ./build_cluster.sh --build-type=development \
-      --source=ngen:build --source=nwm-cal-mgr:build ngen nwm-cal-mgr
-    ./build_cluster.sh --build-type=release \
-      --source-default=build ngen nwm-cal-mgr ngen-forcing nwm-fcst-mgr nwm-verf
 
 NOTES:
   - If no arguments are passed, the script runs interactively
   - If "all" is passed as a repo, it expands to all supported repos
-  - For release, tag prompts will appear
+  - For release builds, tag prompts will appear
+  - Branch priority: --branch=REPO:BRANCH > --branch-default > build-type default
   - Logs are written to: ${SINGULARITY_DIR}/build_cluster_<timestamp>.log
 EOF
 }
@@ -200,10 +206,22 @@ parse_args() {
                 shift; BUILD_TYPE="$1"
             ;;
             --branch=*)
-                CUSTOM_BRANCH="${1#*=}"
+                local kv="${1#*=}"
+                local repo="${kv%%:*}"
+                local branch="${kv##*:}"
+                if [[ ! " ${REPOS[*]} " =~ " ${repo} " ]]; then
+                    echo "Error: --branch targets unsupported repo '${repo}'. Allowed: ${REPOS[*]}"; exit 1
+                fi
+                if [[ -z "$branch" ]]; then
+                    echo "Error: --branch '${kv}' must specify a branch (format: REPO:BRANCH)"; exit 1
+                fi
+                REPO_BRANCHES["$repo"]="$branch"
             ;;
-            --branch)
-                shift; CUSTOM_BRANCH="$1"
+            --branch-default=*)
+                BRANCH_DEFAULT="${1#*=}"
+            ;;
+            --branch-default)
+                shift; BRANCH_DEFAULT="$1"
             ;;
             --source-default=*)
                 IMAGE_SOURCE_DEFAULT="${1#*=}" # build|pull
@@ -236,6 +254,11 @@ parse_args() {
 
 parse_args "$@"
 
+# --- Create directories and setup logging (after arg parsing to allow --help to work) ---
+mkdir -p "$SINGULARITY_DIR"
+LOGFILE="${SINGULARITY_DIR}/build_cluster_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
+exec > >(tee -i "$LOGFILE") 2>&1
+
 # validate BUILD_TYPE if provided via CLI
 if [[ -n "$BUILD_TYPE" ]] && [[ "$BUILD_TYPE" != "development" ]] && [[ "$BUILD_TYPE" != "release" ]] && [[ "$BUILD_TYPE" != "release-candidate" ]]; then
     echo "Error: Invalid --build-type '${BUILD_TYPE}'. Must be one of: development, release, release-candidate"
@@ -257,13 +280,13 @@ if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
     esac
 
     if [[ "$BUILD_TYPE" != "release" ]]; then
-        read -p "Enter custom branch to build from (press Enter to use ${BUILD_TYPE}): " CUSTOM_BRANCH
+        read -p "Enter global default branch for all repos (press Enter to use ${BUILD_TYPE}): " BRANCH_DEFAULT
     fi
 fi
 
 if [[ ${#SELECTED_REPOS[@]} -eq 0 && -t 0 ]]; then
     echo "Available repos: ${REPOS[*]}"
-    read -p "Enter repos to build (space-separated from the list above): " -a SELECTED_REPOS
+    read -p "Enter repos to build (space-separated, or 'all'): " -a SELECTED_REPOS
 fi
 
 if [[ -z "$BUILD_TYPE" || ${#SELECTED_REPOS[@]} -eq 0 ]]; then
@@ -295,8 +318,24 @@ if [[ ${#INVALID_REPOS[@]} -gt 0 ]]; then
     exit 1
 fi
 
+# optional interactive per-repo branch selection (only for non-release builds in interactive mode)
+if [[ -t 0 && "$BUILD_TYPE" != "release" ]]; then
+    echo
+    echo "Branch selection (leave empty to use build-type default: ${BUILD_TYPE})"
+    for repo in "${SELECTED_REPOS[@]}"; do
+        if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
+            default_display="${BRANCH_DEFAULT:-$BUILD_TYPE}"
+            read -p "Branch for '${repo}' (default: ${default_display}): " ans
+            if [[ -n "$ans" ]]; then
+                REPO_BRANCHES["$repo"]="$ans"
+            fi
+        fi
+    done
+fi
+
 # optional interactive per-repo source selection
 if [[ -t 0 ]]; then
+    echo
     for repo in "${SELECTED_REPOS[@]}"; do
         if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
             default_mode="${IMAGE_SOURCE[$repo]}"
@@ -310,6 +349,30 @@ if [[ -t 0 ]]; then
         fi
     done
 fi
+
+# --- Display build configuration summary ---
+echo
+echo "==================== Build Configuration ===================="
+echo "Build type: $BUILD_TYPE"
+echo "Repos: ${SELECTED_REPOS[*]}"
+if [[ "$BUILD_TYPE" != "release" ]]; then
+    echo
+    echo "Branch configuration:"
+    for repo in "${SELECTED_REPOS[@]}"; do
+        branch=$(get_repo_branch "$repo" "$BUILD_TYPE")
+        echo "  - ${repo}: ${branch}"
+    done
+fi
+echo
+echo "Image source configuration:"
+for repo in "${SELECTED_REPOS[@]}"; do
+    if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
+        source_mode="${IMAGE_SOURCE[$repo]}"
+        echo "  - ${repo}: ${source_mode}"
+    fi
+done
+echo "============================================================="
+echo
 
 # --- tag prompts for release ---
 declare -A TAGS
@@ -446,12 +509,31 @@ build_singularity_container_update_symlink() {
     )
 }
 
+# get the branch to use for a specific repo
+# priority: REPO_BRANCHES[repo] > BRANCH_DEFAULT > build_type_default
+get_repo_branch() {
+    local repo="$1"
+    local build_type_default="$2"
+
+    # check if repo has specific branch set
+    if [[ -n "${REPO_BRANCHES[$repo]:-}" ]]; then
+        echo "${REPO_BRANCHES[$repo]}"
+    # check if global default is set
+    elif [[ -n "$BRANCH_DEFAULT" ]]; then
+        echo "$BRANCH_DEFAULT"
+    # fall back to build type default
+    else
+        echo "$build_type_default"
+    fi
+}
+
 # update repo to latest from specified branch
 update_repo_branch() {
     local repo="$1"
     local default_branch="$2"
 
-    local branch_to_use="${CUSTOM_BRANCH:-$default_branch}"
+    local branch_to_use
+    branch_to_use="$(get_repo_branch "$repo" "$default_branch")"
     echo "Updating $repo to latest from $branch_to_use branch..."
     if [[ ! -d "$BASE_PATH/$repo" ]]; then
         echo "Error: Repository directory '$BASE_PATH/$repo' does not exist"; exit 1
