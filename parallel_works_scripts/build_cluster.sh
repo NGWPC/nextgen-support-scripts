@@ -438,6 +438,56 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     fi
 fi
 
+# progress indicator functions
+show_progress() {
+    local pid=$1
+    local message=$2
+    local delay=0.5
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local start_time=$(date +%s)
+
+    while kill -0 "$pid" 2>/dev/null; do
+        local elapsed=$(($(date +%s) - start_time))
+        local minutes=$((elapsed / 60))
+        local seconds=$((elapsed % 60))
+        local temp=${spinstr#?}
+        printf "\r[%c] %s (elapsed: %02d:%02d)" "$spinstr" "$message" "$minutes" "$seconds"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+    done
+
+    local final_elapsed=$(($(date +%s) - start_time))
+    local final_minutes=$((final_elapsed / 60))
+    local final_seconds=$((final_elapsed % 60))
+    printf "\r[✓] %s (completed in %02d:%02d)\n" "$message" "$final_minutes" "$final_seconds"
+}
+
+# wrapper to run commands with progress indicator
+run_with_progress() {
+    local message=$1
+    shift
+
+    echo "$message"
+
+    # run command in background, capturing output to temp file
+    local tmpfile=$(mktemp)
+    "$@" > "$tmpfile" 2>&1 &
+    local cmd_pid=$!
+
+    # show progress while command runs
+    show_progress $cmd_pid "$message"
+
+    # wait for command and get exit status
+    wait $cmd_pid
+    local exit_status=$?
+
+    # display output
+    cat "$tmpfile"
+    rm -f "$tmpfile"
+
+    return $exit_status
+}
+
 # build SIF and update symlink
 # only rebuild when docker image digest/id changes; always delete temp tar
 # keeps a tiny .meta file to remember the last image key and built sif filename
@@ -506,11 +556,11 @@ build_singularity_container_update_symlink() {
         cleanup() { rm -f "$tar_name"; }
         trap cleanup EXIT INT TERM
 
-        echo "Saving docker image to tar: ${image_ref}"
-        docker save "${image_ref}" -o "${tar_name}"
+        run_with_progress "Saving docker image to tar: ${image_ref}" \
+            docker save "${image_ref}" -o "${tar_name}"
 
-        echo "Building SIF: ${sif_file} from docker-archive:${tar_name}"
-        singularity build "${sif_file}" "docker-archive:${tar_name}"
+        run_with_progress "Building SIF: ${sif_file} from docker-archive:${tar_name}" \
+            singularity build "${sif_file}" "docker-archive:${tar_name}"
 
         echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
         ln -sfn "${sif_file}" "${symlink_name}"
@@ -534,25 +584,36 @@ update_repo_branch() {
 
     local branch_to_use
     branch_to_use="$(get_repo_branch "$repo" "$default_branch")"
-    echo "Updating $repo to latest from $branch_to_use branch..."
+
     if [[ ! -d "$BASE_PATH/$repo" ]]; then
         echo "Error: Repository directory '$BASE_PATH/$repo' does not exist"; exit 1
     fi
     cd "$BASE_PATH/$repo"
-    git fetch origin
+
+    echo "Updating $repo to latest from $branch_to_use branch..."
+
+    run_with_progress "Fetching from origin" \
+        git fetch origin
+
     local stash_result
     stash_result="$(git stash push 2>&1)"
+
     if ! git checkout "$branch_to_use"; then
         echo "Error: Branch '$branch_to_use' does not exist in $repo"; exit 1
     fi
-    git pull origin "$branch_to_use" --rebase
+
+    run_with_progress "Pulling latest changes from $branch_to_use" \
+        git pull origin "$branch_to_use" --rebase
+
     if [[ "$stash_result" != "No local changes to save" ]]; then
         if ! git stash pop; then
             echo "Warning: git stash pop failed, likely due to conflicts. Stashed changes remain in stash."
         fi
     fi
+
     if [[ "$repo" == "ngen" ]]; then
-        git submodule update --init --recursive
+        run_with_progress "Updating submodules" \
+            git submodule update --init --recursive
     fi
 }
 
@@ -561,17 +622,23 @@ checkout_repo_tag() {
     local repo="$1"
     local tag="$2"
 
-    echo "Checking out $repo at tag $tag..."
     if [[ ! -d "$BASE_PATH/$repo" ]]; then
         echo "Error: Repository directory '$BASE_PATH/$repo' does not exist"; exit 1
     fi
     cd "$BASE_PATH/$repo"
-    git fetch origin
+
+    echo "Checking out $repo at tag $tag..."
+
+    run_with_progress "Fetching from origin" \
+        git fetch origin
+
     local stash_result
     stash_result="$(git stash push 2>&1)"
+
     if ! git checkout "$tag"; then
         echo "Error: Tag '$tag' does not exist in $repo"; exit 1
     fi
+
     if [[ "$stash_result" != "No local changes to save" ]]; then
         if ! git stash pop; then
             echo "Warning: git stash pop failed, likely due to conflicts. Stashed changes remain in stash."
@@ -579,8 +646,8 @@ checkout_repo_tag() {
     fi
 
     if [[ "$repo" == "ngen" ]]; then
-        # initialize and update submodules to correct commit
-        git submodule update --init --recursive
+        run_with_progress "Updating submodules" \
+            git submodule update --init --recursive
     fi
 }
 
