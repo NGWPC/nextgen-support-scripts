@@ -350,6 +350,24 @@ if [[ -t 0 ]]; then
     done
 fi
 
+# get the branch to use for a specific repo
+# priority: REPO_BRANCHES[repo] > BRANCH_DEFAULT > build_type_default
+get_repo_branch() {
+    local repo="$1"
+    local build_type_default="$2"
+
+    # check if repo has specific branch set
+    if [[ -n "${REPO_BRANCHES[$repo]:-}" ]]; then
+        echo "${REPO_BRANCHES[$repo]}"
+    # check if global default is set
+    elif [[ -n "$BRANCH_DEFAULT" ]]; then
+        echo "$BRANCH_DEFAULT"
+    # fall back to build type default
+    else
+        echo "$build_type_default"
+    fi
+}
+
 # --- Display build configuration summary ---
 echo
 echo "==================== Build Configuration ===================="
@@ -507,24 +525,6 @@ build_singularity_container_update_symlink() {
             echo "TAG=${tag}"
         } > "${meta_file}"
     )
-}
-
-# get the branch to use for a specific repo
-# priority: REPO_BRANCHES[repo] > BRANCH_DEFAULT > build_type_default
-get_repo_branch() {
-    local repo="$1"
-    local build_type_default="$2"
-
-    # check if repo has specific branch set
-    if [[ -n "${REPO_BRANCHES[$repo]:-}" ]]; then
-        echo "${REPO_BRANCHES[$repo]}"
-    # check if global default is set
-    elif [[ -n "$BRANCH_DEFAULT" ]]; then
-        echo "$BRANCH_DEFAULT"
-    # fall back to build type default
-    else
-        echo "$build_type_default"
-    fi
 }
 
 # update repo to latest from specified branch
