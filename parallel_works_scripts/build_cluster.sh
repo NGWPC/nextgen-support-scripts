@@ -26,9 +26,9 @@ set -o pipefail
 # Build for release (will still prompt for tags):
 #   ./build_cluster.sh --build-type=release ngen nwm-cal-mgr nwm-verf
 #
-# Release-candidate build (mirrors development but uses the release-candidate branch
-# and tags images as :release-candidate):
-#   ./build_cluster.sh --build-type=release-candidate ngen nwm-cal-mgr
+# Feature build (mirrors development but uses the feature branch
+# and tags images as :feature):
+#   ./build_cluster.sh --build-type=feature ngen nwm-cal-mgr
 #
 # Per-repo image source (build|pull), applies to dev/rc/release:
 #   ./build_cluster.sh --build-type=development \
@@ -40,7 +40,7 @@ set -o pipefail
 # ARGUMENTS
 # ------------------------------------------------------------------------------
 #
-#   --build-type=TYPE        One of: development, release, release-candidate
+#   --build-type=TYPE        One of: development, release, feature
 #   --source=REPO:MODE       For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
 #                            MODE is build or pull. Can be repeated.
 #   --source-default=MODE    Global default (build|pull) for the above repos (optional).
@@ -139,7 +139,7 @@ USAGE:
   ./build_cluster.sh [OPTIONS] [REPOS...]
 
 OPTIONS:
-  --build-type=TYPE          One of: development, release, release-candidate
+  --build-type=TYPE          One of: development, release, feature
   --branch=REPO:BRANCH       Specify a branch for a specific repo. Can be repeated.
                              Example: --branch=ngen:feature/my-feature
   --branch-default=BRANCH    Global default branch for all repos (optional)
@@ -179,8 +179,8 @@ EXAMPLES:
   Build for release (will still prompt for tags):
     ./build_cluster.sh --build-type=release ngen nwm-cal-mgr nwm-verf
 
-  Release-candidate build:
-    ./build_cluster.sh --build-type=release-candidate ngen nwm-cal-mgr
+  Feature build:
+    ./build_cluster.sh --build-type=feature ngen nwm-cal-mgr
 
 NOTES:
   - If no arguments are passed, the script runs interactively
@@ -260,8 +260,8 @@ LOGFILE="${SINGULARITY_DIR}/build_cluster_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
 exec > >(tee -i "$LOGFILE") 2>&1
 
 # validate BUILD_TYPE if provided via CLI
-if [[ -n "$BUILD_TYPE" ]] && [[ "$BUILD_TYPE" != "development" ]] && [[ "$BUILD_TYPE" != "release" ]] && [[ "$BUILD_TYPE" != "release-candidate" ]]; then
-    echo "Error: Invalid --build-type '${BUILD_TYPE}'. Must be one of: development, release, release-candidate"
+if [[ -n "$BUILD_TYPE" ]] && [[ "$BUILD_TYPE" != "development" ]] && [[ "$BUILD_TYPE" != "release" ]] && [[ "$BUILD_TYPE" != "feature" ]]; then
+    echo "Error: Invalid --build-type '${BUILD_TYPE}'. Must be one of: development, release, feature"
     exit 1
 fi
 
@@ -270,12 +270,12 @@ if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
     echo "Select build type:"
     echo "1) development"
     echo "2) release"
-    echo "3) release-candidate"
+    echo "3) feature"
     read -p "Enter number [1-3]: " build_choice
     case $build_choice in
         1) BUILD_TYPE="development" ;;
         2) BUILD_TYPE="release" ;;
-        3) BUILD_TYPE="release-candidate" ;;
+        3) BUILD_TYPE="feature" ;;
         *) echo "Invalid choice, exiting."; exit 1 ;;
     esac
 
@@ -514,11 +514,11 @@ build_singularity_container_update_symlink() {
     local sif_file
     local meta_file="${sif_dir}/${sif_base}.meta"
 
-    # naming: dev -> latest; rc -> release-candidate; release -> explicit tag
+    # naming: dev -> latest; rc -> feature; release -> explicit tag
     if [[ "$build_type" == "development" ]]; then
         sif_file="${sif_base}-latest-${ts}.sif"
-    elif [[ "$build_type" == "release-candidate" ]]; then
-        sif_file="${sif_base}-release-candidate-${ts}.sif"
+    elif [[ "$build_type" == "feature" ]]; then
+        sif_file="${sif_base}-feature-${ts}.sif"
     else
         sif_file="${sif_base}-${tag}-${ts}.sif"
     fi
@@ -911,8 +911,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
     exit 0
 fi
 
-# ---- RELEASE-CANDIDATE WORKFLOW ----
-if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
+# ---- FEATURE WORKFLOW ----
+if [[ "$BUILD_TYPE" == "feature" ]]; then
     cd "$BASE_PATH"
 
     # check if ngen is needed as a dependency for other repos
@@ -924,30 +924,30 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
         echo "Note: ngen is required as a dependency for nwm-cal-mgr/nwm-fcst-mgr"
     fi
 
-    # build or pull ngen first so downstream builds may use ngen:release-candidate
+    # build or pull ngen first so downstream builds may use ngen:feature
     if [[ "$NGEN_NEEDED" == "true" ]]; then
         if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
             if [[ -d "${BASE_PATH}/ngen" ]]; then
-                update_repo_branch "ngen" "release-candidate"
-                echo "Building ngen (release-candidate) Docker image..."
+                update_repo_branch "ngen" "feature"
+                echo "Building ngen (feature) Docker image..."
                 docker build --progress=plain --no-cache \
-                --tag="${REGISTRY}/ngen:release-candidate" \
+                --tag="${REGISTRY}/ngen:feature" \
                 "${BASE_PATH}/ngen"
             else
                 echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
             fi
         else
-            echo "Pulling ngen (release-candidate) Docker image..."
-            docker pull "${REGISTRY}/ngen:release-candidate"
+            echo "Pulling ngen (feature) Docker image..."
+            docker pull "${REGISTRY}/ngen:feature"
         fi
     fi
 
     for repo in "${SELECTED_REPOS[@]}"; do
         echo
 
-        # update ngencerf* repo's release-candidate branch
+        # update ngencerf* repo's feature branch
         if [[ "$repo" == ngencerf* ]]; then
-            update_repo_branch "$repo" "release-candidate"
+            update_repo_branch "$repo" "feature"
         fi
 
         # per-repo local build paths (mirrors development but with rc tags/args)
@@ -955,11 +955,11 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
             "nwm-cal-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
-                        update_repo_branch "nwm-cal-mgr" "release-candidate"
-                        echo "Building nwm-cal-mgr (release-candidate) Docker image..."
+                        update_repo_branch "nwm-cal-mgr" "feature"
+                        echo "Building nwm-cal-mgr (feature) Docker image..."
                         docker build --progress=plain --no-cache \
-                        --build-arg NGEN_IMAGE_TAG="release-candidate" \
-                        --tag="${REGISTRY}/nwm-cal-mgr:release-candidate" \
+                        --build-arg NGEN_IMAGE_TAG="feature" \
+                        --tag="${REGISTRY}/nwm-cal-mgr:feature" \
                         "${BASE_PATH}/nwm-cal-mgr"
                     else
                         echo "Error: ${BASE_PATH}/nwm-cal-mgr not found; cannot build."; exit 1
@@ -969,11 +969,11 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
             "nwm-fcst-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
-                        update_repo_branch "nwm-fcst-mgr" "release-candidate"
-                        echo "Building nwm-fcst-mgr (release-candidate) Docker image..."
+                        update_repo_branch "nwm-fcst-mgr" "feature"
+                        echo "Building nwm-fcst-mgr (feature) Docker image..."
                         docker build --progress=plain --no-cache \
-                        --build-arg NGEN_IMAGE_TAG="release-candidate" \
-                        --tag="${REGISTRY}/nwm-fcst-mgr:release-candidate" \
+                        --build-arg NGEN_IMAGE_TAG="feature" \
+                        --tag="${REGISTRY}/nwm-fcst-mgr:feature" \
                         "${BASE_PATH}/nwm-fcst-mgr"
                     else
                         echo "Error: ${BASE_PATH}/nwm-fcst-mgr not found; cannot build."; exit 1
@@ -983,11 +983,11 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
             "nwm-verf")
                 if [[ "${IMAGE_SOURCE[nwm-verf]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-verf" ]]; then
-                        update_repo_branch "nwm-verf" "release-candidate"
-                        echo "Building nwm-verf (release-candidate) Docker image..."
+                        update_repo_branch "nwm-verf" "feature"
+                        echo "Building nwm-verf (feature) Docker image..."
                         docker build --progress=plain --no-cache \
-                        --build-arg NWM_EVAL_MGR_TAG="release-candidate" \
-                        --tag="${REGISTRY}/nwm-verf:release-candidate" \
+                        --build-arg NWM_EVAL_MGR_TAG="feature" \
+                        --tag="${REGISTRY}/nwm-verf:feature" \
                         "${BASE_PATH}/nwm-verf"
                     else
                         echo "Error: ${BASE_PATH}/nwm-verf not found; cannot build."; exit 1
@@ -997,17 +997,17 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
             "ngen-forcing")
                 if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
-                        update_repo_branch "ngen-forcing" "release-candidate"
-                        echo "Building ngen-bmi-forcing (release-candidate) Docker image..."
+                        update_repo_branch "ngen-forcing" "feature"
+                        echo "Building ngen-bmi-forcing (feature) Docker image..."
                         docker build --progress=plain --no-cache \
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
-                        --tag="${REGISTRY}/ngen-bmi-forcing:release-candidate" \
+                        --tag="${REGISTRY}/ngen-bmi-forcing:feature" \
                         "${BASE_PATH}/ngen-forcing"
 
-                        echo "Building ngen-lumped-forcing (release-candidate) Docker image..."
+                        echo "Building ngen-lumped-forcing (feature) Docker image..."
                         docker build --progress=plain --no-cache \
                         --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
-                        --tag="${REGISTRY}/ngen-lumped-forcing:release-candidate" \
+                        --tag="${REGISTRY}/ngen-lumped-forcing:feature" \
                         "${BASE_PATH}/ngen-forcing"
 
                         update_repo_branch "ngen-forcing" "release-candidate"
@@ -1027,13 +1027,13 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
         esac
 
         # for each repo that produces a SIF, use the locally built image if mode==build,
-        # otherwise pull the :release-candidate image
+        # otherwise pull the :feature image
         if repo_has_sif "$repo"; then
             for pair in $(images_for_repo "$repo"); do
                 [[ -z "$pair" ]] && continue
                 docker_img="${pair%%|*}"
                 sif_name="${pair##*|}"
-                IMAGE="${REGISTRY}/${docker_img}:release-candidate"
+                IMAGE="${REGISTRY}/${docker_img}:feature"
 
                 if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
                     echo "Pulling docker image for SIF: $IMAGE"
@@ -1042,15 +1042,15 @@ if [[ "$BUILD_TYPE" == "release-candidate" ]]; then
                     echo "Using locally built image for SIF: $IMAGE"
                 fi
 
-                build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "release-candidate"
+                build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "feature"
             done
         fi
     done
 
-    echo "release-candidate build completed successfully!"
+    echo "feature build completed successfully!"
     exit 0
 fi
 
 # --- INVALID BUILD_TYPE ---
-echo "Error: Invalid BUILD_TYPE '${BUILD_TYPE}'. Must be one of: development, release, release-candidate"
+echo "Error: Invalid BUILD_TYPE '${BUILD_TYPE}'. Must be one of: development, release, feature"
 exit 1
