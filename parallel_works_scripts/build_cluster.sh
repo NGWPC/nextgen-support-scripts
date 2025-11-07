@@ -279,7 +279,7 @@ if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
         *) echo "Invalid choice, exiting."; exit 1 ;;
     esac
 
-    if [[ "$BUILD_TYPE" != "release" ]]; then
+    if [[ "$BUILD_TYPE" == "feature" ]]; then
         read -p "Enter global default branch for all repos (press Enter to use ${BUILD_TYPE}): " BRANCH_DEFAULT
     fi
 fi
@@ -318,8 +318,8 @@ if [[ ${#INVALID_REPOS[@]} -gt 0 ]]; then
     exit 1
 fi
 
-# optional interactive per-repo branch selection (only for non-release builds in interactive mode)
-if [[ -t 0 && "$BUILD_TYPE" != "release" ]]; then
+# optional interactive per-repo branch selection (only for feature builds in interactive mode)
+if [[ -t 0 && "$BUILD_TYPE" == "feature" ]]; then
     echo
     echo "Branch selection (leave empty to use build-type default: ${BUILD_TYPE})"
     for repo in "${SELECTED_REPOS[@]}"; do
