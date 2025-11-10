@@ -279,14 +279,11 @@ if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
         *) echo "Invalid choice, exiting."; exit 1 ;;
     esac
 
-    if [[ "$BUILD_TYPE" == "feature" ]]; then
-        read -p "Enter global default branch for all repos (press Enter to use ${BUILD_TYPE}): " BRANCH_DEFAULT
-    fi
 fi
 
 if [[ ${#SELECTED_REPOS[@]} -eq 0 && -t 0 ]]; then
     echo "Available repos: ${REPOS[*]}"
-    read -p "Enter repos to build (space-separated, or 'all'): " -a SELECTED_REPOS
+    read -p "Enter repos to build (space-separated from the list above): " -a SELECTED_REPOS
 fi
 
 if [[ -z "$BUILD_TYPE" || ${#SELECTED_REPOS[@]} -eq 0 ]]; then
@@ -294,9 +291,6 @@ if [[ -z "$BUILD_TYPE" || ${#SELECTED_REPOS[@]} -eq 0 ]]; then
 fi
 
 set_image_source_defaults
-
-echo "Build type selected: $BUILD_TYPE"
-echo "Selected repos: ${SELECTED_REPOS[*]}"
 
 # expand 'all'
 if [[ " ${SELECTED_REPOS[*]} " =~ " all " ]]; then
@@ -318,24 +312,11 @@ if [[ ${#INVALID_REPOS[@]} -gt 0 ]]; then
     exit 1
 fi
 
-# optional interactive per-repo branch selection (only for feature builds in interactive mode)
-if [[ -t 0 && "$BUILD_TYPE" == "feature" ]]; then
-    echo
-    echo "Branch selection (leave empty to use build-type default: ${BUILD_TYPE})"
-    for repo in "${SELECTED_REPOS[@]}"; do
-        if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
-            default_display="${BRANCH_DEFAULT:-$BUILD_TYPE}"
-            read -p "Branch for '${repo}' (default: ${default_display}): " ans
-            if [[ -n "$ans" ]]; then
-                REPO_BRANCHES["$repo"]="$ans"
-            fi
-        fi
-    done
-fi
+# display summary and optional interactive per-repo source/branch selection
+echo "Build type selected: $BUILD_TYPE"
+echo "Selected repos: ${SELECTED_REPOS[*]}"
 
-# optional interactive per-repo source selection
 if [[ -t 0 ]]; then
-    echo
     for repo in "${SELECTED_REPOS[@]}"; do
         if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
             default_mode="${IMAGE_SOURCE[$repo]}"
@@ -348,6 +329,23 @@ if [[ -t 0 ]]; then
             fi
         fi
     done
+
+    # branch prompting after image sources (only for feature builds in interactive mode)
+    if [[ "$BUILD_TYPE" == "feature" ]]; then
+        for repo in "${SELECTED_REPOS[@]}"; do
+            if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
+                # special handling for ngen-forcing
+                if [[ "$repo" == "ngen-forcing" ]]; then
+                    read -p "Enter ngen-forcing branch (shared for bmi/lumped/coastal): " ans
+                else
+                    read -p "Enter ${repo} branch: " ans
+                fi
+                if [[ -n "$ans" ]]; then
+                    REPO_BRANCHES["$repo"]="$ans"
+                fi
+            fi
+        done
+    fi
 fi
 
 # get the branch to use for a specific repo
@@ -367,30 +365,6 @@ get_repo_branch() {
         echo "$build_type_default"
     fi
 }
-
-# --- Display build configuration summary ---
-echo
-echo "==================== Build Configuration ===================="
-echo "Build type: $BUILD_TYPE"
-echo "Repos: ${SELECTED_REPOS[*]}"
-if [[ "$BUILD_TYPE" != "release" ]]; then
-    echo
-    echo "Branch configuration:"
-    for repo in "${SELECTED_REPOS[@]}"; do
-        branch=$(get_repo_branch "$repo" "$BUILD_TYPE")
-        echo "  - ${repo}: ${branch}"
-    done
-fi
-echo
-echo "Image source configuration:"
-for repo in "${SELECTED_REPOS[@]}"; do
-    if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
-        source_mode="${IMAGE_SOURCE[$repo]}"
-        echo "  - ${repo}: ${source_mode}"
-    fi
-done
-echo "============================================================="
-echo
 
 # --- tag prompts for release ---
 declare -A TAGS
