@@ -45,6 +45,8 @@ set -o pipefail
 #                            MODE is build or pull. Can be repeated.
 #   --source-default=MODE    Global default (build|pull) for the above repos (optional).
 #   --branch=BRANCH         Specify a custom branch to build from (optional).
+#   --tag=REPO:TAG          For feature builds: specify tag to pull for REPO (only used when pulling).
+#                            Example: --tag=ngen-forcing:latest
 #   repo names               List of repos to build (space-separated), or use "all"
 #
 # Supported repos:
@@ -146,6 +148,8 @@ OPTIONS:
   --source=REPO:MODE         For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
                              MODE is build or pull. Can be repeated.
   --source-default=MODE      Global default (build|pull) for the above repos (optional)
+  --tag=REPO:TAG             For feature builds: specify tag to pull for REPO (only used when pulling).
+                             Example: --tag=ngen-forcing:latest
   --help, -h                 Show this help message and exit
 
 REPOS:
@@ -240,6 +244,18 @@ parse_args() {
                     echo "Error: --source '${kv}' must be build or pull."; exit 1
                 fi
                 IMAGE_SOURCE["$repo"]="$mode"
+            ;;
+            --tag=*)
+                local kv="${1#*=}"
+                local repo="${kv%%:*}"
+                local tag="${kv##*:}"
+                if [[ ! " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
+                    echo "Error: --tag targets unsupported repo '${repo}'. Allowed: ${TARGET_REPOS_FOR_SOURCE[*]}"; exit 1
+                fi
+                if [[ -z "$tag" ]]; then
+                    echo "Error: --tag '${kv}' must specify a tag (format: REPO:TAG)"; exit 1
+                fi
+                TAGS["$repo"]="$tag"
             ;;
             -*)
                 echo "Unknown option: $1"; exit 1
@@ -366,7 +382,7 @@ get_repo_branch() {
     fi
 }
 
-# --- tag prompts for release ---
+# --- tag prompts for release and feature (when pulling) ---
 declare -A TAGS
 if [[ "$BUILD_TYPE" == "release" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
@@ -410,6 +426,40 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]] && [[ -z "${TAGS[nwm-eval-mgr]:-}" ]]; then
         echo "Error: nwm-eval-mgr tag is required when building nwm-verf"; exit 1
     fi
+fi
+
+# --- tag prompts for feature builds when pulling ---
+if [[ "$BUILD_TYPE" == "feature" ]]; then
+    for repo in "${SELECTED_REPOS[@]}"; do
+        # only prompt for tags if the repo is set to pull (not build)
+        if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]] && [[ "${IMAGE_SOURCE[$repo]}" == "pull" ]]; then
+            case $repo in
+                ngen)
+                    if [[ -z "${TAGS[ngen]:-}" ]]; then
+                        read -p "Enter Docker tag to pull for ngen (e.g., latest, development, v1.0): " TAGS[ngen]
+                    fi
+                ;;
+                nwm-cal-mgr)
+                    read -p "Enter Docker tag to pull for nwm-cal-mgr: " TAGS[nwm-cal-mgr]
+                    if [[ -z "${TAGS[ngen]:-}" && "$NGEN_NEEDED" == "true" ]]; then
+                        read -p "Enter Docker tag to pull for ngen (required by nwm-cal-mgr): " TAGS[ngen]
+                    fi
+                ;;
+                ngen-forcing)
+                    read -p "Enter Docker tag to pull for ngen-forcing (shared for bmi/lumped): " TAGS[ngen-forcing]
+                ;;
+                nwm-fcst-mgr)
+                    read -p "Enter Docker tag to pull for nwm-fcst-mgr: " TAGS[nwm-fcst-mgr]
+                    if [[ -z "${TAGS[ngen]:-}" && "$NGEN_NEEDED" == "true" ]]; then
+                        read -p "Enter Docker tag to pull for ngen (required by nwm-fcst-mgr): " TAGS[ngen]
+                    fi
+                ;;
+                nwm-verf)
+                    read -p "Enter Docker tag to pull for nwm-verf: " TAGS[nwm-verf]
+                ;;
+            esac
+        fi
+    done
 fi
 
 # progress indicator functions
@@ -911,8 +961,11 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
             fi
         else
-            echo "Pulling ngen (feature) Docker image..."
-            docker pull "${REGISTRY}/ngen:feature"
+            local ngen_tag="${TAGS[ngen]:-feature}"
+            echo "Pulling ngen Docker image with tag: ${ngen_tag}..."
+            docker pull "${REGISTRY}/ngen:${ngen_tag}"
+            # retag as :feature for consistency with build workflow
+            docker tag "${REGISTRY}/ngen:${ngen_tag}" "${REGISTRY}/ngen:feature"
         fi
     fi
 
@@ -1001,18 +1054,27 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
         esac
 
         # for each repo that produces a SIF, use the locally built image if mode==build,
-        # otherwise pull the :feature image
+        # otherwise pull the specified tag and retag as :feature
         if repo_has_sif "$repo"; then
             for pair in $(images_for_repo "$repo"); do
                 [[ -z "$pair" ]] && continue
                 docker_img="${pair%%|*}"
                 sif_name="${pair##*|}"
-                IMAGE="${REGISTRY}/${docker_img}:feature"
 
                 if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
-                    echo "Pulling docker image for SIF: $IMAGE"
-                    docker pull "$IMAGE"
+                    # use tag from TAGS array if pulling, otherwise default to :feature
+                    local pull_tag="${TAGS[$repo]:-feature}"
+                    local pull_image="${REGISTRY}/${docker_img}:${pull_tag}"
+                    echo "Pulling docker image for SIF: $pull_image"
+                    docker pull "$pull_image"
+
+                    # retag as :feature for consistency
+                    if [[ "$pull_tag" != "feature" ]]; then
+                        docker tag "$pull_image" "${REGISTRY}/${docker_img}:feature"
+                    fi
+                    IMAGE="${REGISTRY}/${docker_img}:feature"
                 else
+                    IMAGE="${REGISTRY}/${docker_img}:feature"
                     echo "Using locally built image for SIF: $IMAGE"
                 fi
 
