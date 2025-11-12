@@ -467,7 +467,7 @@ show_progress() {
     local pid=$1
     local message=$2
     local delay=0.5
-    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local spinstr='|/-\'
     local start_time=$(date +%s)
 
     while kill -0 "$pid" 2>/dev/null; do
