@@ -223,9 +223,16 @@ parse_args() {
             ;;
             --branch-default=*)
                 BRANCH_DEFAULT="${1#*=}"
+                if [[ -z "$BRANCH_DEFAULT" ]]; then
+                    echo "Error: --branch-default requires a value"; exit 1
+                fi
             ;;
             --branch-default)
-                shift; BRANCH_DEFAULT="$1"
+                shift
+                if [[ -z "$1" || "$1" == -* ]]; then
+                    echo "Error: --branch-default requires a value"; exit 1
+                fi
+                BRANCH_DEFAULT="$1"
             ;;
             --source-default=*)
                 IMAGE_SOURCE_DEFAULT="${1#*=}" # build|pull
@@ -270,16 +277,30 @@ parse_args() {
 
 parse_args "$@"
 
-# --- Create directories and setup logging (after arg parsing to allow --help to work) ---
-mkdir -p "$SINGULARITY_DIR"
-LOGFILE="${SINGULARITY_DIR}/build_cluster_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
-exec > >(tee -i "$LOGFILE") 2>&1
-
 # validate BUILD_TYPE if provided via CLI
 if [[ -n "$BUILD_TYPE" ]] && [[ "$BUILD_TYPE" != "development" ]] && [[ "$BUILD_TYPE" != "release" ]] && [[ "$BUILD_TYPE" != "feature" ]]; then
     echo "Error: Invalid --build-type '${BUILD_TYPE}'. Must be one of: development, release, feature"
     exit 1
 fi
+
+# validate that branch arguments are not used with development build type
+if [[ "$BUILD_TYPE" == "development" ]]; then
+    if [[ -n "$BRANCH_DEFAULT" ]]; then
+        echo "Error: --branch-default cannot be used with --build-type=development"
+        echo "Development builds always use the 'development' branch for all repos."
+        exit 1
+    fi
+    if [[ ${#REPO_BRANCHES[@]} -gt 0 ]]; then
+        echo "Error: --branch cannot be used with --build-type=development"
+        echo "Development builds always use the 'development' branch for all repos."
+        exit 1
+    fi
+fi
+
+# --- Create directories and setup logging (after arg parsing to allow --help to work) ---
+mkdir -p "$SINGULARITY_DIR"
+LOGFILE="${SINGULARITY_DIR}/build_cluster_$(date -u +"%Y-%m-%dT%H:%M:%SZ").log"
+exec > >(tee -i "$LOGFILE") 2>&1
 
 # --- Interactive prompts if needed ---
 if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
