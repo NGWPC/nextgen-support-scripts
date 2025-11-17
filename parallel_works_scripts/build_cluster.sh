@@ -980,7 +980,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
             fi
         else
-            local ngen_tag="${TAGS[ngen]:-feature}"
+            ngen_tag="${TAGS[ngen]:-feature}"
             run_with_progress "Pulling ngen Docker image with tag: ${ngen_tag}" \
                 docker pull "${REGISTRY}/ngen:${ngen_tag}"
             # retag as :feature for consistency with build workflow
@@ -1083,8 +1083,8 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
 
                 if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
                     # use tag from TAGS array if pulling, otherwise default to :feature
-                    local pull_tag="${TAGS[$repo]:-feature}"
-                    local pull_image="${REGISTRY}/${docker_img}:${pull_tag}"
+                    pull_tag="${TAGS[$repo]:-feature}"
+                    pull_image="${REGISTRY}/${docker_img}:${pull_tag}"
                     run_with_progress "Pulling docker image for SIF: $pull_image" \
                         docker pull "$pull_image"
 
