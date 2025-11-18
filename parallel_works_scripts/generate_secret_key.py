@@ -47,42 +47,49 @@ def generate_secret() -> str:
 
 def update_env_file(env_path: Path, secret: str) -> None:
     """
-    Load an existing environment file, replace any existing
-    CERF_SERVER_SECRET_KEY line, or append if missing, then
-    writing back to file atomically (to avoid partial writes)
+    update env file so that:
+      - if ENV_KEY exists, replace it on the same line
+      - if it does not exist, insert it at the top of the file
 
     Parameters
     ----------
     env_path : Path
-        path to existing environment file
+        path to the env file to update
     secret : str
-        secret value to write
-
-    returns
-    -------
-    None
+        secret key to set
     """
-    # read existing lines or fail if file not found
     try:
         lines: List[str] = env_path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         raise FileNotFoundError(f"env file not found: {env_path}") from None
 
-    # filter out any existing key at start of line
-    pattern = re.compile(rf"^{re.escape(ENV_KEY)}=.*$")
-    filtered: List[str] = [ln for ln in lines if not pattern.match(ln)]
+    pattern = re.compile(rf"^{re.escape(ENV_KEY)}=")
 
-    # append new key=value
-    filtered.append(f"{ENV_KEY}={secret}")
+    found: bool = False
+    new_lines: List[str] = []
 
-    # atomic write to same directory
+    for ln in lines:
+        if pattern.match(ln):
+            if not found:
+                # first time we see the key: replace it
+                new_lines.append(f"{ENV_KEY}={secret}")
+                found = True
+            # skip any additional duplicates
+        else:
+            new_lines.append(ln)
+
+    # if the key was never found, insert at top
+    if not found:
+        new_lines.insert(0, f"{ENV_KEY}={secret}")
+
+    # atomic write back to the same file
     with tempfile.NamedTemporaryFile(
         "w",
         delete=False,
         dir=str(env_path.parent),
-        encoding="utf-8"
+        encoding="utf-8",
     ) as tmp:
-        tmp.write("\n".join(filtered) + "\n")
+        tmp.write("\n".join(new_lines) + "\n")
         tmp_path: Path = Path(tmp.name)
 
     os.replace(tmp_path, env_path)
