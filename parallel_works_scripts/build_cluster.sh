@@ -500,11 +500,22 @@ show_progress() {
         spinstr=$temp${spinstr%"$temp"}
         sleep $delay
     done
+}
+
+show_progress_final() {
+    local message=$1
+    local exit_status=$2
+    local start_time=$3
 
     local final_elapsed=$(($(date +%s) - start_time))
     local final_minutes=$((final_elapsed / 60))
     local final_seconds=$((final_elapsed % 60))
-    printf "\r[✓] %s (completed in %02d:%02d)\n" "$message" "$final_minutes" "$final_seconds"
+
+    if [[ $exit_status -eq 0 ]]; then
+        printf "\r[✓] %s (completed in %02d:%02d)\n" "$message" "$final_minutes" "$final_seconds"
+    else
+        printf "\r[✗] %s (failed in %02d:%02d)\n" "$message" "$final_minutes" "$final_seconds"
+    fi
 }
 
 # wrapper to run commands with progress indicator
@@ -516,6 +527,7 @@ run_with_progress() {
 
     # run command in background, capturing output to temp file
     local tmpfile=$(mktemp)
+    local start_time=$(date +%s)
     "$@" > "$tmpfile" 2>&1 &
     local cmd_pid=$!
 
@@ -526,8 +538,16 @@ run_with_progress() {
     wait $cmd_pid
     local exit_status=$?
 
-    # display output
-    cat "$tmpfile"
+    # show final status
+    show_progress_final "$message" $exit_status $start_time
+
+    # display output if there is any, or show generic error if command failed
+    if [[ -s "$tmpfile" ]]; then
+        cat "$tmpfile"
+    elif [[ $exit_status -ne 0 ]]; then
+        echo "Error: Command failed with exit code $exit_status but produced no output"
+        echo "Command: $*"
+    fi
     rm -f "$tmpfile"
 
     return $exit_status
