@@ -72,7 +72,7 @@ def update_env_file(env_path: Path, secret: str) -> None:
         if pattern.match(ln):
             if not found:
                 # first time we see the key: replace it
-                new_lines.append(f"{ENV_KEY}={secret}")
+                new_lines.append(f"{ENV_KEY}='{secret}'")
                 found = True
             # skip any additional duplicates
         else:
@@ -80,7 +80,7 @@ def update_env_file(env_path: Path, secret: str) -> None:
 
     # if the key was never found, insert at top
     if not found:
-        new_lines.insert(0, f"{ENV_KEY}={secret}")
+        new_lines.insert(0, f"{ENV_KEY}='{secret}'")
 
     # atomic write back to the same file
     with tempfile.NamedTemporaryFile(
