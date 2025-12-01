@@ -483,75 +483,6 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
     done
 fi
 
-# progress indicator functions
-show_progress() {
-    local pid=$1
-    local message=$2
-    local delay=0.5
-    local spinstr='|/-\'
-    local start_time=$(date +%s)
-
-    while kill -0 "$pid" 2>/dev/null; do
-        local elapsed=$(($(date +%s) - start_time))
-        local minutes=$((elapsed / 60))
-        local seconds=$((elapsed % 60))
-        local temp=${spinstr#?}
-        printf "\r[%c] %s (elapsed: %02d:%02d)" "$spinstr" "$message" "$minutes" "$seconds"
-        spinstr=$temp${spinstr%"$temp"}
-        sleep $delay
-    done
-}
-
-show_progress_final() {
-    local message=$1
-    local exit_status=$2
-    local start_time=$3
-
-    local final_elapsed=$(($(date +%s) - start_time))
-    local final_minutes=$((final_elapsed / 60))
-    local final_seconds=$((final_elapsed % 60))
-
-    if [[ $exit_status -eq 0 ]]; then
-        printf "\r[✓] %s (completed in %02d:%02d)\n" "$message" "$final_minutes" "$final_seconds"
-    else
-        printf "\r[✗] %s (failed in %02d:%02d)\n" "$message" "$final_minutes" "$final_seconds"
-    fi
-}
-
-# wrapper to run commands with progress indicator
-run_with_progress() {
-    local message=$1
-    shift
-
-    echo "$message"
-
-    # run command in background, capturing output to temp file
-    local tmpfile=$(mktemp)
-    local start_time=$(date +%s)
-    "$@" > "$tmpfile" 2>&1 &
-    local cmd_pid=$!
-
-    # show progress while command runs
-    show_progress $cmd_pid "$message"
-
-    # wait for command and get exit status
-    wait $cmd_pid
-    local exit_status=$?
-
-    # show final status
-    show_progress_final "$message" $exit_status $start_time
-
-    # display output if there is any, or show generic error if command failed
-    if [[ -s "$tmpfile" ]]; then
-        cat "$tmpfile"
-    elif [[ $exit_status -ne 0 ]]; then
-        echo "Error: Command failed with exit code $exit_status but produced no output"
-        echo "Command: $*"
-    fi
-    rm -f "$tmpfile"
-
-    return $exit_status
-}
 
 # build SIF and update symlink
 # only rebuild when docker image digest/id changes; always delete temp tar
@@ -621,13 +552,13 @@ build_singularity_container_update_symlink() {
         cleanup() { rm -f "$tar_name"; }
         trap cleanup EXIT INT TERM
 
-        run_with_progress "Saving docker image to tar: ${image_ref}" \
-            docker save "${image_ref}" -o "${tar_name}"
+        echo "[$(date '+%H:%M:%S')] Saving docker image to tar: ${image_ref}"
+        docker save "${image_ref}" -o "${tar_name}"
 
-        run_with_progress "Building SIF: ${sif_file} from docker-archive:${tar_name}" \
-            singularity build "${sif_file}" "docker-archive:${tar_name}"
+        echo "[$(date '+%H:%M:%S')] Building SIF: ${sif_file} from docker-archive:${tar_name}"
+        singularity build "${sif_file}" "docker-archive:${tar_name}"
 
-        echo "Creating relative symlink: ${symlink_name} -> ${sif_file}"
+        echo "[$(date '+%H:%M:%S')] Creating relative symlink: ${symlink_name} -> ${sif_file}"
         ln -sfn "${sif_file}" "${symlink_name}"
 
         # write/update meta so future runs can skip when unchanged
@@ -655,10 +586,10 @@ update_repo_branch() {
     fi
     cd "$BASE_PATH/$repo"
 
-    echo "Updating $repo to latest from $branch_to_use branch..."
+    echo "[$(date '+%H:%M:%S')] Updating $repo to latest from $branch_to_use branch..."
 
-    run_with_progress "Fetching from origin" \
-        git fetch origin
+    echo "[$(date '+%H:%M:%S')] Fetching from origin"
+    git fetch origin
 
     local stash_result
     stash_result="$(git stash push 2>&1)"
@@ -667,8 +598,8 @@ update_repo_branch() {
         echo "Error: Branch '$branch_to_use' does not exist in $repo"; exit 1
     fi
 
-    run_with_progress "Pulling latest changes from $branch_to_use" \
-        git pull origin "$branch_to_use" --rebase
+    echo "[$(date '+%H:%M:%S')] Pulling latest changes from $branch_to_use"
+    git pull origin "$branch_to_use" --rebase
 
     if [[ "$stash_result" != "No local changes to save" ]]; then
         if ! git stash pop; then
@@ -677,8 +608,8 @@ update_repo_branch() {
     fi
 
     if [[ "$repo" == "ngen" ]]; then
-        run_with_progress "Updating submodules" \
-            git submodule update --init --recursive
+        echo "[$(date '+%H:%M:%S')] Updating submodules"
+        git submodule update --init --recursive
     fi
 }
 
@@ -692,10 +623,10 @@ checkout_repo_tag() {
     fi
     cd "$BASE_PATH/$repo"
 
-    echo "Checking out $repo at tag $tag..."
+    echo "[$(date '+%H:%M:%S')] Checking out $repo at tag $tag..."
 
-    run_with_progress "Fetching from origin" \
-        git fetch origin
+    echo "[$(date '+%H:%M:%S')] Fetching from origin"
+    git fetch origin
 
     local stash_result
     stash_result="$(git stash push 2>&1)"
@@ -711,8 +642,8 @@ checkout_repo_tag() {
     fi
 
     if [[ "$repo" == "ngen" ]]; then
-        run_with_progress "Updating submodules" \
-            git submodule update --init --recursive
+        echo "[$(date '+%H:%M:%S')] Updating submodules"
+        git submodule update --init --recursive
     fi
 }
 
@@ -727,13 +658,13 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         fi
         if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
             checkout_repo_tag "ngen" "${TAGS[ngen]}"
-            run_with_progress "Building ngen Docker image" \
-                docker build --progress=plain --no-cache \
+            echo "[$(date '+%H:%M:%S')] Building ngen Docker image"
+            docker build --progress=plain --no-cache \
                 --tag="${REGISTRY}/ngen:${TAGS[ngen]}" \
                 "${BASE_PATH}/ngen"
         else
-            run_with_progress "Pulling ngen Docker image" \
-                docker pull "${REGISTRY}/ngen:${TAGS[ngen]}"
+            echo "[$(date '+%H:%M:%S')] Pulling ngen Docker image"
+            docker pull "${REGISTRY}/ngen:${TAGS[ngen]}"
         fi
     fi
 
@@ -741,12 +672,12 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         case "$repo" in
             "nwm-cal-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "pull" ]]; then
-                    run_with_progress "Pulling nwm-cal-mgr Docker image" \
-                        docker pull "${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}"
+                    echo "[$(date '+%H:%M:%S')] Pulling nwm-cal-mgr Docker image"
+                    docker pull "${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}"
                 else
                     checkout_repo_tag "nwm-cal-mgr" "${TAGS[nwm-cal-mgr]}"
-                    run_with_progress "Building nwm-cal-mgr Docker image" \
-                        docker build --progress=plain --no-cache \
+                    echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr Docker image"
+                    docker build --progress=plain --no-cache \
                         --build-arg NGEN_IMAGE_TAG="${TAGS[ngen]}" \
                         --tag="${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}" \
                         "${BASE_PATH}/nwm-cal-mgr"
@@ -756,45 +687,45 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                         checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}" || true
-                        run_with_progress "Building ngen-bmi-forcing Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" \
                             "${BASE_PATH}/ngen-forcing"
 
-                        run_with_progress "Building ngen-lumped-forcing Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
                             --tag="${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}" \
                             "${BASE_PATH}/ngen-forcing"
 
-                        run_with_progress "Building ngen-coastal Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
                             --tag="${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}" \
                             "${BASE_PATH}/ngen-forcing"
-                
+
                     else
                         echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                     fi
                 else
 
-                    run_with_progress "Pulling ngen-bmi-forcing Docker image" \
-                        docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
-                    run_with_progress "Pulling ngen-lumped-forcing Docker image" \
-                        docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}"
-                    run_with_progress "Pulling ngen-coastal Docker image..." \
-                        docker pull "${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}"
+                    echo "[$(date '+%H:%M:%S')] Pulling ngen-bmi-forcing Docker image"
+                    docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
+                    echo "[$(date '+%H:%M:%S')] Pulling ngen-lumped-forcing Docker image"
+                    docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}"
+                    echo "[$(date '+%H:%M:%S')] Pulling ngen-coastal Docker image"
+                    docker pull "${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}"
                 fi
             ;;
             "nwm-fcst-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "pull" ]]; then
-                    run_with_progress "Pulling nwm-fcst-mgr Docker image" \
-                        docker pull "${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}"
+                    echo "[$(date '+%H:%M:%S')] Pulling nwm-fcst-mgr Docker image"
+                    docker pull "${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}"
                 else
                     checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
-                    run_with_progress "Building nwm-fcst-mgr Docker image" \
-                        docker build --progress=plain --no-cache \
+                    echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr Docker image"
+                    docker build --progress=plain --no-cache \
                         --build-arg NGEN_IMAGE_TAG="${TAGS[ngen]}" \
                         --tag="${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}" \
                         "${BASE_PATH}/nwm-fcst-mgr"
@@ -802,12 +733,12 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
             "nwm-verf")
                 if [[ "${IMAGE_SOURCE[nwm-verf]}" == "pull" ]]; then
-                    run_with_progress "Pulling nwm-verf Docker image" \
-                        docker pull "${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}"
+                    echo "[$(date '+%H:%M:%S')] Pulling nwm-verf Docker image"
+                    docker pull "${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}"
                 else
                     checkout_repo_tag "nwm-verf" "${TAGS[nwm-verf]}"
-                    run_with_progress "Building nwm-verf Docker image" \
-                        docker build --progress=plain --no-cache \
+                    echo "[$(date '+%H:%M:%S')] Building nwm-verf Docker image"
+                    docker build --progress=plain --no-cache \
                         --build-arg NWM_EVAL_MGR_TAG="${TAGS[nwm-eval-mgr]}" \
                         --tag="${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}" \
                         "${BASE_PATH}/nwm-verf"
@@ -853,16 +784,16 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
         if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
             if [[ -d "${BASE_PATH}/ngen" ]]; then
                 update_repo_branch "ngen" "development"
-                run_with_progress "Building ngen (development) Docker image" \
-                    docker build --progress=plain --no-cache \
+                echo "[$(date '+%H:%M:%S')] Building ngen (development) Docker image"
+                docker build --progress=plain --no-cache \
                     --tag="${REGISTRY}/ngen:latest" \
                     "${BASE_PATH}/ngen"
             else
                 echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
             fi
         else
-            run_with_progress "Pulling ngen (development) Docker image" \
-                docker pull "${REGISTRY}/ngen:latest"
+            echo "[$(date '+%H:%M:%S')] Pulling ngen (development) Docker image"
+            docker pull "${REGISTRY}/ngen:latest"
         fi
     fi
 
@@ -880,8 +811,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
                         update_repo_branch "nwm-cal-mgr" "development"
-                        run_with_progress "Building nwm-cal-mgr (development) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (development) Docker image"
+                        docker build --progress=plain --no-cache \
                             --build-arg NGEN_IMAGE_TAG="latest" \
                             --tag="${REGISTRY}/nwm-cal-mgr:latest" \
                             "${BASE_PATH}/nwm-cal-mgr"
@@ -894,8 +825,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
                         update_repo_branch "nwm-fcst-mgr" "development"
-                        run_with_progress "Building nwm-fcst-mgr (development) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (development) Docker image"
+                        docker build --progress=plain --no-cache \
                             --build-arg NGEN_IMAGE_TAG="latest" \
                             --tag="${REGISTRY}/nwm-fcst-mgr:latest" \
                             "${BASE_PATH}/nwm-fcst-mgr"
@@ -908,8 +839,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-verf]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-verf" ]]; then
                         update_repo_branch "nwm-verf" "development"
-                        run_with_progress "Building nwm-verf (development) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building nwm-verf (development) Docker image"
+                        docker build --progress=plain --no-cache \
                             --build-arg NWM_EVAL_MGR_TAG="development" \
                             --tag="${REGISTRY}/nwm-verf:latest" \
                             "${BASE_PATH}/nwm-verf"
@@ -922,20 +853,19 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                         update_repo_branch "ngen-forcing" "development"
-                        run_with_progress "Building ngen-bmi-forcing (development) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (development) Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
                             "${BASE_PATH}/ngen-forcing"
 
-                                    
-                        run_with_progress "Building ngen-lumped-forcing (development) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing (development) Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
                             --tag="${REGISTRY}/ngen-lumped-forcing:latest" \
                             "${BASE_PATH}/ngen-forcing"
-                        run_with_progress "Building ngen-coastal (development) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal (development) Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
                             --tag="${REGISTRY}/ngen-coastal:latest" \
                             "${BASE_PATH}/ngen-forcing"
@@ -959,10 +889,10 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 IMAGE="${REGISTRY}/${docker_img}:latest"
 
                 if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
-                    run_with_progress "Pulling docker image for SIF: $IMAGE" \
-                        docker pull "$IMAGE"
+                    echo "[$(date '+%H:%M:%S')] Pulling docker image for SIF: $IMAGE"
+                    docker pull "$IMAGE"
                 else
-                    echo "Using locally built image for SIF: $IMAGE"
+                    echo "[$(date '+%H:%M:%S')] Using locally built image for SIF: $IMAGE"
                 fi
 
                 build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "latest"
@@ -992,8 +922,8 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
         if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
             if [[ -d "${BASE_PATH}/ngen" ]]; then
                 update_repo_branch "ngen" "feature"
-                run_with_progress "Building ngen (feature) Docker image" \
-                    docker build --progress=plain --no-cache \
+                echo "[$(date '+%H:%M:%S')] Building ngen (feature) Docker image"
+                docker build --progress=plain --no-cache \
                     --tag="${REGISTRY}/ngen:feature" \
                     "${BASE_PATH}/ngen"
             else
@@ -1001,8 +931,8 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
             fi
         else
             ngen_tag="${TAGS[ngen]:-feature}"
-            run_with_progress "Pulling ngen Docker image with tag: ${ngen_tag}" \
-                docker pull "${REGISTRY}/ngen:${ngen_tag}"
+            echo "[$(date '+%H:%M:%S')] Pulling ngen Docker image with tag: ${ngen_tag}"
+            docker pull "${REGISTRY}/ngen:${ngen_tag}"
             # retag as :feature for consistency with build workflow
             docker tag "${REGISTRY}/ngen:${ngen_tag}" "${REGISTRY}/ngen:feature"
         fi
@@ -1022,8 +952,8 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
                         update_repo_branch "nwm-cal-mgr" "feature"
-                        run_with_progress "Building nwm-cal-mgr (feature) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (feature) Docker image"
+                        docker build --progress=plain --no-cache \
                             --build-arg NGEN_IMAGE_TAG="feature" \
                             --tag="${REGISTRY}/nwm-cal-mgr:feature" \
                             "${BASE_PATH}/nwm-cal-mgr"
@@ -1036,8 +966,8 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
                         update_repo_branch "nwm-fcst-mgr" "feature"
-                        run_with_progress "Building nwm-fcst-mgr (feature) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (feature) Docker image"
+                        docker build --progress=plain --no-cache \
                             --build-arg NGEN_IMAGE_TAG="feature" \
                             --tag="${REGISTRY}/nwm-fcst-mgr:feature" \
                             "${BASE_PATH}/nwm-fcst-mgr"
@@ -1050,8 +980,8 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-verf]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-verf" ]]; then
                         update_repo_branch "nwm-verf" "feature"
-                        run_with_progress "Building nwm-verf (feature) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building nwm-verf (feature) Docker image"
+                        docker build --progress=plain --no-cache \
                             --build-arg NWM_EVAL_MGR_TAG="feature" \
                             --tag="${REGISTRY}/nwm-verf:feature" \
                             "${BASE_PATH}/nwm-verf"
@@ -1064,22 +994,20 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                         update_repo_branch "ngen-forcing" "feature"
-                        run_with_progress "Building ngen-bmi-forcing (feature) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (feature) Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:feature" \
                             "${BASE_PATH}/ngen-forcing"
 
-                        
-
-                        run_with_progress "Building ngen-lumped-forcing (feature) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing (feature) Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
                             --tag="${REGISTRY}/ngen-lumped-forcing:feature" \
                             "${BASE_PATH}/ngen-forcing"
 
-                        run_with_progress "Building ngen-coastal (feature) Docker image" \
-                            docker build --progress=plain --no-cache \
+                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal (feature) Docker image"
+                        docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
                             --tag="${REGISTRY}/ngen-coastal:feature" \
                             "${BASE_PATH}/ngen-forcing"
@@ -1105,8 +1033,8 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                     # use tag from TAGS array if pulling, otherwise default to :feature
                     pull_tag="${TAGS[$repo]:-feature}"
                     pull_image="${REGISTRY}/${docker_img}:${pull_tag}"
-                    run_with_progress "Pulling docker image for SIF: $pull_image" \
-                        docker pull "$pull_image"
+                    echo "[$(date '+%H:%M:%S')] Pulling docker image for SIF: $pull_image"
+                    docker pull "$pull_image"
 
                     # retag as :feature for consistency
                     if [[ "$pull_tag" != "feature" ]]; then
@@ -1115,7 +1043,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                     IMAGE="${REGISTRY}/${docker_img}:feature"
                 else
                     IMAGE="${REGISTRY}/${docker_img}:feature"
-                    echo "Using locally built image for SIF: $IMAGE"
+                    echo "[$(date '+%H:%M:%S')] Using locally built image for SIF: $IMAGE"
                 fi
 
                 build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "feature"
