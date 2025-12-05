@@ -89,14 +89,14 @@ else
 fi
 
 # add ngencerf-server logrotate job to /etc/cron.d
-# Note: We added 'root' before the command, which is required for /etc/cron.d files
+# note: added root before the command, which is required for /etc/cron.d files
 CRON_FILE='/etc/cron.d/ngencerf-logrotate'
 CRON_JOB='0 10,22 * * * root [ -f /ngencerf-app/ngencerf-server/logrotate-ngencerf.prod.conf ] && /usr/sbin/logrotate -f /ngencerf-app/ngencerf-server/logrotate-ngencerf.prod.conf'
 
 echo "$CRON_JOB" | sudo tee "$CRON_FILE" > /dev/null
 sudo chmod 0644 "$CRON_FILE"
 
-# Set permissions on the logrotate config if it exists
+# set permissions on the logrotate config if it exists
 if [ -f "$LOGROTATE_CONF" ]; then
     sudo chown root:root "$LOGROTATE_CONF"
     sudo chmod 0644 "$LOGROTATE_CONF"
