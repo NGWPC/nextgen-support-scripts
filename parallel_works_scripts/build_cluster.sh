@@ -122,8 +122,14 @@ set_image_source_defaults() {
     # initialize all to empty
     for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]=''; done
 
-    # set default for each repo
-    IMAGE_SOURCE["ngen"]="build"
+    # for feature builds, force all to "build" (no pulling allowed)
+    if [[ "$BUILD_TYPE" == "feature" ]]; then
+        for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]="build"; done
+        return
+    fi
+
+    # set default for each repo (non-feature builds)
+    IMAGE_SOURCE["ngen"]="pull"
     IMAGE_SOURCE["nwm-cal-mgr"]="build"
     IMAGE_SOURCE["nwm-fcst-mgr"]="build"
     IMAGE_SOURCE["nwm-verf"]="pull"
@@ -393,18 +399,21 @@ echo "Build type selected: $BUILD_TYPE"
 echo "Selected repos: ${SELECTED_REPOS[*]}"
 
 if [[ -t 0 ]]; then
-    for repo in "${SELECTED_REPOS[@]}"; do
-        if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
-            default_mode="${IMAGE_SOURCE[$repo]}"
-            read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans
-            if [[ -n "$ans" ]]; then
-                if [[ "$ans" != "build" && "$ans" != "pull" ]]; then
-                    echo "Invalid choice '${ans}' for ${repo}. Use build or pull."; exit 1
+    # skip image source prompting for feature builds (always build)
+    if [[ "$BUILD_TYPE" != "feature" ]]; then
+        for repo in "${SELECTED_REPOS[@]}"; do
+            if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
+                default_mode="${IMAGE_SOURCE[$repo]}"
+                read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans
+                if [[ -n "$ans" ]]; then
+                    if [[ "$ans" != "build" && "$ans" != "pull" ]]; then
+                        echo "Invalid choice '${ans}' for ${repo}. Use build or pull."; exit 1
+                    fi
+                    IMAGE_SOURCE["$repo"]="$ans"
                 fi
-                IMAGE_SOURCE["$repo"]="$ans"
             fi
-        fi
-    done
+        done
+    fi
 
     # branch prompting after image sources (only for feature builds in interactive mode)
     if [[ "$BUILD_TYPE" == "feature" ]]; then
@@ -416,9 +425,16 @@ if [[ -t 0 ]]; then
                 else
                     read -p "Enter ${repo} branch: " ans
                 fi
-                if [[ -n "$ans" ]]; then
-                    REPO_BRANCHES["$repo"]="$ans"
-                fi
+                # require a branch name (no default) for feature builds
+                while [[ -z "$ans" ]]; do
+                    echo "Error: Branch name cannot be empty for feature builds"
+                    if [[ "$repo" == "ngen-forcing" ]]; then
+                        read -p "Enter ngen-forcing branch (shared for bmi/lumped/coastal): " ans
+                    else
+                        read -p "Enter ${repo} branch: " ans
+                    fi
+                done
+                REPO_BRANCHES["$repo"]="$ans"
             fi
         done
     fi
@@ -442,7 +458,33 @@ get_repo_branch() {
     fi
 }
 
-# prompt for dependency tags in interactive mode
+# get the Docker tag to use for a repo based on build type
+# for feature builds, returns the branch name (sanitized)
+# for development builds, returns "latest"
+# for release builds, returns the tag from TAGS array
+get_docker_tag_for_repo() {
+    local repo="$1"
+    local build_type="$2"
+
+    if [[ "$build_type" == "development" ]]; then
+        echo "latest"
+    elif [[ "$build_type" == "feature" ]]; then
+        # get branch name for this repo
+        local branch="${REPO_BRANCHES[$repo]:-}"
+        if [[ -z "$branch" ]]; then
+            echo "Error: No branch specified for $repo in feature build" >&2
+            exit 1
+        fi
+        # sanitize branch name for Docker tag (replace / with -)
+        echo "${branch//\//-}"
+    else
+        # release build
+        echo "${TAGS[$repo]:-}"
+    fi
+}
+
+# prompt for dependency tags/branches in interactive mode
+# this is used for release and feature builds to collect dependency information
 prompt_dependency_tags() {
     local build_type="$1"
 
@@ -450,51 +492,56 @@ prompt_dependency_tags() {
     [[ "$build_type" != "feature" && "$build_type" != "release" ]] && return 0
     [[ ! -t 0 ]] && return 0  # not interactive
 
-    # check if ngen is selected or needed
-    local ngen_selected=false
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-        ngen_selected=true
-    fi
-
-    # check if nwm-cal-mgr or nwm-fcst-mgr is selected
-    local mgr_selected=false
-    if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
-        mgr_selected=true
-    fi
-
-    # prompt for ngen-forcing tag if ngen is being built
-    if [[ "$ngen_selected" == "true" ]]; then
-        local default_tag="feature"
-        if [[ -z "${DEPENDENCY_TAGS[ngen]:-}" ]]; then
-            read -p "Which ngen-forcing Docker image tag do you want ngen to use? (default: ${default_tag}): " ans
-            DEPENDENCY_TAGS["ngen"]="${ans:-$default_tag}"
+    if [[ "$build_type" == "release" ]]; then
+        # for release builds, prompt for dependency tags only if not already set
+        # ngen depends on ngen-forcing
+        if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${TAGS[ngen-forcing]:-}" ]]; then
+            read -p "Enter ngen-forcing tag (used by ngen): " TAGS[ngen-forcing]
         fi
-    fi
 
-    # prompt for ngen tag if nwm-cal-mgr or nwm-fcst-mgr is selected
-    if [[ "$mgr_selected" == "true" ]]; then
-        local default_tag="feature"
-        if [[ -z "${DEPENDENCY_TAGS[nwm-cal-mgr]:-}" ]]; then
-            read -p "Which ngen Docker image tag do you want nwm-cal-mgr/nwm-fcst-mgr to use? (default: ${default_tag}): " ans
-            local tag="${ans:-$default_tag}"
-            DEPENDENCY_TAGS["nwm-cal-mgr"]="$tag"
-            DEPENDENCY_TAGS["nwm-fcst-mgr"]="$tag"
+        # nwm-cal-mgr and nwm-fcst-mgr depend on ngen
+        if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
+            if [[ -z "${TAGS[ngen]:-}" ]]; then
+                read -p "Enter ngen tag (used by nwm-cal-mgr/nwm-fcst-mgr): " TAGS[ngen]
+            fi
         fi
-    fi
 
-    # prompt for nwm-eval-mgr branch/tag if nwm-verf is selected
-    if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]]; then
-        if [[ "$build_type" == "feature" ]]; then
-            local default_branch="feature"
-            if [[ -z "${DEPENDENCY_TAGS[nwm-verf]:-}" ]]; then
-                read -p "Which nwm-eval-mgr branch do you want nwm-verf to use? (default: ${default_branch}): " ans
-                DEPENDENCY_TAGS["nwm-verf"]="${ans:-$default_branch}"
+        # nwm-verf depends on nwm-eval-mgr
+        if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]] && [[ -z "${TAGS[nwm-eval-mgr]:-}" ]]; then
+            read -p "Enter nwm-eval-mgr tag (used by nwm-verf): " TAGS[nwm-eval-mgr]
+        fi
+    elif [[ "$build_type" == "feature" ]]; then
+        # for feature builds, prompt for dependency branches only if not already set
+        # ngen depends on ngen-forcing
+        if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
+            read -p "Enter ngen-forcing branch (used by ngen): " ans
+            if [[ -z "$ans" ]]; then
+                echo "Error: ngen-forcing branch is required for building ngen"
+                exit 1
             fi
-        elif [[ "$build_type" == "release" ]]; then
-            if [[ -z "${DEPENDENCY_TAGS[nwm-verf]:-}" ]]; then
-                read -p "Which nwm-eval-mgr release tag do you want nwm-verf to use?: " ans
-                DEPENDENCY_TAGS["nwm-verf"]="${ans}"
+            REPO_BRANCHES["ngen-forcing"]="$ans"
+        fi
+
+        # nwm-cal-mgr and nwm-fcst-mgr depend on ngen
+        if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
+            if [[ -z "${REPO_BRANCHES[ngen]:-}" ]]; then
+                read -p "Enter ngen branch (used by nwm-cal-mgr/nwm-fcst-mgr): " ans
+                if [[ -z "$ans" ]]; then
+                    echo "Error: ngen branch is required"
+                    exit 1
+                fi
+                REPO_BRANCHES["ngen"]="$ans"
             fi
+        fi
+
+        # nwm-verf depends on nwm-eval-mgr (branch)
+        if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]] && [[ -z "${DEPENDENCY_TAGS[nwm-verf]:-}" ]]; then
+            read -p "Enter nwm-eval-mgr branch (used by nwm-verf): " ans
+            if [[ -z "$ans" ]]; then
+                echo "Error: nwm-eval-mgr branch is required"
+                exit 1
+            fi
+            DEPENDENCY_TAGS["nwm-verf"]="$ans"
         fi
     fi
 }
@@ -527,6 +574,54 @@ reorder_repos_by_dependency() {
     done
 
     SELECTED_REPOS=("${ordered[@]}")
+}
+
+# auto-include dependencies in SELECTED_REPOS based on what's selected
+# ngen depends on ngen-forcing
+# nwm-cal-mgr depends on ngen (and transitively ngen-forcing)
+# nwm-fcst-mgr depends on ngen (and transitively ngen-forcing)
+auto_include_dependencies() {
+    local added_deps=()
+
+    # check if ngen is selected and add ngen-forcing if missing
+    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
+            SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
+            added_deps+=("ngen-forcing")
+            echo "Auto-adding dependency: ngen-forcing (required by ngen)"
+        fi
+    fi
+
+    # check if nwm-cal-mgr is selected and add ngen + ngen-forcing if missing
+    if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]]; then
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+            SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
+            added_deps+=("ngen")
+            echo "Auto-adding dependency: ngen (required by nwm-cal-mgr)"
+        fi
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
+            SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
+            added_deps+=("ngen-forcing")
+            echo "Auto-adding dependency: ngen-forcing (required by ngen)"
+        fi
+    fi
+
+    # check if nwm-fcst-mgr is selected and add ngen + ngen-forcing if missing
+    if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+            SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
+            added_deps+=("ngen")
+            echo "Auto-adding dependency: ngen (required by nwm-fcst-mgr)"
+        fi
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
+            SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
+            added_deps+=("ngen-forcing")
+            echo "Auto-adding dependency: ngen-forcing (required by ngen)"
+        fi
+    fi
+
+    # return whether any dependencies were added (for informational purposes)
+    [[ ${#added_deps[@]} -gt 0 ]]
 }
 
 # validate that dependencies are satisfied
@@ -565,40 +660,52 @@ declare -A TAGS
 if [[ "$BUILD_TYPE" == "release" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         case $repo in
-            ngencerf-ui)     read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui] ;;
-            ngencerf-server) read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server] ;;
-            ngencerf-docker) read -p "Enter ngencerf-docker tag: " TAGS[ngencerf-docker] ;;
+            ngencerf-ui)
+                if [[ -z "${TAGS[ngencerf-ui]:-}" ]]; then
+                    read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui]
+                fi
+            ;;
+            ngencerf-server)
+                if [[ -z "${TAGS[ngencerf-server]:-}" ]]; then
+                    read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server]
+                fi
+            ;;
+            ngencerf-docker)
+                if [[ -z "${TAGS[ngencerf-docker]:-}" ]]; then
+                    read -p "Enter ngencerf-docker tag: " TAGS[ngencerf-docker]
+                fi
+            ;;
+            ngen-forcing)
+                if [[ -z "${TAGS[ngen-forcing]:-}" ]]; then
+                    read -p "Enter ngen-forcing tag (shared for bmi/lumped/coastal): " TAGS[ngen-forcing]
+                fi
+            ;;
             ngen)
                 if [[ -z "${TAGS[ngen]:-}" ]]; then
                     read -p "Enter ngen tag: " TAGS[ngen]
                 fi
-                if [[ -z "${TAGS[ngen-forcing]:-}" ]]; then
-                    read -p "Enter ngen-forcing tag (used by ngen): " TAGS[ngen-forcing]
-                fi
             ;;
             nwm-cal-mgr)
-                read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
-                if [[ -z "${TAGS[ngen]:-}" ]]; then
-                    read -p "Enter ngen tag (required by nwm-cal-mgr): " TAGS[ngen]
+                if [[ -z "${TAGS[nwm-cal-mgr]:-}" ]]; then
+                    read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
                 fi
             ;;
-            ngen-forcing)    read -p "Enter ngen-forcing tag: " TAGS[ngen-forcing] ;;
             nwm-fcst-mgr)
-                read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
-                if [[ -z "${TAGS[ngen]:-}" ]]; then
-                    read -p "Enter ngen tag (required by nwm-fcst-mgr): " TAGS[ngen]
+                if [[ -z "${TAGS[nwm-fcst-mgr]:-}" ]]; then
+                    read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
                 fi
             ;;
             nwm-verf)
-                read -p "Enter nwm-verf tag: " TAGS[nwm-verf]
-                read -p "Enter nwm-eval-mgr tag: " TAGS[nwm-eval-mgr]
+                if [[ -z "${TAGS[nwm-verf]:-}" ]]; then
+                    read -p "Enter nwm-verf tag: " TAGS[nwm-verf]
+                fi
             ;;
         esac
     done
 
     # validate that all required tags have been provided
     for repo in "${SELECTED_REPOS[@]}"; do
-        if [[ -z "${TAGS[$repo]:-}" ]] && [[ "$repo" != "ngen" ]]; then
+        if [[ -z "${TAGS[$repo]:-}" ]]; then
             echo "Error: Tag for '$repo' cannot be empty"; exit 1
         fi
     done
@@ -609,41 +716,10 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     fi
 fi
 
-# --- tag prompts for feature builds when pulling ---
-if [[ "$BUILD_TYPE" == "feature" ]]; then
-    for repo in "${SELECTED_REPOS[@]}"; do
-        # only prompt for tags if the repo is set to pull (not build)
-        if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]] && [[ "${IMAGE_SOURCE[$repo]}" == "pull" ]]; then
-            case $repo in
-                ngen)
-                    if [[ -z "${TAGS[ngen]:-}" ]]; then
-                        read -p "Enter Docker tag to pull for ngen (e.g., latest, development, v1.0): " TAGS[ngen]
-                    fi
-                ;;
-                nwm-cal-mgr)
-                    read -p "Enter Docker tag to pull for nwm-cal-mgr: " TAGS[nwm-cal-mgr]
-                    if [[ -z "${TAGS[ngen]:-}" && "$NGEN_NEEDED" == "true" ]]; then
-                        read -p "Enter Docker tag to pull for ngen (required by nwm-cal-mgr): " TAGS[ngen]
-                    fi
-                ;;
-                ngen-forcing)
-                    read -p "Enter Docker tag to pull for ngen-forcing: " TAGS[ngen-forcing]
-                ;;
-                nwm-fcst-mgr)
-                    read -p "Enter Docker tag to pull for nwm-fcst-mgr: " TAGS[nwm-fcst-mgr]
-                    if [[ -z "${TAGS[ngen]:-}" && "$NGEN_NEEDED" == "true" ]]; then
-                        read -p "Enter Docker tag to pull for ngen (required by nwm-fcst-mgr): " TAGS[ngen]
-                    fi
-                ;;
-                nwm-verf)
-                    read -p "Enter Docker tag to pull for nwm-verf: " TAGS[nwm-verf]
-                ;;
-            esac
-        fi
-    done
-fi
+# auto-include missing dependencies
+auto_include_dependencies
 
-# prompt for dependency tags
+# prompt for dependency tags/branches (after auto-include so all repos are in SELECTED_REPOS)
 prompt_dependency_tags "$BUILD_TYPE"
 
 # reorder repos to respect dependencies
@@ -679,11 +755,13 @@ build_singularity_container_update_symlink() {
     local sif_file
     local meta_file="${sif_dir}/${sif_base}.meta"
 
-    # naming: dev -> latest; rc -> feature; release -> explicit tag
+    # naming: dev -> latest; feature -> branch name; release -> explicit tag
     if [[ "$build_type" == "development" ]]; then
         sif_file="${sif_base}-latest-${ts}.sif"
     elif [[ "$build_type" == "feature" ]]; then
-        sif_file="${sif_base}-feature-${ts}.sif"
+        # use branch name for feature builds (sanitize by replacing / with -)
+        local sanitized_tag="${tag//\//-}"
+        sif_file="${sif_base}-${sanitized_tag}-${ts}.sif"
     else
         sif_file="${sif_base}-${tag}-${ts}.sif"
     fi
@@ -851,8 +929,11 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
             checkout_repo_tag "ngen" "${TAGS[ngen]}"
 
-            # use ngen-forcing tag (prompted when ngen is selected)
-            local forcing_tag="${TAGS[ngen-forcing]}"
+            # validate ngen-forcing tag is set (required dependency)
+            if [[ -z "${TAGS[ngen-forcing]:-}" ]]; then
+                echo "Error: ngen-forcing tag not set (required by ngen)"; exit 1
+            fi
+            forcing_tag="${TAGS[ngen-forcing]}"
 
             echo "[$(date '+%H:%M:%S')] Building ngen Docker image with NGEN_FORCING_TAG=${forcing_tag}"
             docker build --progress=plain --no-cache \
@@ -873,7 +954,13 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                     docker pull "${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}"
                 else
                     checkout_repo_tag "nwm-cal-mgr" "${TAGS[nwm-cal-mgr]}"
-                    echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr Docker image"
+
+                    # validate ngen tag is set (required dependency)
+                    if [[ -z "${TAGS[ngen]:-}" ]]; then
+                        echo "Error: ngen tag not set (required by nwm-cal-mgr)"; exit 1
+                    fi
+
+                    echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr Docker image with NGEN_IMAGE_TAG=${TAGS[ngen]}"
                     docker build --progress=plain --no-cache \
                         --build-arg NGEN_IMAGE_TAG="${TAGS[ngen]}" \
                         --tag="${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}" \
@@ -889,7 +976,13 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                     docker pull "${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}"
                 else
                     checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
-                    echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr Docker image"
+
+                    # validate ngen tag is set (required dependency)
+                    if [[ -z "${TAGS[ngen]:-}" ]]; then
+                        echo "Error: ngen tag not set (required by nwm-fcst-mgr)"; exit 1
+                    fi
+
+                    echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr Docker image with NGEN_IMAGE_TAG=${TAGS[ngen]}"
                     docker build --progress=plain --no-cache \
                         --build-arg NGEN_IMAGE_TAG="${TAGS[ngen]}" \
                         --tag="${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}" \
@@ -935,15 +1028,6 @@ fi
 if [[ "$BUILD_TYPE" == "development" ]]; then
     cd "$BASE_PATH"
 
-    # check if ngen is needed as a dependency for other repos
-    NGEN_NEEDED=false
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-        NGEN_NEEDED=true
-    elif [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
-        NGEN_NEEDED=true
-        echo "Note: ngen is required as a dependency for nwm-cal-mgr/nwm-fcst-mgr"
-    fi
-
     # handle ngen-forcing first if it's selected and building
     if [[ " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]] && [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
         if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
@@ -958,8 +1042,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
         fi
     fi
 
-    # build or pull ngen first so downstream builds may use ngen:latest
-    if [[ "$NGEN_NEEDED" == "true" ]]; then
+    # build or pull ngen first if selected, so downstream builds may use ngen:latest
+    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
         if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
             if [[ -d "${BASE_PATH}/ngen" ]]; then
                 update_repo_branch "ngen" "development"
@@ -1069,75 +1153,42 @@ fi
 if [[ "$BUILD_TYPE" == "feature" ]]; then
     cd "$BASE_PATH"
 
-    # check if ngen-forcing is needed as a dependency for ngen
-    NGEN_FORCING_NEEDED=false
+    # handle ngen-forcing first (dependency of ngen) if it's in SELECTED_REPOS
     if [[ " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
-        NGEN_FORCING_NEEDED=true
-    elif [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-        NGEN_FORCING_NEEDED=true
-        echo "Note: ngen-forcing is required as a dependency for ngen (if building ngen from source)"
-    fi
+        if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
+            update_repo_branch "ngen-forcing" "feature"
 
-    # check if ngen is needed as a dependency for other repos
-    NGEN_NEEDED=false
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-        NGEN_NEEDED=true
-    elif [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
-        NGEN_NEEDED=true
-        echo "Note: ngen is required as a dependency for nwm-cal-mgr/nwm-fcst-mgr"
-    fi
+            # get Docker tag based on branch name
+            forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
 
-    # handle ngen-forcing first (dependency of ngen)
-    if [[ "$NGEN_FORCING_NEEDED" == "true" ]]; then
-        if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
-            if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
-                update_repo_branch "ngen-forcing" "feature"
-                echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (feature) Docker image"
-                docker build --progress=plain --no-cache \
-                    --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
-                    --tag="${REGISTRY}/ngen-bmi-forcing:feature" \
-                    "${BASE_PATH}/ngen-forcing"
-            else
-                echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
-            fi
+            echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (feature) Docker image with tag: ${forcing_docker_tag}"
+            docker build --progress=plain --no-cache \
+                --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
+                --tag="${REGISTRY}/ngen-bmi-forcing:${forcing_docker_tag}" \
+                "${BASE_PATH}/ngen-forcing"
         else
-            # pulling ngen-forcing
-            forcing_tag="${TAGS[ngen-forcing]:-feature}"
-            echo "[$(date '+%H:%M:%S')] Pulling ngen-bmi-forcing Docker image with tag: ${forcing_tag}"
-            docker pull "${REGISTRY}/ngen-bmi-forcing:${forcing_tag}"
-
-            # retag as :feature for consistency
-            if [[ "$forcing_tag" != "feature" ]]; then
-                docker tag "${REGISTRY}/ngen-bmi-forcing:${forcing_tag}" "${REGISTRY}/ngen-bmi-forcing:feature"
-            fi
+            echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
         fi
     fi
 
-    # build or pull ngen first so downstream builds may use ngen:feature
-    if [[ "$NGEN_NEEDED" == "true" ]]; then
-        if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
-            if [[ -d "${BASE_PATH}/ngen" ]]; then
-                update_repo_branch "ngen" "feature"
+    # build ngen first if selected, so downstream builds may use it
+    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+        if [[ -d "${BASE_PATH}/ngen" ]]; then
+            update_repo_branch "ngen" "feature"
 
-                # determine ngen-forcing tag to use
-                local ngen_forcing_tag="${DEPENDENCY_TAGS[ngen]:-feature}"
+            # get Docker tag for ngen based on its branch
+            ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
 
-                echo "[$(date '+%H:%M:%S')] Building ngen (feature) Docker image with NGEN_FORCING_TAG=${ngen_forcing_tag}"
-                docker build --progress=plain --no-cache \
-                    --build-arg NGEN_FORCING_TAG="${ngen_forcing_tag}" \
-                    --tag="${REGISTRY}/ngen:feature" \
-                    "${BASE_PATH}/ngen"
-            else
-                echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
-            fi
+            # get ngen-forcing tag to use as build arg (from ngen-forcing's branch)
+            ngen_forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
+
+            echo "[$(date '+%H:%M:%S')] Building ngen (feature) Docker image with NGEN_FORCING_TAG=${ngen_forcing_docker_tag}"
+            docker build --progress=plain --no-cache \
+                --build-arg NGEN_FORCING_TAG="${ngen_forcing_docker_tag}" \
+                --tag="${REGISTRY}/ngen:${ngen_docker_tag}" \
+                "${BASE_PATH}/ngen"
         else
-            ngen_tag="${TAGS[ngen]:-feature}"
-            echo "[$(date '+%H:%M:%S')] Pulling ngen Docker image with tag: ${ngen_tag}"
-            docker pull "${REGISTRY}/ngen:${ngen_tag}"
-            # retag as :feature for consistency with build workflow
-            if [[ "$ngen_tag" != "feature" ]]; then
-                docker tag "${REGISTRY}/ngen:${ngen_tag}" "${REGISTRY}/ngen:feature"
-            fi
+            echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
         fi
     fi
 
@@ -1152,57 +1203,63 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
         # per-repo local build paths (mirrors development but with rc tags/args)
         case "$repo" in
             "nwm-cal-mgr")
-                if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "build" ]]; then
-                    if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
-                        update_repo_branch "nwm-cal-mgr" "feature"
+                if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
+                    update_repo_branch "nwm-cal-mgr" "feature"
 
-                        # determine ngen tag to use
-                        local ngen_tag="${DEPENDENCY_TAGS[nwm-cal-mgr]:-feature}"
+                    # get Docker tag for nwm-cal-mgr based on its branch
+                    cal_mgr_docker_tag="$(get_docker_tag_for_repo "nwm-cal-mgr" "$BUILD_TYPE")"
 
-                        echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (feature) Docker image with NGEN_IMAGE_TAG=${ngen_tag}"
-                        docker build --progress=plain --no-cache \
-                            --build-arg NGEN_IMAGE_TAG="${ngen_tag}" \
-                            --tag="${REGISTRY}/nwm-cal-mgr:feature" \
-                            "${BASE_PATH}/nwm-cal-mgr"
-                    else
-                        echo "Error: ${BASE_PATH}/nwm-cal-mgr not found; cannot build."; exit 1
-                    fi
+                    # get ngen tag to use as build arg (from ngen's branch)
+                    ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
+
+                    echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (feature) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
+                    docker build --progress=plain --no-cache \
+                        --build-arg NGEN_IMAGE_TAG="${ngen_docker_tag}" \
+                        --tag="${REGISTRY}/nwm-cal-mgr:${cal_mgr_docker_tag}" \
+                        "${BASE_PATH}/nwm-cal-mgr"
+                else
+                    echo "Error: ${BASE_PATH}/nwm-cal-mgr not found; cannot build."; exit 1
                 fi
             ;;
             "nwm-fcst-mgr")
-                if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "build" ]]; then
-                    if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
-                        update_repo_branch "nwm-fcst-mgr" "feature"
+                if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
+                    update_repo_branch "nwm-fcst-mgr" "feature"
 
-                        # determine ngen tag to use
-                        local ngen_tag="${DEPENDENCY_TAGS[nwm-fcst-mgr]:-feature}"
+                    # get Docker tag for nwm-fcst-mgr based on its branch
+                    fcst_mgr_docker_tag="$(get_docker_tag_for_repo "nwm-fcst-mgr" "$BUILD_TYPE")"
 
-                        echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (feature) Docker image with NGEN_IMAGE_TAG=${ngen_tag}"
-                        docker build --progress=plain --no-cache \
-                            --build-arg NGEN_IMAGE_TAG="${ngen_tag}" \
-                            --tag="${REGISTRY}/nwm-fcst-mgr:feature" \
-                            "${BASE_PATH}/nwm-fcst-mgr"
-                    else
-                        echo "Error: ${BASE_PATH}/nwm-fcst-mgr not found; cannot build."; exit 1
-                    fi
+                    # get ngen tag to use as build arg (from ngen's branch)
+                    ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
+
+                    echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (feature) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
+                    docker build --progress=plain --no-cache \
+                        --build-arg NGEN_IMAGE_TAG="${ngen_docker_tag}" \
+                        --tag="${REGISTRY}/nwm-fcst-mgr:${fcst_mgr_docker_tag}" \
+                        "${BASE_PATH}/nwm-fcst-mgr"
+                else
+                    echo "Error: ${BASE_PATH}/nwm-fcst-mgr not found; cannot build."; exit 1
                 fi
             ;;
             "nwm-verf")
-                if [[ "${IMAGE_SOURCE[nwm-verf]}" == "build" ]]; then
-                    if [[ -d "${BASE_PATH}/nwm-verf" ]]; then
-                        update_repo_branch "nwm-verf" "feature"
+                if [[ -d "${BASE_PATH}/nwm-verf" ]]; then
+                    update_repo_branch "nwm-verf" "feature"
 
-                        # determine nwm-eval-mgr tag to use
-                        local nwm_eval_mgr_tag="${DEPENDENCY_TAGS[nwm-verf]:-feature}"
+                    # get Docker tag for nwm-verf based on its branch
+                    verf_docker_tag="$(get_docker_tag_for_repo "nwm-verf" "$BUILD_TYPE")"
 
-                        echo "[$(date '+%H:%M:%S')] Building nwm-verf (feature) Docker image with NWM_EVAL_MGR_TAG=${nwm_eval_mgr_tag}"
-                        docker build --progress=plain --no-cache \
-                            --build-arg NWM_EVAL_MGR_TAG="${nwm_eval_mgr_tag}" \
-                            --tag="${REGISTRY}/nwm-verf:feature" \
-                            "${BASE_PATH}/nwm-verf"
-                    else
-                        echo "Error: ${BASE_PATH}/nwm-verf not found; cannot build."; exit 1
+                    # nwm-eval-mgr branch is stored in DEPENDENCY_TAGS[nwm-verf]
+                    nwm_eval_mgr_branch="${DEPENDENCY_TAGS[nwm-verf]:-}"
+                    if [[ -z "$nwm_eval_mgr_branch" ]]; then
+                        nwm_eval_mgr_branch="development"
                     fi
+
+                    echo "[$(date '+%H:%M:%S')] Building nwm-verf (feature) Docker image with NWM_EVAL_MGR_TAG=${nwm_eval_mgr_branch}"
+                    docker build --progress=plain --no-cache \
+                        --build-arg NWM_EVAL_MGR_TAG="${nwm_eval_mgr_branch}" \
+                        --tag="${REGISTRY}/nwm-verf:${verf_docker_tag}" \
+                        "${BASE_PATH}/nwm-verf"
+                else
+                    echo "Error: ${BASE_PATH}/nwm-verf not found; cannot build."; exit 1
                 fi
             ;;
             "ngen-forcing")
@@ -1213,32 +1270,20 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
             ;;
         esac
 
-        # for each repo that produces a SIF, use the locally built image if mode==build,
-        # otherwise pull the specified tag and retag as :feature
+        # for each repo that produces a SIF, use the locally built image
         if repo_has_sif "$repo"; then
+            # get Docker tag for this repo based on its branch
+            repo_docker_tag="$(get_docker_tag_for_repo "$repo" "$BUILD_TYPE")"
+
             for pair in $(images_for_repo "$repo"); do
                 [[ -z "$pair" ]] && continue
                 docker_img="${pair%%|*}"
                 sif_name="${pair##*|}"
 
-                if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
-                    # use tag from TAGS array if pulling, otherwise default to :feature
-                    pull_tag="${TAGS[$repo]:-feature}"
-                    pull_image="${REGISTRY}/${docker_img}:${pull_tag}"
-                    echo "[$(date '+%H:%M:%S')] Pulling docker image for SIF: $pull_image"
-                    docker pull "$pull_image"
+                IMAGE="${REGISTRY}/${docker_img}:${repo_docker_tag}"
+                echo "[$(date '+%H:%M:%S')] Using locally built image for SIF: $IMAGE"
 
-                    # retag as :feature for consistency
-                    if [[ "$pull_tag" != "feature" ]]; then
-                        docker tag "$pull_image" "${REGISTRY}/${docker_img}:feature"
-                    fi
-                    IMAGE="${REGISTRY}/${docker_img}:feature"
-                else
-                    IMAGE="${REGISTRY}/${docker_img}:feature"
-                    echo "[$(date '+%H:%M:%S')] Using locally built image for SIF: $IMAGE"
-                fi
-
-                build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "feature"
+                build_singularity_container_update_symlink "$BUILD_TYPE" "$sif_name" "$IMAGE" "$repo_docker_tag"
             done
         fi
     done
