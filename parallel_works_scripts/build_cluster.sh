@@ -88,6 +88,7 @@ PROMPTED_FOR_CORE_INPUT=false
 TARGET_REPOS_FOR_SOURCE=("ngen" "nwm-cal-mgr" "ngen-forcing" "nwm-verf" "nwm-fcst-mgr")
 declare -A IMAGE_SOURCE   # map: repo -> build|pull
 IMAGE_SOURCE_DEFAULT=""
+declare -A IMAGE_FETCHED  # map: repo -> true when image already built/pulled
 
 # Dependency image tags for build arguments
 declare -A DEPENDENCY_TAGS  # map: dependent_repo -> dependency_tag
@@ -129,12 +130,16 @@ set_image_source_defaults() {
         return
     fi
 
-    # set default for each repo (non-feature builds)
-    IMAGE_SOURCE["ngen"]="pull"
+    if [[ "$BUILD_TYPE" == "development" ]]; then
+        IMAGE_SOURCE["ngen"]="build"
+        IMAGE_SOURCE["ngen-forcing"]="build"
+    else
+        IMAGE_SOURCE["ngen"]="pull"
+        IMAGE_SOURCE["ngen-forcing"]="pull"
+    fi
     IMAGE_SOURCE["nwm-cal-mgr"]="build"
     IMAGE_SOURCE["nwm-fcst-mgr"]="build"
-    IMAGE_SOURCE["nwm-verf"]="pull"
-    IMAGE_SOURCE["ngen-forcing"]="pull"
+    IMAGE_SOURCE["nwm-verf"]="build"
 
     if [[ -n "$IMAGE_SOURCE_DEFAULT" ]]; then
         for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]="$IMAGE_SOURCE_DEFAULT"; done
@@ -1030,39 +1035,6 @@ fi
 if [[ "$BUILD_TYPE" == "development" ]]; then
     cd "$BASE_PATH"
 
-    # handle ngen-forcing first if it's selected and building
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]] && [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
-        if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
-            update_repo_branch "ngen-forcing" "development"
-            echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (development) Docker image"
-            docker build --progress=plain --no-cache \
-                --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
-                --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
-                "${BASE_PATH}/ngen-forcing"
-        else
-            echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
-        fi
-    fi
-
-    # build or pull ngen first if selected, so downstream builds may use ngen:latest
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-        if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
-            if [[ -d "${BASE_PATH}/ngen" ]]; then
-                update_repo_branch "ngen" "development"
-                echo "[$(date '+%H:%M:%S')] Building ngen (development) Docker image with NGEN_FORCING_TAG=latest"
-                docker build --progress=plain --no-cache \
-                    --build-arg NGEN_FORCING_TAG="latest" \
-                    --tag="${REGISTRY}/ngen:latest" \
-                    "${BASE_PATH}/ngen"
-            else
-                echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
-            fi
-        else
-            echo "[$(date '+%H:%M:%S')] Pulling ngen (development) Docker image"
-            docker pull "${REGISTRY}/ngen:latest"
-        fi
-    fi
-
     for repo in "${SELECTED_REPOS[@]}"; do
         echo
 
@@ -1077,11 +1049,12 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
                         update_repo_branch "nwm-cal-mgr" "development"
-                        echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (development) Docker image"
+                        echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (development) Docker image with NGEN_IMAGE_TAG=latest"
                         docker build --progress=plain --no-cache \
                             --build-arg NGEN_IMAGE_TAG="latest" \
                             --tag="${REGISTRY}/nwm-cal-mgr:latest" \
                             "${BASE_PATH}/nwm-cal-mgr"
+                        IMAGE_FETCHED["nwm-cal-mgr"]="true"
                     else
                         echo "Error: ${BASE_PATH}/nwm-cal-mgr not found; cannot build."; exit 1
                     fi
@@ -1091,11 +1064,12 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "build" ]]; then
                     if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
                         update_repo_branch "nwm-fcst-mgr" "development"
-                        echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (development) Docker image"
+                        echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (development) Docker image with NGEN_IMAGE_TAG=latest"
                         docker build --progress=plain --no-cache \
                             --build-arg NGEN_IMAGE_TAG="latest" \
                             --tag="${REGISTRY}/nwm-fcst-mgr:latest" \
                             "${BASE_PATH}/nwm-fcst-mgr"
+                        IMAGE_FETCHED["nwm-fcst-mgr"]="true"
                     else
                         echo "Error: ${BASE_PATH}/nwm-fcst-mgr not found; cannot build."; exit 1
                     fi
@@ -1116,13 +1090,54 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 fi
             ;;
             "ngen-forcing")
-                # already handled before ngen if building
-                if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
-                    : # skip, already built above
+                if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
+                    if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
+                        update_repo_branch "ngen-forcing" "development"
+                        echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (development) Docker image"
+                        docker build --progress=plain --no-cache \
+                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
+                            --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
+                            "${BASE_PATH}/ngen-forcing"
+
+                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing (development) Docker image"
+                        docker build --progress=plain --no-cache \
+                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
+                            --tag="${REGISTRY}/ngen-lumped-forcing:latest" \
+                            "${BASE_PATH}/ngen-forcing"
+
+                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal (development) Docker image"
+                        docker build --progress=plain --no-cache \
+                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
+                            --tag="${REGISTRY}/ngen-coastal:latest" \
+                            "${BASE_PATH}/ngen-forcing"
+                    else
+                        echo "[$(date '+%H:%M:%S')] Pulling ngen-forcing (development) Docker images"
+                        docker pull "${REGISTRY}/ngen-bmi-forcing:latest"
+                        docker pull "${REGISTRY}/ngen-lumped-forcing:latest"
+                        docker pull "${REGISTRY}/ngen-coastal:latest"
+                    fi
+                    IMAGE_FETCHED["ngen-forcing"]="true"
+                else
+                    echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                 fi
             ;;
             "ngen")
-                : # handled above if building
+                if [[ -d "${BASE_PATH}/ngen" ]]; then
+                    if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
+                        update_repo_branch "ngen" "development"
+                        echo "[$(date '+%H:%M:%S')] Building ngen (development) Docker image with NGEN_FORCING_TAG=latest"
+                        docker build --progress=plain --no-cache \
+                            --build-arg NGEN_FORCING_TAG="latest" \
+                            --tag="${REGISTRY}/ngen:latest" \
+                            "${BASE_PATH}/ngen"
+                    else
+                        echo "[$(date '+%H:%M:%S')] Pulling ngen (development) Docker image"
+                        docker pull "${REGISTRY}/ngen:latest"
+                    fi
+                    IMAGE_FETCHED["ngen"]="true"
+                else
+                    echo "Error: ${BASE_PATH}/ngen not found; cannot build ngen."; exit 1
+                fi
             ;;
         esac
 
@@ -1136,8 +1151,13 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 IMAGE="${REGISTRY}/${docker_img}:latest"
 
                 if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
-                    echo "[$(date '+%H:%M:%S')] Pulling docker image for SIF: $IMAGE"
-                    docker pull "$IMAGE"
+                    if [[ "${IMAGE_FETCHED[$repo]:-}" == "true" ]]; then
+                        echo "[$(date '+%H:%M:%S')] Using previously pulled image for SIF: $IMAGE"
+                    else
+                        echo "[$(date '+%H:%M:%S')] Pulling docker image for SIF: $IMAGE"
+                        docker pull "$IMAGE"
+                        IMAGE_FETCHED["$repo"]="true"
+                    fi
                 else
                     echo "[$(date '+%H:%M:%S')] Using locally built image for SIF: $IMAGE"
                 fi
