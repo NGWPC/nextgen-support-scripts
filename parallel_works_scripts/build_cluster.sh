@@ -354,7 +354,7 @@ if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
     echo "1) development"
     echo "2) release"
     echo "3) feature"
-    read -p "Enter number [1-3]: " build_choice
+    read -p "Enter number [1-3]: " build_choice || { echo "Error reading input, exiting."; exit 1; }
     case $build_choice in
         1) BUILD_TYPE="development" ;;
         2) BUILD_TYPE="release" ;;
@@ -366,7 +366,7 @@ fi
 
 if [[ ${#SELECTED_REPOS[@]} -eq 0 && -t 0 ]]; then
     echo "Available repos: ${REPOS[*]}"
-    read -p "Enter repos to build (space-separated from the list above, or press Enter for all): " -a SELECTED_REPOS
+    read -p "Enter repos to build (space-separated from the list above, or press Enter for all): " -a SELECTED_REPOS || { echo "Error reading input, exiting."; exit 1; }
     # if user pressed Enter without typing anything, select all repos
     if [[ ${#SELECTED_REPOS[@]} -eq 0 ]]; then
         SELECTED_REPOS=("${REPOS[@]}")
@@ -411,7 +411,7 @@ if [[ -t 0 ]]; then
         for repo in "${SELECTED_REPOS[@]}"; do
             if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
                 default_mode="${IMAGE_SOURCE[$repo]}"
-                read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans
+                read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans || { echo "Error reading input, exiting."; exit 1; }
                 if [[ -n "$ans" ]]; then
                     if [[ "$ans" != "build" && "$ans" != "pull" ]]; then
                         echo "Invalid choice '${ans}' for ${repo}. Use build or pull."; exit 1
@@ -428,17 +428,17 @@ if [[ -t 0 ]]; then
             if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
                 # special handling for ngen-forcing
                 if [[ "$repo" == "ngen-forcing" ]]; then
-                    read -p "Enter ngen-forcing branch: " ans
+                    read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
                 else
-                    read -p "Enter ${repo} branch: " ans
+                    read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
                 fi
                 # require a branch name (no default) for feature builds
                 while [[ -z "$ans" ]]; do
                     echo "Error: Branch name cannot be empty for feature builds"
                     if [[ "$repo" == "ngen-forcing" ]]; then
-                        read -p "Enter ngen-forcing branch (shared for bmi/lumped/coastal): " ans
+                        read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
                     else
-                        read -p "Enter ${repo} branch: " ans
+                        read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
                     fi
                 done
                 REPO_BRANCHES["$repo"]="$ans"
@@ -503,25 +503,25 @@ prompt_dependency_tags() {
         # for release builds, prompt for dependency tags only if not already set
         # ngen depends on ngen-forcing
         if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${TAGS[ngen-forcing]:-}" ]]; then
-            read -p "Enter ngen-forcing tag (used by ngen): " TAGS[ngen-forcing]
+            read -p "Enter ngen-forcing tag (used by ngen): " TAGS[ngen-forcing] || { echo "Error reading input, exiting."; exit 1; }
         fi
 
         # nwm-cal-mgr and nwm-fcst-mgr depend on ngen
         if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
             if [[ -z "${TAGS[ngen]:-}" ]]; then
-                read -p "Enter ngen tag (used by nwm-cal-mgr/nwm-fcst-mgr): " TAGS[ngen]
+                read -p "Enter ngen tag (used by nwm-cal-mgr/nwm-fcst-mgr): " TAGS[ngen] || { echo "Error reading input, exiting."; exit 1; }
             fi
         fi
 
         # nwm-verf depends on nwm-eval-mgr
         if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]] && [[ -z "${TAGS[nwm-eval-mgr]:-}" ]]; then
-            read -p "Enter nwm-eval-mgr tag (used by nwm-verf): " TAGS[nwm-eval-mgr]
+            read -p "Enter nwm-eval-mgr tag (used by nwm-verf): " TAGS[nwm-eval-mgr] || { echo "Error reading input, exiting."; exit 1; }
         fi
     elif [[ "$build_type" == "feature" ]]; then
         # for feature builds, prompt for dependency branches only if not already set
         # ngen depends on ngen-forcing
         if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-            read -p "Enter ngen-forcing branch (used by ngen): " ans
+            read -p "Enter ngen-forcing branch (used by ngen): " ans || { echo "Error reading input, exiting."; exit 1; }
             if [[ -z "$ans" ]]; then
                 echo "Error: ngen-forcing branch is required for building ngen"
                 exit 1
@@ -532,7 +532,7 @@ prompt_dependency_tags() {
         # nwm-cal-mgr and nwm-fcst-mgr depend on ngen
         if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
             if [[ -z "${REPO_BRANCHES[ngen]:-}" ]]; then
-                read -p "Enter ngen branch (used by nwm-cal-mgr/nwm-fcst-mgr): " ans
+                read -p "Enter ngen branch (used by nwm-cal-mgr/nwm-fcst-mgr): " ans || { echo "Error reading input, exiting."; exit 1; }
                 if [[ -z "$ans" ]]; then
                     echo "Error: ngen branch is required"
                     exit 1
@@ -543,7 +543,7 @@ prompt_dependency_tags() {
 
         # nwm-verf depends on nwm-eval-mgr (branch)
         if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]] && [[ -z "${DEPENDENCY_TAGS[nwm-verf]:-}" ]]; then
-            read -p "Enter nwm-eval-mgr branch (used by nwm-verf): " ans
+            read -p "Enter nwm-eval-mgr branch (used by nwm-verf): " ans || { echo "Error reading input, exiting."; exit 1; }
             if [[ -z "$ans" ]]; then
                 echo "Error: nwm-eval-mgr branch is required"
                 exit 1
@@ -669,42 +669,42 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         case $repo in
             ngencerf-ui)
                 if [[ -z "${TAGS[ngencerf-ui]:-}" ]]; then
-                    read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui]
+                    read -p "Enter ngencerf-ui tag: " TAGS[ngencerf-ui] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
             ngencerf-server)
                 if [[ -z "${TAGS[ngencerf-server]:-}" ]]; then
-                    read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server]
+                    read -p "Enter ngencerf-server tag: " TAGS[ngencerf-server] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
             ngencerf-docker)
                 if [[ -z "${TAGS[ngencerf-docker]:-}" ]]; then
-                    read -p "Enter ngencerf-docker tag: " TAGS[ngencerf-docker]
+                    read -p "Enter ngencerf-docker tag: " TAGS[ngencerf-docker] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
             ngen-forcing)
                 if [[ -z "${TAGS[ngen-forcing]:-}" ]]; then
-                    read -p "Enter ngen-forcing tag (shared for bmi/lumped/coastal): " TAGS[ngen-forcing]
+                    read -p "Enter ngen-forcing tag: " TAGS[ngen-forcing] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
             ngen)
                 if [[ -z "${TAGS[ngen]:-}" ]]; then
-                    read -p "Enter ngen tag: " TAGS[ngen]
+                    read -p "Enter ngen tag: " TAGS[ngen] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
             nwm-cal-mgr)
                 if [[ -z "${TAGS[nwm-cal-mgr]:-}" ]]; then
-                    read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr]
+                    read -p "Enter nwm-cal-mgr tag: " TAGS[nwm-cal-mgr] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
             nwm-fcst-mgr)
                 if [[ -z "${TAGS[nwm-fcst-mgr]:-}" ]]; then
-                    read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
+                    read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
             nwm-verf)
                 if [[ -z "${TAGS[nwm-verf]:-}" ]]; then
-                    read -p "Enter nwm-verf tag: " TAGS[nwm-verf]
+                    read -p "Enter nwm-verf tag: " TAGS[nwm-verf] || { echo "Error reading input, exiting."; exit 1; }
                 fi
             ;;
         esac
@@ -1098,23 +1098,9 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
                             "${BASE_PATH}/ngen-forcing"
-
-                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing (development) Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
-                            --tag="${REGISTRY}/ngen-lumped-forcing:latest" \
-                            "${BASE_PATH}/ngen-forcing"
-
-                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal (development) Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
-                            --tag="${REGISTRY}/ngen-coastal:latest" \
-                            "${BASE_PATH}/ngen-forcing"
                     else
-                        echo "[$(date '+%H:%M:%S')] Pulling ngen-forcing (development) Docker images"
+                        echo "[$(date '+%H:%M:%S')] Pulling ngen-bmi-forcing (development) Docker image"
                         docker pull "${REGISTRY}/ngen-bmi-forcing:latest"
-                        docker pull "${REGISTRY}/ngen-lumped-forcing:latest"
-                        docker pull "${REGISTRY}/ngen-coastal:latest"
                     fi
                     IMAGE_FETCHED["ngen-forcing"]="true"
                 else
