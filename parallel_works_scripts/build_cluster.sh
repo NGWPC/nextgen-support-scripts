@@ -82,6 +82,7 @@ REGISTRY="ghcr.io/ngwpc"
 
 BUILD_TYPE=""
 SELECTED_REPOS=()
+PROMPTED_FOR_CORE_INPUT=false
 
 # repos with selectable image source (build vs pull)
 TARGET_REPOS_FOR_SOURCE=("ngen" "nwm-cal-mgr" "ngen-forcing" "nwm-verf" "nwm-fcst-mgr")
@@ -355,7 +356,7 @@ if [[ -z "$BUILD_TYPE" && -t 0 ]]; then
         3) BUILD_TYPE="feature" ;;
         *) echo "Invalid choice, exiting."; exit 1 ;;
     esac
-
+    PROMPTED_FOR_CORE_INPUT=true
 fi
 
 if [[ ${#SELECTED_REPOS[@]} -eq 0 && -t 0 ]]; then
@@ -366,6 +367,7 @@ if [[ ${#SELECTED_REPOS[@]} -eq 0 && -t 0 ]]; then
         SELECTED_REPOS=("${REPOS[@]}")
         echo "All repos selected: ${SELECTED_REPOS[*]}"
     fi
+    PROMPTED_FOR_CORE_INPUT=true
 fi
 
 if [[ -z "$BUILD_TYPE" || ${#SELECTED_REPOS[@]} -eq 0 ]]; then
@@ -399,8 +401,8 @@ echo "Build type selected: $BUILD_TYPE"
 echo "Selected repos: ${SELECTED_REPOS[*]}"
 
 if [[ -t 0 ]]; then
-    # skip image source prompting for feature builds (always build)
-    if [[ "$BUILD_TYPE" != "feature" ]]; then
+    # skip image source prompting unless the user was already interacting with the script
+    if [[ "$BUILD_TYPE" != "feature" && "$PROMPTED_FOR_CORE_INPUT" == true ]]; then
         for repo in "${SELECTED_REPOS[@]}"; do
             if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
                 default_mode="${IMAGE_SOURCE[$repo]}"
