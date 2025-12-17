@@ -1171,7 +1171,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
             # get Docker tag based on branch name
             forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
 
-            echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (feature) Docker image with tag: ${forcing_docker_tag}"
+            echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (${forcing_docker_tag}) Docker image"
             docker build --progress=plain --no-cache \
                 --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                 --tag="${REGISTRY}/ngen-bmi-forcing:${forcing_docker_tag}" \
@@ -1192,7 +1192,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
             # get ngen-forcing tag to use as build arg (from ngen-forcing's branch)
             ngen_forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
 
-            echo "[$(date '+%H:%M:%S')] Building ngen (feature) Docker image with NGEN_FORCING_TAG=${ngen_forcing_docker_tag}"
+            echo "[$(date '+%H:%M:%S')] Building ngen (${ngen_docker_tag}) Docker image with NGEN_FORCING_TAG=${ngen_forcing_docker_tag}"
             docker build --progress=plain --no-cache \
                 --build-arg NGEN_FORCING_TAG="${ngen_forcing_docker_tag}" \
                 --tag="${REGISTRY}/ngen:${ngen_docker_tag}" \
@@ -1222,7 +1222,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                     # get ngen tag to use as build arg (from ngen's branch)
                     ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
 
-                    echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (feature) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
+                    echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (${cal_mgr_docker_tag}) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
                     docker build --progress=plain --no-cache \
                         --build-arg NGEN_IMAGE_TAG="${ngen_docker_tag}" \
                         --tag="${REGISTRY}/nwm-cal-mgr:${cal_mgr_docker_tag}" \
@@ -1241,7 +1241,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                     # get ngen tag to use as build arg (from ngen's branch)
                     ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
 
-                    echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (feature) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
+                    echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (${fcst_mgr_docker_tag}) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
                     docker build --progress=plain --no-cache \
                         --build-arg NGEN_IMAGE_TAG="${ngen_docker_tag}" \
                         --tag="${REGISTRY}/nwm-fcst-mgr:${fcst_mgr_docker_tag}" \
@@ -1263,7 +1263,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                         nwm_eval_mgr_branch="development"
                     fi
 
-                    echo "[$(date '+%H:%M:%S')] Building nwm-verf (feature) Docker image with NWM_EVAL_MGR_TAG=${nwm_eval_mgr_branch}"
+                    echo "[$(date '+%H:%M:%S')] Building nwm-verf (${verf_docker_tag}) Docker image with NWM_EVAL_MGR_TAG=${nwm_eval_mgr_branch}"
                     docker build --progress=plain --no-cache \
                         --build-arg NWM_EVAL_MGR_TAG="${nwm_eval_mgr_branch}" \
                         --tag="${REGISTRY}/nwm-verf:${verf_docker_tag}" \
