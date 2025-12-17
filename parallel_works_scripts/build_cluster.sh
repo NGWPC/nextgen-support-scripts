@@ -134,8 +134,10 @@ set_image_source_defaults() {
         IMAGE_SOURCE["ngen"]="build"
         IMAGE_SOURCE["ngen-forcing"]="build"
     else
-        IMAGE_SOURCE["ngen"]="pull"
-        IMAGE_SOURCE["ngen-forcing"]="pull"
+        # for release builds, default to "build" for all repos
+        # (user can override with --source or --source-default flags)
+        IMAGE_SOURCE["ngen"]="build"
+        IMAGE_SOURCE["ngen-forcing"]="build"
     fi
     IMAGE_SOURCE["nwm-cal-mgr"]="build"
     IMAGE_SOURCE["nwm-fcst-mgr"]="build"
