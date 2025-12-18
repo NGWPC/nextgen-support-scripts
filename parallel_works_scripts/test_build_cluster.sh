@@ -57,7 +57,7 @@ verify_build_order() {
 
     local line_numbers=()
     for repo in "${expected_order[@]}"; do
-        local line_num=$(grep -n "Building.*${repo}.*Docker image" "$output_file" | head -1 | cut -d: -f1)
+        local line_num=$(grep -n "Building.*${repo}.*Docker image" "$output_file" 2>/dev/null | head -1 | cut -d: -f1 || true)
         if [[ -z "$line_num" ]]; then
             echo "ERROR: Could not find build for $repo"
             return 1
@@ -86,7 +86,7 @@ verify_build_arg() {
     local expected_value="$4"
 
     # Find the build line for this repo
-    local build_line=$(grep -A2 "Building.*${repo}.*Docker image" "$output_file" | grep -o "${arg_name}=[^ ]*" | cut -d= -f2)
+    local build_line=$(grep -A2 "Building.*${repo}.*Docker image" "$output_file" 2>/dev/null | grep -o "${arg_name}=[^ ]*" | cut -d= -f2 || true)
 
     if [[ "$build_line" != "$expected_value" ]]; then
         echo "ERROR: Expected ${arg_name}=${expected_value} but found ${arg_name}=${build_line}"
@@ -101,7 +101,7 @@ verify_no_prompt() {
     local output_file="$1"
     local prompt_text="$2"
 
-    if grep -q "$prompt_text" "$output_file"; then
+    if grep -q "$prompt_text" "$output_file" 2>/dev/null; then
         echo "ERROR: Found unwanted prompt: $prompt_text"
         return 1
     fi
