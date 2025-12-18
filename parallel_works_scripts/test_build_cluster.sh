@@ -67,6 +67,9 @@ verify_build_order() {
         line_numbers+=("$line_num:$repo")
     done
 
+    # Print found line numbers
+    echo "  Build order found at lines: ${line_numbers[*]}"
+
     # Sort by line number and verify order
     local sorted_repos=($(printf '%s\n' "${line_numbers[@]}" | sort -n | cut -d: -f2))
 
@@ -87,6 +90,9 @@ verify_build_arg() {
     local arg_name="$3"
     local expected_value="$4"
 
+    # Find the line number where the build starts
+    local line_num=$(grep -n "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null | head -1 | cut -d: -f1 || true)
+
     # Find the build line for this repo (use same pattern as verify_build_order)
     local build_line=$(grep -A2 "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null | grep -o "${arg_name}=[^ ]*" | head -1 | cut -d= -f2 || true)
 
@@ -95,6 +101,7 @@ verify_build_arg() {
         return 1
     fi
 
+    echo "  Found ${arg_name}=${build_line} at line ${line_num}"
     return 0
 }
 
