@@ -57,7 +57,9 @@ verify_build_order() {
 
     local line_numbers=()
     for repo in "${expected_order[@]}"; do
-        local line_num=$(grep -n "Building.*${repo}.*Docker image" "$output_file" 2>/dev/null | head -1 | cut -d: -f1 || true)
+        # Match "Building {repo} " or "Building {repo}-" to avoid false matches
+        # e.g., "ngen " matches "Building ngen (" but not "Building ngen-bmi-forcing"
+        local line_num=$(grep -n "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null | head -1 | cut -d: -f1 || true)
         if [[ -z "$line_num" ]]; then
             echo "ERROR: Could not find build for $repo"
             return 1
@@ -85,8 +87,8 @@ verify_build_arg() {
     local arg_name="$3"
     local expected_value="$4"
 
-    # Find the build line for this repo
-    local build_line=$(grep -A2 "Building.*${repo}.*Docker image" "$output_file" 2>/dev/null | grep -o "${arg_name}=[^ ]*" | cut -d= -f2 || true)
+    # Find the build line for this repo (use same pattern as verify_build_order)
+    local build_line=$(grep -A2 "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null | grep -o "${arg_name}=[^ ]*" | head -1 | cut -d= -f2 || true)
 
     if [[ "$build_line" != "$expected_value" ]]; then
         echo "ERROR: Expected ${arg_name}=${expected_value} but found ${arg_name}=${build_line}"
