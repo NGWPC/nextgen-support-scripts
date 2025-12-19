@@ -95,6 +95,9 @@ declare -A DEPENDENCY_TAGS  # map: dependent_repo -> dependency_tag
 # e.g., DEPENDENCY_TAGS["ngen"]="feature"  # ngen will use ngen-forcing:feature
 #       DEPENDENCY_TAGS["nwm-cal-mgr"]="v1.0"  # nwm-cal-mgr will use ngen:v1.0
 
+# Tags for release/feature builds
+declare -A TAGS  # map: repo -> tag
+
 # map repo -> "docker_image|sif_name" (space-separated for multiples)
 images_for_repo() {
     local repo="$1"
@@ -665,7 +668,6 @@ validate_dependencies() {
 }
 
 # --- tag prompts for release and feature (when pulling) ---
-declare -A TAGS
 if [[ "$BUILD_TYPE" == "release" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         case $repo in
