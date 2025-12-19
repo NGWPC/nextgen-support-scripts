@@ -78,11 +78,12 @@ get_build_line_number() {
 
     local line
     if [[ "$repo" == "ngen-forcing" ]]; then
-        line=$(grep -n "Building ngen-bmi-forcing " "$output_file" 2>/dev/null | head -1)
+        line=$(grep -n "Building ngen-bmi-forcing " "$output_file" 2>/dev/null || true)
     else
-        line=$(grep -n "Building ${repo} " "$output_file" 2>/dev/null | head -1)
+        line=$(grep -n "Building ${repo} " "$output_file" 2>/dev/null || true)
     fi
 
+    line=$(echo "$line" | head -1)
     [[ -n "$line" ]] && echo "${line%%:*}"
 }
 
