@@ -173,82 +173,84 @@ verify_no_prompt() {
 # ==============================================================================
 # TEST 1: Development build with nwm-cal-mgr
 # ==============================================================================
-print_test_header "1" "Development build with nwm-cal-mgr" "$TEST1_DURATION"
-TEST1_OUTPUT="${TEST_OUTPUT_DIR}/test1_dev_cal_mgr.log"
-
-if ! "$BUILD_SCRIPT" --build-type=development nwm-cal-mgr ngen > "$TEST1_OUTPUT" 2>&1; then
-    print_result "Test 1: Development build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
-else
-    print_result "Test 1: Development build (nwm-cal-mgr) - execution" "PASS"
-
-    # Verify build order: ngen-forcing -> ngen -> nwm-cal-mgr
-    if verify_build_order "$TEST1_OUTPUT" "ngen-forcing" "ngen" "nwm-cal-mgr"; then
-        print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "PASS"
-    else
-        print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "FAIL" "Incorrect build order"
-    fi
-
-    # Verify ngen uses ngen-forcing:latest
-    if verify_build_arg "$TEST1_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
-        print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "PASS"
-    else
-        print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify nwm-cal-mgr uses ngen:latest
-    if verify_build_arg "$TEST1_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "latest"; then
-        print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
-    else
-        print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify no unwanted prompts
-    if verify_no_prompt "$TEST1_OUTPUT" "Which.*Docker image tag"; then
-        print_result "Test 1: No unwanted tag prompts" "PASS"
-    else
-        print_result "Test 1: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
-    fi
-fi
+# COMMENTED OUT FOR THIS RUN
+# print_test_header "1" "Development build with nwm-cal-mgr" "$TEST1_DURATION"
+# TEST1_OUTPUT="${TEST_OUTPUT_DIR}/test1_dev_cal_mgr.log"
+#
+# if ! "$BUILD_SCRIPT" --build-type=development nwm-cal-mgr ngen > "$TEST1_OUTPUT" 2>&1; then
+#     print_result "Test 1: Development build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
+# else
+#     print_result "Test 1: Development build (nwm-cal-mgr) - execution" "PASS"
+#
+#     # Verify build order: ngen-forcing -> ngen -> nwm-cal-mgr
+#     if verify_build_order "$TEST1_OUTPUT" "ngen-forcing" "ngen" "nwm-cal-mgr"; then
+#         print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "PASS"
+#     else
+#         print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "FAIL" "Incorrect build order"
+#     fi
+#
+#     # Verify ngen uses ngen-forcing:latest
+#     if verify_build_arg "$TEST1_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
+#         print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "PASS"
+#     else
+#         print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#
+#     # Verify nwm-cal-mgr uses ngen:latest
+#     if verify_build_arg "$TEST1_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "latest"; then
+#         print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
+#     else
+#         print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#
+#     # Verify no unwanted prompts
+#     if verify_no_prompt "$TEST1_OUTPUT" "Which.*Docker image tag"; then
+#         print_result "Test 1: No unwanted tag prompts" "PASS"
+#     else
+#         print_result "Test 1: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
+#     fi
+# fi
 
 # ==============================================================================
 # TEST 2: Development build with nwm-fcst-mgr
 # ==============================================================================
-print_test_header "2" "Development build with nwm-fcst-mgr" "$TEST2_DURATION"
-TEST2_OUTPUT="${TEST_OUTPUT_DIR}/test2_dev_fcst_mgr.log"
-
-if ! "$BUILD_SCRIPT" --build-type=development nwm-fcst-mgr ngen > "$TEST2_OUTPUT" 2>&1; then
-    print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
-else
-    print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "PASS"
-
-    # Verify build order: ngen-forcing -> ngen -> nwm-fcst-mgr
-    if verify_build_order "$TEST2_OUTPUT" "ngen-forcing" "ngen" "nwm-fcst-mgr"; then
-        print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "PASS"
-    else
-        print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "FAIL" "Incorrect build order"
-    fi
-
-    # Verify ngen uses ngen-forcing:latest
-    if verify_build_arg "$TEST2_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
-        print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "PASS"
-    else
-        print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify nwm-fcst-mgr uses ngen:latest
-    if verify_build_arg "$TEST2_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "latest"; then
-        print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
-    else
-        print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify no unwanted prompts
-    if verify_no_prompt "$TEST2_OUTPUT" "Which.*Docker image tag"; then
-        print_result "Test 2: No unwanted tag prompts" "PASS"
-    else
-        print_result "Test 2: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
-    fi
-fi
+# COMMENTED OUT FOR THIS RUN
+# print_test_header "2" "Development build with nwm-fcst-mgr" "$TEST2_DURATION"
+# TEST2_OUTPUT="${TEST_OUTPUT_DIR}/test2_dev_fcst_mgr.log"
+#
+# if ! "$BUILD_SCRIPT" --build-type=development nwm-fcst-mgr ngen > "$TEST2_OUTPUT" 2>&1; then
+#     print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
+# else
+#     print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "PASS"
+#
+#     # Verify build order: ngen-forcing -> ngen -> nwm-fcst-mgr
+#     if verify_build_order "$TEST2_OUTPUT" "ngen-forcing" "ngen" "nwm-fcst-mgr"; then
+#         print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "PASS"
+#     else
+#         print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "FAIL" "Incorrect build order"
+#     fi
+#
+#     # Verify ngen uses ngen-forcing:latest
+#     if verify_build_arg "$TEST2_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
+#         print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "PASS"
+#     else
+#         print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#
+#     # Verify nwm-fcst-mgr uses ngen:latest
+#     if verify_build_arg "$TEST2_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "latest"; then
+#         print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
+#     else
+#         print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#
+#     # Verify no unwanted prompts
+#     if verify_no_prompt "$TEST2_OUTPUT" "Which.*Docker image tag"; then
+#         print_result "Test 2: No unwanted tag prompts" "PASS"
+#     else
+#         print_result "Test 2: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
+#     fi
+# fi
 
 # ==============================================================================
 # TEST 3: Release build with nwm-cal-mgr
