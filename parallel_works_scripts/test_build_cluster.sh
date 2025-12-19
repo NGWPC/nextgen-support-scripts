@@ -258,11 +258,11 @@ verify_no_prompt() {
 print_test_header "3" "Release build with nwm-cal-mgr" "$TEST3_DURATION"
 TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
 
-# Provide all tags via command line to avoid interactive prompts (default to latest)
+# Provide all tags via command line to avoid interactive prompts (pin to known release tags)
 "$BUILD_SCRIPT" --build-type=release --source-default=build \
-    --tag=ngen-forcing:latest \
-    --tag=ngen:latest \
-    --tag=nwm-cal-mgr:latest \
+    --tag=ngen-forcing:3.1.2.1.0 \
+    --tag=ngen:3.1.2.1.0 \
+    --tag=nwm-cal-mgr:3.1.2.1.0 \
     nwm-cal-mgr ngen > "$TEST3_OUTPUT" 2>&1
 
 if [[ $? -ne 0 ]]; then
@@ -278,17 +278,17 @@ else
     fi
 
     # Verify ngen uses ngen-forcing release tag
-    if verify_build_arg "$TEST3_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
-        print_result "Test 3: ngen uses NGEN_FORCING_TAG=latest" "PASS"
+    if verify_build_arg "$TEST3_OUTPUT" "ngen" "NGEN_FORCING_TAG" "3.1.2.1.0"; then
+        print_result "Test 3: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "PASS"
     else
-        print_result "Test 3: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
+        print_result "Test 3: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
     fi
 
     # Verify nwm-cal-mgr uses ngen release tag
-    if verify_build_arg "$TEST3_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "latest"; then
-        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
+    if verify_build_arg "$TEST3_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "3.1.2.1.0"; then
+        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "PASS"
     else
-        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
+        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
     fi
 
     # Verify no unwanted prompts
@@ -305,11 +305,11 @@ fi
 print_test_header "4" "Release build with nwm-fcst-mgr" "$TEST4_DURATION"
 TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
 
-# Provide all tags via command line to avoid interactive prompts (default to latest)
+# Provide all tags via command line to avoid interactive prompts (pin to known release tags)
 "$BUILD_SCRIPT" --build-type=release --source-default=build \
-    --tag=ngen-forcing:latest \
-    --tag=ngen:latest \
-    --tag=nwm-fcst-mgr:latest \
+    --tag=ngen-forcing:3.1.2.1.0 \
+    --tag=ngen:3.1.2.1.0 \
+    --tag=nwm-fcst-mgr:3.1.2.1.0 \
     nwm-fcst-mgr ngen > "$TEST4_OUTPUT" 2>&1
 
 if [[ $? -ne 0 ]]; then
@@ -325,17 +325,17 @@ else
     fi
 
     # Verify ngen uses ngen-forcing release tag
-    if verify_build_arg "$TEST4_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
-        print_result "Test 4: ngen uses NGEN_FORCING_TAG=latest" "PASS"
+    if verify_build_arg "$TEST4_OUTPUT" "ngen" "NGEN_FORCING_TAG" "3.1.2.1.0"; then
+        print_result "Test 4: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "PASS"
     else
-        print_result "Test 4: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
+        print_result "Test 4: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
     fi
 
     # Verify nwm-fcst-mgr uses ngen release tag
-    if verify_build_arg "$TEST4_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "latest"; then
-        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
+    if verify_build_arg "$TEST4_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "3.1.2.1.0"; then
+        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "PASS"
     else
-        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
+        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
     fi
 
     # Verify no unwanted prompts
@@ -353,8 +353,8 @@ print_test_header "5" "Feature build with ngen" "$TEST5_DURATION"
 TEST5_OUTPUT="${TEST_OUTPUT_DIR}/test5_feature_ngen.log"
 
 (
-    echo "feature/my-test-branch"     # ngen branch
-    echo "feature/forcing-branch"     # ngen-forcing branch (dependency)
+    echo "main"     # ngen branch
+    echo "main"     # ngen-forcing branch (dependency)
 ) | "$BUILD_SCRIPT" --build-type=feature ngen > "$TEST5_OUTPUT" 2>&1
 
 if [[ ${PIPESTATUS[1]} -ne 0 ]]; then
@@ -363,13 +363,13 @@ else
     print_result "Test 5: Feature build (ngen) - execution" "PASS"
 
     # Verify branch name used in Docker tag (not "feature")
-    if grep -q "ngen-bmi-forcing:feature/forcing-branch\|ngen-bmi-forcing:feature-forcing-branch" "$TEST5_OUTPUT"; then
+    if grep -q "ngen-bmi-forcing:main" "$TEST5_OUTPUT"; then
         print_result "Test 5: ngen-forcing uses branch name in tag" "PASS"
     else
         print_result "Test 5: ngen-forcing uses branch name in tag" "FAIL" "Not using branch name"
     fi
 
-    if grep -q "ngen:feature/my-test-branch\|ngen:feature-my-test-branch" "$TEST5_OUTPUT"; then
+    if grep -q "ngen:main" "$TEST5_OUTPUT"; then
         print_result "Test 5: ngen uses branch name in tag" "PASS"
     else
         print_result "Test 5: ngen uses branch name in tag" "FAIL" "Not using branch name"
@@ -418,9 +418,9 @@ print_test_header "6" "Feature build with nwm-cal-mgr" "$TEST6_DURATION"
 TEST6_OUTPUT="${TEST_OUTPUT_DIR}/test6_feature_cal_mgr.log"
 
 (
-    echo "feature/cal-mgr-branch"      # nwm-cal-mgr branch
-    echo "feature/ngen-branch"         # ngen branch (dependency)
-    echo "feature/forcing-branch"      # ngen-forcing branch (dependency)
+    echo "main"      # nwm-cal-mgr branch
+    echo "main"      # ngen branch (dependency)
+    echo "main"      # ngen-forcing branch (dependency)
 ) | "$BUILD_SCRIPT" --build-type=feature nwm-cal-mgr > "$TEST6_OUTPUT" 2>&1
 
 if [[ ${PIPESTATUS[1]} -ne 0 ]]; then
@@ -429,7 +429,7 @@ else
     print_result "Test 6: Feature build (nwm-cal-mgr) - execution" "PASS"
 
     # Verify branch name used in Docker tag
-    if grep -q "nwm-cal-mgr:feature/cal-mgr-branch\|nwm-cal-mgr:feature-cal-mgr-branch" "$TEST6_OUTPUT"; then
+    if grep -q "nwm-cal-mgr:main" "$TEST6_OUTPUT"; then
         print_result "Test 6: nwm-cal-mgr uses branch name in tag" "PASS"
     else
         print_result "Test 6: nwm-cal-mgr uses branch name in tag" "FAIL" "Not using branch name"
