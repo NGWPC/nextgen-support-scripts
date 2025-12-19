@@ -258,14 +258,14 @@ verify_no_prompt() {
 print_test_header "3" "Release build with nwm-cal-mgr" "$TEST3_DURATION"
 TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
 
-# Use echo to provide tag inputs non-interactively
-(
-    echo "v1.0.0"  # ngen-forcing tag
-    echo "v2.0.0"  # ngen tag
-    echo "v3.0.0"  # nwm-cal-mgr tag
-) | "$BUILD_SCRIPT" --build-type=release --source-default=build nwm-cal-mgr ngen > "$TEST3_OUTPUT" 2>&1
+# Provide all tags via command line to avoid interactive prompts
+"$BUILD_SCRIPT" --build-type=release --source-default=build \
+    --tag=ngen-forcing:v1.0.0 \
+    --tag=ngen:v2.0.0 \
+    --tag=nwm-cal-mgr:v3.0.0 \
+    nwm-cal-mgr ngen > "$TEST3_OUTPUT" 2>&1
 
-if [[ ${PIPESTATUS[1]} -ne 0 ]]; then
+if [[ $? -ne 0 ]]; then
     print_result "Test 3: Release build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
 else
     print_result "Test 3: Release build (nwm-cal-mgr) - execution" "PASS"
@@ -305,13 +305,14 @@ fi
 print_test_header "4" "Release build with nwm-fcst-mgr" "$TEST4_DURATION"
 TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
 
-(
-    echo "v1.0.0"  # ngen-forcing tag
-    echo "v2.0.0"  # ngen tag
-    echo "v4.0.0"  # nwm-fcst-mgr tag
-) | "$BUILD_SCRIPT" --build-type=release --source-default=build nwm-fcst-mgr ngen > "$TEST4_OUTPUT" 2>&1
+# Provide all tags via command line to avoid interactive prompts
+"$BUILD_SCRIPT" --build-type=release --source-default=build \
+    --tag=ngen-forcing:v1.0.0 \
+    --tag=ngen:v2.0.0 \
+    --tag=nwm-fcst-mgr:v4.0.0 \
+    nwm-fcst-mgr ngen > "$TEST4_OUTPUT" 2>&1
 
-if [[ ${PIPESTATUS[1]} -ne 0 ]]; then
+if [[ $? -ne 0 ]]; then
     print_result "Test 4: Release build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
 else
     print_result "Test 4: Release build (nwm-fcst-mgr) - execution" "PASS"
