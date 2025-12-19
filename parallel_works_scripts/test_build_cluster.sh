@@ -24,6 +24,7 @@ BUILD_SCRIPT="${SCRIPT_DIR}/build_cluster.sh"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 TESTS_PASSED=0
@@ -75,9 +76,12 @@ verify_build_order() {
     # Sort by line number and verify order
     local sorted_repos=($(printf '%s\n' "${line_numbers[@]}" | sort -n | cut -d: -f2))
 
-    for i in "${!expected_order[@]}"; do
-        if [[ "${expected_order[$i]}" != "${sorted_repos[$i]}" ]]; then
-            echo "ERROR: Expected ${expected_order[$i]} but found ${sorted_repos[$i]} at position $i"
+    # Convert expected_order to 0-indexed array for comparison
+    local expected_array=("${expected_order[@]}")
+
+    for i in "${!expected_array[@]}"; do
+        if [[ "${expected_array[$i]}" != "${sorted_repos[$i]}" ]]; then
+            echo "ERROR: Expected ${expected_array[$i]} but found ${sorted_repos[$i]} at position $i"
             return 1
         fi
     done
@@ -128,7 +132,7 @@ verify_no_prompt() {
 # ==============================================================================
 # TEST 1: Development build with nwm-cal-mgr
 # ==============================================================================
-echo -e "\n${YELLOW}Running Test 1: Development build with nwm-cal-mgr${NC}"
+echo -e "\n${BOLD}Running Test 1: Development build with nwm-cal-mgr${NC}"
 TEST1_OUTPUT="${TEST_OUTPUT_DIR}/test1_dev_cal_mgr.log"
 
 if ! "$BUILD_SCRIPT" --build-type=development nwm-cal-mgr ngen > "$TEST1_OUTPUT" 2>&1; then
@@ -168,7 +172,7 @@ fi
 # ==============================================================================
 # TEST 2: Development build with nwm-fcst-mgr
 # ==============================================================================
-echo -e "\n${YELLOW}Running Test 2: Development build with nwm-fcst-mgr${NC}"
+echo -e "\n${BOLD}Running Test 2: Development build with nwm-fcst-mgr${NC}"
 TEST2_OUTPUT="${TEST_OUTPUT_DIR}/test2_dev_fcst_mgr.log"
 
 if ! "$BUILD_SCRIPT" --build-type=development nwm-fcst-mgr ngen > "$TEST2_OUTPUT" 2>&1; then
@@ -208,7 +212,7 @@ fi
 # ==============================================================================
 # TEST 3: Release build with nwm-cal-mgr
 # ==============================================================================
-echo -e "\n${YELLOW}Running Test 3: Release build with nwm-cal-mgr${NC}"
+echo -e "\n${BOLD}Running Test 3: Release build with nwm-cal-mgr${NC}"
 TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
 
 # Use echo to provide tag inputs non-interactively
@@ -255,7 +259,7 @@ fi
 # ==============================================================================
 # TEST 4: Release build with nwm-fcst-mgr
 # ==============================================================================
-echo -e "\n${YELLOW}Running Test 4: Release build with nwm-fcst-mgr${NC}"
+echo -e "\n${BOLD}Running Test 4: Release build with nwm-fcst-mgr${NC}"
 TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
 
 (
@@ -301,7 +305,7 @@ fi
 # ==============================================================================
 # TEST 5: Feature build with ngen
 # ==============================================================================
-echo -e "\n${YELLOW}Running Test 5: Feature build with ngen${NC}"
+echo -e "\n${BOLD}Running Test 5: Feature build with ngen${NC}"
 TEST5_OUTPUT="${TEST_OUTPUT_DIR}/test5_feature_ngen.log"
 
 (
@@ -366,7 +370,7 @@ fi
 # ==============================================================================
 # TEST 6: Feature build with nwm-cal-mgr
 # ==============================================================================
-echo -e "\n${YELLOW}Running Test 6: Feature build with nwm-cal-mgr${NC}"
+echo -e "\n${BOLD}Running Test 6: Feature build with nwm-cal-mgr${NC}"
 TEST6_OUTPUT="${TEST_OUTPUT_DIR}/test6_feature_cal_mgr.log"
 
 (
@@ -419,9 +423,9 @@ fi
 # ==============================================================================
 # SUMMARY
 # ==============================================================================
-echo -e "\n${YELLOW}========================================${NC}"
-echo -e "${YELLOW}TEST SUMMARY${NC}"
-echo -e "${YELLOW}========================================${NC}"
+echo -e "\n${BOLD}========================================${NC}"
+echo -e "${BOLD}TEST SUMMARY${NC}"
+echo -e "${BOLD}========================================${NC}"
 echo -e "${GREEN}Passed:${NC} $TESTS_PASSED"
 echo -e "${RED}Failed:${NC} $TESTS_FAILED"
 echo -e "Total:  $((TESTS_PASSED + TESTS_FAILED))"
