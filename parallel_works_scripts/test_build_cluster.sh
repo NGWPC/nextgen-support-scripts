@@ -72,6 +72,20 @@ print_result() {
 }
 
 # Verify build order in output
+get_build_line_number() {
+    local output_file="$1"
+    local repo="$2"
+
+    local line
+    if [[ "$repo" == "ngen-forcing" ]]; then
+        line=$(grep -n "Building ngen-bmi-forcing " "$output_file" 2>/dev/null | head -1)
+    else
+        line=$(grep -n "Building ${repo} " "$output_file" 2>/dev/null | head -1)
+    fi
+
+    [[ -n "$line" ]] && echo "${line%%:*}"
+}
+
 verify_build_order() {
     local output_file="$1"
     local expected_order=("$@")
@@ -79,16 +93,8 @@ verify_build_order() {
 
     local line_numbers=()
     for repo in "${expected_order[@]}"; do
-        # Match "Building {repo} " or "Building {repo}-" to avoid false matches
-        # e.g., "ngen " matches "Building ngen (" but not "Building ngen-bmi-forcing"
-        # Special case: ngen-forcing builds as ngen-bmi-forcing, ngen-lumped-forcing, ngen-coastal
         local line_num
-        if [[ "$repo" == "ngen-forcing" ]]; then
-            line_num=$(grep -n "Building ngen-bmi-forcing " "$output_file" 2>/dev/null || true)
-        else
-            line_num=$(grep -n "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null || true)
-        fi
-        line_num=$(echo "$line_num" | head -1 | cut -d: -f1)
+        line_num=$(get_build_line_number "$output_file" "$repo")
         if [[ -z "$line_num" ]]; then
             echo "ERROR: Could not find build for $repo"
             return 1
@@ -122,23 +128,26 @@ verify_build_arg() {
     local arg_name="$3"
     local expected_value="$4"
 
-    # Find the line number where the build starts
     local line_num
-    line_num=$(grep -n "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null || true)
-    line_num=$(echo "$line_num" | head -1 | cut -d: -f1)
-
-    # Find the build line for this repo (use same pattern as verify_build_order)
-    local build_line
-    build_line=$(grep -A2 "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null || true)
-    build_line=$(echo "$build_line" | grep -o "${arg_name}=[^ ]*" || true)
-    build_line=$(echo "$build_line" | head -1 | cut -d= -f2)
-
-    if [[ "$build_line" != "$expected_value" ]]; then
-        echo "ERROR: Expected ${arg_name}=${expected_value} but found ${arg_name}=${build_line}"
+    line_num=$(get_build_line_number "$output_file" "$repo")
+    if [[ -z "$line_num" ]]; then
+        echo "ERROR: Could not find build line for $repo while checking ${arg_name}"
         return 1
     fi
 
-    echo "  Found ${arg_name}=${build_line} at line ${line_num}"
+    local line_text
+    line_text=$(sed -n "${line_num}p" "$output_file")
+    local actual_value=""
+    if [[ "$line_text" =~ ${arg_name}=([^[:space:]]+) ]]; then
+        actual_value="${BASH_REMATCH[1]}"
+    fi
+
+    if [[ "$actual_value" != "$expected_value" ]]; then
+        echo "ERROR: Expected ${arg_name}=${expected_value} but found ${arg_name}=${actual_value}"
+        return 1
+    fi
+
+    echo "  Found ${arg_name}=${actual_value} at line ${line_num}"
     return 0
 }
 
