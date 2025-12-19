@@ -41,17 +41,16 @@ TEST4_DURATION=300   # 5 minutes - reuses some builds from Test 3
 TEST5_DURATION=1500  # 25 minutes - feature build with ngen
 TEST6_DURATION=300   # 5 minutes - reuses cached builds from Test 5
 
-# Print test header with estimated completion time
+# Print test header with estimated duration
 print_test_header() {
     local test_num="$1"
     local test_name="$2"
     local duration_seconds="$3"
 
-    local eta_timestamp=$(($(date +%s) + duration_seconds))
-    local eta_time=$(date -d "@${eta_timestamp}" '+%I:%M %p')
-
+    local start_time=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
     echo -e "\n${BOLD}Running Test ${test_num}: ${test_name}${NC}"
-    echo -e "  Estimated completion: ${eta_time} (~$((duration_seconds / 60)) minutes)"
+    echo -e "  Started: ${start_time}"
+    echo -e "  Estimated duration: ~$((duration_seconds / 60)) minutes"
 }
 
 # Print test result
