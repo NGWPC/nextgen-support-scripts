@@ -32,6 +32,28 @@ TESTS_FAILED=0
 TEST_OUTPUT_DIR="/tmp/build_cluster_tests_$(date +%s)"
 mkdir -p "$TEST_OUTPUT_DIR"
 
+# Estimated test durations in seconds
+# These are conservative estimates based on typical build times
+TEST1_DURATION=2400  # 40 minutes - fresh dev build with dependencies
+TEST2_DURATION=300   # 5 minutes - reuses cached builds from Test 1
+TEST3_DURATION=2700  # 45 minutes - release build with --no-cache
+TEST4_DURATION=300   # 5 minutes - reuses some builds from Test 3
+TEST5_DURATION=1500  # 25 minutes - feature build with ngen
+TEST6_DURATION=300   # 5 minutes - reuses cached builds from Test 5
+
+# Print test header with estimated completion time
+print_test_header() {
+    local test_num="$1"
+    local test_name="$2"
+    local duration_seconds="$3"
+
+    local eta_timestamp=$(($(date +%s) + duration_seconds))
+    local eta_time=$(date -d "@${eta_timestamp}" '+%I:%M %p')
+
+    echo -e "\n${BOLD}Running Test ${test_num}: ${test_name}${NC}"
+    echo -e "  Estimated completion: ${eta_time} (~$((duration_seconds / 60)) minutes)"
+}
+
 # Print test result
 print_result() {
     local test_name="$1"
@@ -60,8 +82,13 @@ verify_build_order() {
     for repo in "${expected_order[@]}"; do
         # Match "Building {repo} " or "Building {repo}-" to avoid false matches
         # e.g., "ngen " matches "Building ngen (" but not "Building ngen-bmi-forcing"
+        # Special case: ngen-forcing builds as ngen-bmi-forcing, ngen-lumped-forcing, ngen-coastal
         local line_num
-        line_num=$(grep -n "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null || true)
+        if [[ "$repo" == "ngen-forcing" ]]; then
+            line_num=$(grep -n "Building ngen-bmi-forcing " "$output_file" 2>/dev/null || true)
+        else
+            line_num=$(grep -n "Building ${repo} \|Building ${repo}-" "$output_file" 2>/dev/null || true)
+        fi
         line_num=$(echo "$line_num" | head -1 | cut -d: -f1)
         if [[ -z "$line_num" ]]; then
             echo "ERROR: Could not find build for $repo"
@@ -132,7 +159,7 @@ verify_no_prompt() {
 # ==============================================================================
 # TEST 1: Development build with nwm-cal-mgr
 # ==============================================================================
-echo -e "\n${BOLD}Running Test 1: Development build with nwm-cal-mgr${NC}"
+print_test_header "1" "Development build with nwm-cal-mgr" "$TEST1_DURATION"
 TEST1_OUTPUT="${TEST_OUTPUT_DIR}/test1_dev_cal_mgr.log"
 
 if ! "$BUILD_SCRIPT" --build-type=development nwm-cal-mgr ngen > "$TEST1_OUTPUT" 2>&1; then
@@ -172,7 +199,7 @@ fi
 # ==============================================================================
 # TEST 2: Development build with nwm-fcst-mgr
 # ==============================================================================
-echo -e "\n${BOLD}Running Test 2: Development build with nwm-fcst-mgr${NC}"
+print_test_header "2" "Development build with nwm-fcst-mgr" "$TEST2_DURATION"
 TEST2_OUTPUT="${TEST_OUTPUT_DIR}/test2_dev_fcst_mgr.log"
 
 if ! "$BUILD_SCRIPT" --build-type=development nwm-fcst-mgr ngen > "$TEST2_OUTPUT" 2>&1; then
@@ -212,7 +239,7 @@ fi
 # ==============================================================================
 # TEST 3: Release build with nwm-cal-mgr
 # ==============================================================================
-echo -e "\n${BOLD}Running Test 3: Release build with nwm-cal-mgr${NC}"
+print_test_header "3" "Release build with nwm-cal-mgr" "$TEST3_DURATION"
 TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
 
 # Use echo to provide tag inputs non-interactively
@@ -259,7 +286,7 @@ fi
 # ==============================================================================
 # TEST 4: Release build with nwm-fcst-mgr
 # ==============================================================================
-echo -e "\n${BOLD}Running Test 4: Release build with nwm-fcst-mgr${NC}"
+print_test_header "4" "Release build with nwm-fcst-mgr" "$TEST4_DURATION"
 TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
 
 (
@@ -305,7 +332,7 @@ fi
 # ==============================================================================
 # TEST 5: Feature build with ngen
 # ==============================================================================
-echo -e "\n${BOLD}Running Test 5: Feature build with ngen${NC}"
+print_test_header "5" "Feature build with ngen" "$TEST5_DURATION"
 TEST5_OUTPUT="${TEST_OUTPUT_DIR}/test5_feature_ngen.log"
 
 (
@@ -370,7 +397,7 @@ fi
 # ==============================================================================
 # TEST 6: Feature build with nwm-cal-mgr
 # ==============================================================================
-echo -e "\n${BOLD}Running Test 6: Feature build with nwm-cal-mgr${NC}"
+print_test_header "6" "Feature build with nwm-cal-mgr" "$TEST6_DURATION"
 TEST6_OUTPUT="${TEST_OUTPUT_DIR}/test6_feature_cal_mgr.log"
 
 (
