@@ -14,7 +14,8 @@
 #   1 - One or more tests failed
 # ==============================================================================
 
-set -e
+# Keep pipefail for accurate pipeline status checks, but avoid `set -e` so that
+# individual test failures don't abort the entire suite.
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,13 +34,13 @@ TEST_OUTPUT_DIR="/tmp/build_cluster_tests_$(date +%s)"
 mkdir -p "$TEST_OUTPUT_DIR"
 
 # Estimated test durations in seconds
-# These are conservative estimates based on typical build times
-TEST1_DURATION=2400  # 40 minutes - fresh dev build with dependencies
-TEST2_DURATION=300   # 5 minutes - reuses cached builds from Test 1
-TEST3_DURATION=2700  # 45 minutes - release build with --no-cache
-TEST4_DURATION=300   # 5 minutes - reuses some builds from Test 3
-TEST5_DURATION=1500  # 25 minutes - feature build with ngen
-TEST6_DURATION=300   # 5 minutes - reuses cached builds from Test 5
+# Updated based on actual test runs
+TEST1_DURATION=3000  # 50 minutes - fresh dev build with dependencies (actual: 50 min)
+TEST2_DURATION=2700  # 45 minutes - dev build, some cached layers but still rebuilds most
+TEST3_DURATION=3300  # 55 minutes - release build with --no-cache and tag checkouts
+TEST4_DURATION=3000  # 50 minutes - release build, similar to Test 3
+TEST5_DURATION=2100  # 35 minutes - feature build with ngen
+TEST6_DURATION=2700  # 45 minutes - feature build with nwm-cal-mgr and dependencies
 
 # Print test header with estimated duration
 print_test_header() {
@@ -76,7 +77,7 @@ get_build_line_number() {
     local output_file="$1"
     local repo="$2"
 
-    local line
+    local line=""
     if [[ "$repo" == "ngen-forcing" ]]; then
         line=$(grep -n "Building ngen-bmi-forcing " "$output_file" 2>/dev/null || true)
     else
@@ -85,6 +86,10 @@ get_build_line_number() {
 
     line=$(echo "$line" | head -1)
     [[ -n "$line" ]] && echo "${line%%:*}"
+
+    # Always return success so callers can handle missing lines without the
+    # script exiting early.
+    return 0
 }
 
 verify_build_order() {
