@@ -258,11 +258,11 @@ verify_no_prompt() {
 print_test_header "3" "Release build with nwm-cal-mgr" "$TEST3_DURATION"
 TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
 
-# Provide all tags via command line to avoid interactive prompts (use actual release tags)
+# Provide all tags via command line to avoid interactive prompts (default to latest)
 "$BUILD_SCRIPT" --build-type=release --source-default=build \
-    --tag=ngen-forcing:1.2.0 \
-    --tag=ngen:1.3.0 \
-    --tag=nwm-cal-mgr:1.3.0 \
+    --tag=ngen-forcing:latest \
+    --tag=ngen:latest \
+    --tag=nwm-cal-mgr:latest \
     nwm-cal-mgr ngen > "$TEST3_OUTPUT" 2>&1
 
 if [[ $? -ne 0 ]]; then
@@ -278,17 +278,17 @@ else
     fi
 
     # Verify ngen uses ngen-forcing release tag
-    if verify_build_arg "$TEST3_OUTPUT" "ngen" "NGEN_FORCING_TAG" "1.2.0"; then
-        print_result "Test 3: ngen uses NGEN_FORCING_TAG=1.2.0" "PASS"
+    if verify_build_arg "$TEST3_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
+        print_result "Test 3: ngen uses NGEN_FORCING_TAG=latest" "PASS"
     else
-        print_result "Test 3: ngen uses NGEN_FORCING_TAG=1.2.0" "FAIL" "Wrong tag used"
+        print_result "Test 3: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
     fi
 
     # Verify nwm-cal-mgr uses ngen release tag
-    if verify_build_arg "$TEST3_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "1.3.0"; then
-        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=1.3.0" "PASS"
+    if verify_build_arg "$TEST3_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "latest"; then
+        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
     else
-        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=1.3.0" "FAIL" "Wrong tag used"
+        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
     fi
 
     # Verify no unwanted prompts
@@ -305,11 +305,11 @@ fi
 print_test_header "4" "Release build with nwm-fcst-mgr" "$TEST4_DURATION"
 TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
 
-# Provide all tags via command line to avoid interactive prompts (use actual release tags)
+# Provide all tags via command line to avoid interactive prompts (default to latest)
 "$BUILD_SCRIPT" --build-type=release --source-default=build \
-    --tag=ngen-forcing:1.2.0 \
-    --tag=ngen:1.3.0 \
-    --tag=nwm-fcst-mgr:1.2.0 \
+    --tag=ngen-forcing:latest \
+    --tag=ngen:latest \
+    --tag=nwm-fcst-mgr:latest \
     nwm-fcst-mgr ngen > "$TEST4_OUTPUT" 2>&1
 
 if [[ $? -ne 0 ]]; then
@@ -325,17 +325,17 @@ else
     fi
 
     # Verify ngen uses ngen-forcing release tag
-    if verify_build_arg "$TEST4_OUTPUT" "ngen" "NGEN_FORCING_TAG" "1.2.0"; then
-        print_result "Test 4: ngen uses NGEN_FORCING_TAG=1.2.0" "PASS"
+    if verify_build_arg "$TEST4_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
+        print_result "Test 4: ngen uses NGEN_FORCING_TAG=latest" "PASS"
     else
-        print_result "Test 4: ngen uses NGEN_FORCING_TAG=1.2.0" "FAIL" "Wrong tag used"
+        print_result "Test 4: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
     fi
 
     # Verify nwm-fcst-mgr uses ngen release tag
-    if verify_build_arg "$TEST4_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "1.3.0"; then
-        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=1.3.0" "PASS"
+    if verify_build_arg "$TEST4_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "latest"; then
+        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
     else
-        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=1.3.0" "FAIL" "Wrong tag used"
+        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
     fi
 
     # Verify no unwanted prompts
