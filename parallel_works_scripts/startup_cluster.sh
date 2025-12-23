@@ -92,7 +92,7 @@ fi
 # note: added root before the command, which is required for /etc/cron.d files
 LOGROTATE_CONF="/ngencerf-app/ngencerf-server/logrotate-ngencerf.prod.conf"
 CRON_FILE='/etc/cron.d/ngencerf-logrotate'
-CRON_JOB="0 10,22 * * * root [ -f $LOGROTATE_CONF ] && /usr/sbin/logrotate -f $LOGROTATE_CONF"
+CRON_JOB="0 10,22 * * * root [ -f $LOGROTATE_CONF ] && /usr/sbin/logrotate $LOGROTATE_CONF"
 
 echo "$CRON_JOB" | sudo tee "$CRON_FILE" > /dev/null
 sudo chmod 0644 "$CRON_FILE"
