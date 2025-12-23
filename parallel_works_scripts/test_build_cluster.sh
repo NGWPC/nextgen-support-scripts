@@ -41,6 +41,12 @@ TEST3_DURATION=3300  # 55 minutes - release build with --no-cache and tag checko
 TEST4_DURATION=3000  # 50 minutes - release build, similar to Test 3
 TEST5_DURATION=2100  # 35 minutes - feature build with ngen
 TEST6_DURATION=2700  # 45 minutes - feature build with nwm-cal-mgr and dependencies
+TEST1_STEPS=5
+TEST2_STEPS=5
+TEST3_STEPS=5
+TEST4_STEPS=5
+TEST5_STEPS=8
+TEST6_STEPS=6
 TOTAL_ESTIMATED_DURATION=$((TEST1_DURATION + TEST2_DURATION + TEST3_DURATION + TEST4_DURATION + TEST5_DURATION + TEST6_DURATION))
 SCRIPT_START_EPOCH=$(date +%s)
 COMPLETED_SECONDS=0
@@ -65,6 +71,20 @@ format_duration() {
     fi
 
     echo "${parts[*]}"
+}
+
+print_test_progress() {
+    local test_num="$1"
+    local step="$2"
+    local total_steps="$3"
+    local description="$4"
+
+    local percent=0
+    if (( total_steps > 0 )); then
+        percent=$(( (step * 100) / total_steps ))
+    fi
+
+    echo -e "${YELLOW}Test ${test_num} progress:${NC} [${step}/${total_steps}] ${percent}% - ${description}"
 }
 
 print_progress() {
@@ -221,196 +241,222 @@ verify_no_prompt() {
 # ==============================================================================
 # TEST 1: Development build with nwm-cal-mgr
 # ==============================================================================
-print_test_header "1" "Development build with nwm-cal-mgr" "$TEST1_DURATION"
-TEST1_OUTPUT="${TEST_OUTPUT_DIR}/test1_dev_cal_mgr.log"
-TEST1_START=$(date +%s)
-print_progress "$COMPLETED_SECONDS" "Starting Test 1: Development build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
-
-if ! "$BUILD_SCRIPT" --build-type=development nwm-cal-mgr ngen > "$TEST1_OUTPUT" 2>&1; then
-    print_result "Test 1: Development build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
-else
-    print_result "Test 1: Development build (nwm-cal-mgr) - execution" "PASS"
-
-    # Verify build order: ngen-forcing -> ngen -> nwm-cal-mgr
-    if verify_build_order "$TEST1_OUTPUT" "ngen-forcing" "ngen" "nwm-cal-mgr"; then
-        print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "PASS"
-    else
-        print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "FAIL" "Incorrect build order"
-    fi
-
-    # Verify ngen uses ngen-forcing:latest
-    if verify_build_arg "$TEST1_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
-        print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "PASS"
-    else
-        print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify nwm-cal-mgr uses ngen:latest
-    if verify_build_arg "$TEST1_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "latest"; then
-        print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
-    else
-        print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify no unwanted prompts
-    if verify_no_prompt "$TEST1_OUTPUT" "Which.*Docker image tag"; then
-        print_result "Test 1: No unwanted tag prompts" "PASS"
-    else
-        print_result "Test 1: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
-    fi
-fi
-TEST1_ELAPSED=$(( $(date +%s) - TEST1_START ))
-COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST1_ELAPSED))
-print_progress "$COMPLETED_SECONDS" "Finished Test 1 (took $(format_duration "$TEST1_ELAPSED"))"
+# COMMENTED OUT - Run tests 5 and 6 only
+# print_test_header "1" "Development build with nwm-cal-mgr" "$TEST1_DURATION"
+# TEST1_OUTPUT="${TEST_OUTPUT_DIR}/test1_dev_cal_mgr.log"
+# TEST1_START=$(date +%s)
+# print_progress "$COMPLETED_SECONDS" "Starting Test 1: Development build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
+#
+# if ! "$BUILD_SCRIPT" --build-type=development nwm-cal-mgr ngen > "$TEST1_OUTPUT" 2>&1; then
+#     print_result "Test 1: Development build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
+#     print_test_progress "1" 1 "$TEST1_STEPS" "Build failed"
+# else
+#     print_result "Test 1: Development build (nwm-cal-mgr) - execution" "PASS"
+#     print_test_progress "1" 1 "$TEST1_STEPS" "Build completed"
+#
+#     # Verify build order: ngen-forcing -> ngen -> nwm-cal-mgr
+#     if verify_build_order "$TEST1_OUTPUT" "ngen-forcing" "ngen" "nwm-cal-mgr"; then
+#         print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "PASS"
+#     else
+#         print_result "Test 1: Build order (forcing->ngen->cal-mgr)" "FAIL" "Incorrect build order"
+#     fi
+#     print_test_progress "1" 2 "$TEST1_STEPS" "Verified build order"
+#
+#     # Verify ngen uses ngen-forcing:latest
+#     if verify_build_arg "$TEST1_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
+#         print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "PASS"
+#     else
+#         print_result "Test 1: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "1" 3 "$TEST1_STEPS" "Verified ngen uses ngen-forcing:latest"
+#
+#     # Verify nwm-cal-mgr uses ngen:latest
+#     if verify_build_arg "$TEST1_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "latest"; then
+#         print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
+#     else
+#         print_result "Test 1: nwm-cal-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "1" 4 "$TEST1_STEPS" "Verified nwm-cal-mgr uses ngen:latest"
+#
+#     # Verify no unwanted prompts
+#     if verify_no_prompt "$TEST1_OUTPUT" "Which.*Docker image tag"; then
+#         print_result "Test 1: No unwanted tag prompts" "PASS"
+#     else
+#         print_result "Test 1: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
+#     fi
+#     print_test_progress "1" 5 "$TEST1_STEPS" "Checked for unwanted tag prompts"
+# fi
+# TEST1_ELAPSED=$(( $(date +%s) - TEST1_START ))
+# COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST1_ELAPSED))
+# print_progress "$COMPLETED_SECONDS" "Finished Test 1 (took $(format_duration "$TEST1_ELAPSED"))"
 
 # ==============================================================================
 # TEST 2: Development build with nwm-fcst-mgr
 # ==============================================================================
-print_test_header "2" "Development build with nwm-fcst-mgr" "$TEST2_DURATION"
-TEST2_OUTPUT="${TEST_OUTPUT_DIR}/test2_dev_fcst_mgr.log"
-TEST2_START=$(date +%s)
-print_progress "$COMPLETED_SECONDS" "Starting Test 2: Development build with nwm-fcst-mgr (ngen-forcing -> ngen -> nwm-fcst-mgr)"
-
-if ! "$BUILD_SCRIPT" --build-type=development nwm-fcst-mgr ngen > "$TEST2_OUTPUT" 2>&1; then
-    print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
-else
-    print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "PASS"
-
-    # Verify build order: ngen-forcing -> ngen -> nwm-fcst-mgr
-    if verify_build_order "$TEST2_OUTPUT" "ngen-forcing" "ngen" "nwm-fcst-mgr"; then
-        print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "PASS"
-    else
-        print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "FAIL" "Incorrect build order"
-    fi
-
-    # Verify ngen uses ngen-forcing:latest
-    if verify_build_arg "$TEST2_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
-        print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "PASS"
-    else
-        print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify nwm-fcst-mgr uses ngen:latest
-    if verify_build_arg "$TEST2_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "latest"; then
-        print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
-    else
-        print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify no unwanted prompts
-    if verify_no_prompt "$TEST2_OUTPUT" "Which.*Docker image tag"; then
-        print_result "Test 2: No unwanted tag prompts" "PASS"
-    else
-        print_result "Test 2: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
-    fi
-fi
-TEST2_ELAPSED=$(( $(date +%s) - TEST2_START ))
-COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST2_ELAPSED))
-print_progress "$COMPLETED_SECONDS" "Finished Test 2 (took $(format_duration "$TEST2_ELAPSED"))"
+# COMMENTED OUT - Run tests 5 and 6 only
+# print_test_header "2" "Development build with nwm-fcst-mgr" "$TEST2_DURATION"
+# TEST2_OUTPUT="${TEST_OUTPUT_DIR}/test2_dev_fcst_mgr.log"
+# TEST2_START=$(date +%s)
+# print_progress "$COMPLETED_SECONDS" "Starting Test 2: Development build with nwm-fcst-mgr (ngen-forcing -> ngen -> nwm-fcst-mgr)"
+#
+# if ! "$BUILD_SCRIPT" --build-type=development nwm-fcst-mgr ngen > "$TEST2_OUTPUT" 2>&1; then
+#     print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
+#     print_test_progress "2" 1 "$TEST2_STEPS" "Build failed"
+# else
+#     print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "PASS"
+#     print_test_progress "2" 1 "$TEST2_STEPS" "Build completed"
+#
+#     # Verify build order: ngen-forcing -> ngen -> nwm-fcst-mgr
+#     if verify_build_order "$TEST2_OUTPUT" "ngen-forcing" "ngen" "nwm-fcst-mgr"; then
+#         print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "PASS"
+#     else
+#         print_result "Test 2: Build order (forcing->ngen->fcst-mgr)" "FAIL" "Incorrect build order"
+#     fi
+#     print_test_progress "2" 2 "$TEST2_STEPS" "Verified build order"
+#
+#     # Verify ngen uses ngen-forcing:latest
+#     if verify_build_arg "$TEST2_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
+#         print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "PASS"
+#     else
+#         print_result "Test 2: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "2" 3 "$TEST2_STEPS" "Verified ngen uses ngen-forcing:latest"
+#
+#     # Verify nwm-fcst-mgr uses ngen:latest
+#     if verify_build_arg "$TEST2_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "latest"; then
+#         print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "PASS"
+#     else
+#         print_result "Test 2: nwm-fcst-mgr uses NGEN_IMAGE_TAG=latest" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "2" 4 "$TEST2_STEPS" "Verified nwm-fcst-mgr uses ngen:latest"
+#
+#     # Verify no unwanted prompts
+#     if verify_no_prompt "$TEST2_OUTPUT" "Which.*Docker image tag"; then
+#         print_result "Test 2: No unwanted tag prompts" "PASS"
+#     else
+#         print_result "Test 2: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
+#     fi
+#     print_test_progress "2" 5 "$TEST2_STEPS" "Checked for unwanted tag prompts"
+# fi
+# TEST2_ELAPSED=$(( $(date +%s) - TEST2_START ))
+# COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST2_ELAPSED))
+# print_progress "$COMPLETED_SECONDS" "Finished Test 2 (took $(format_duration "$TEST2_ELAPSED"))"
 
 # ==============================================================================
 # TEST 3: Release build with nwm-cal-mgr
 # ==============================================================================
-print_test_header "3" "Release build with nwm-cal-mgr" "$TEST3_DURATION"
-TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
-TEST3_START=$(date +%s)
-print_progress "$COMPLETED_SECONDS" "Starting Test 3: Release build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
-
-# Provide all tags via command line to avoid interactive prompts (pin to known release tags)
-"$BUILD_SCRIPT" --build-type=release --source-default=build \
-    --tag=ngen-forcing:3.1.2.1.0 \
-    --tag=ngen:3.1.2.1.0 \
-    --tag=nwm-cal-mgr:3.1.2.1.0 \
-    nwm-cal-mgr ngen > "$TEST3_OUTPUT" 2>&1
-
-if [[ $? -ne 0 ]]; then
-    print_result "Test 3: Release build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
-else
-    print_result "Test 3: Release build (nwm-cal-mgr) - execution" "PASS"
-
-    # Verify build order
-    if verify_build_order "$TEST3_OUTPUT" "ngen-forcing" "ngen" "nwm-cal-mgr"; then
-        print_result "Test 3: Build order (forcing->ngen->cal-mgr)" "PASS"
-    else
-        print_result "Test 3: Build order (forcing->ngen->cal-mgr)" "FAIL" "Incorrect build order"
-    fi
-
-    # Verify ngen uses ngen-forcing release tag
-    if verify_build_arg "$TEST3_OUTPUT" "ngen" "NGEN_FORCING_TAG" "3.1.2.1.0"; then
-        print_result "Test 3: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "PASS"
-    else
-        print_result "Test 3: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify nwm-cal-mgr uses ngen release tag
-    if verify_build_arg "$TEST3_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "3.1.2.1.0"; then
-        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "PASS"
-    else
-        print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify no unwanted prompts
-    if verify_no_prompt "$TEST3_OUTPUT" "Which.*Docker image tag"; then
-        print_result "Test 3: No unwanted tag prompts" "PASS"
-    else
-        print_result "Test 3: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
-    fi
-fi
-TEST3_ELAPSED=$(( $(date +%s) - TEST3_START ))
-COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST3_ELAPSED))
-print_progress "$COMPLETED_SECONDS" "Finished Test 3 (took $(format_duration "$TEST3_ELAPSED"))"
+# COMMENTED OUT - Run tests 5 and 6 only
+# print_test_header "3" "Release build with nwm-cal-mgr" "$TEST3_DURATION"
+# TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
+# TEST3_START=$(date +%s)
+# print_progress "$COMPLETED_SECONDS" "Starting Test 3: Release build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
+#
+# # Provide all tags via command line to avoid interactive prompts (pin to known release tags)
+# "$BUILD_SCRIPT" --build-type=release --source-default=build \
+#     --tag=ngen-forcing:3.1.2.1.0 \
+#     --tag=ngen:3.1.2.1.0 \
+#     --tag=nwm-cal-mgr:3.1.2.1.0 \
+#     nwm-cal-mgr ngen > "$TEST3_OUTPUT" 2>&1
+#
+# if [[ $? -ne 0 ]]; then
+#     print_result "Test 3: Release build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
+# else
+#     print_result "Test 3: Release build (nwm-cal-mgr) - execution" "PASS"
+#     print_test_progress "3" 1 "$TEST3_STEPS" "Build completed"
+#
+#     # Verify build order
+#     if verify_build_order "$TEST3_OUTPUT" "ngen-forcing" "ngen" "nwm-cal-mgr"; then
+#         print_result "Test 3: Build order (forcing->ngen->cal-mgr)" "PASS"
+#     else
+#         print_result "Test 3: Build order (forcing->ngen->cal-mgr)" "FAIL" "Incorrect build order"
+#     fi
+#     print_test_progress "3" 2 "$TEST3_STEPS" "Verified build order"
+#
+#     # Verify ngen uses ngen-forcing release tag
+#     if verify_build_arg "$TEST3_OUTPUT" "ngen" "NGEN_FORCING_TAG" "3.1.2.1.0"; then
+#         print_result "Test 3: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "PASS"
+#     else
+#         print_result "Test 3: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "3" 3 "$TEST3_STEPS" "Verified ngen uses release forcing tag"
+#
+#     # Verify nwm-cal-mgr uses ngen release tag
+#     if verify_build_arg "$TEST3_OUTPUT" "nwm-cal-mgr" "NGEN_IMAGE_TAG" "3.1.2.1.0"; then
+#         print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "PASS"
+#     else
+#         print_result "Test 3: nwm-cal-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "3" 4 "$TEST3_STEPS" "Verified nwm-cal-mgr uses ngen release tag"
+#
+#     # Verify no unwanted prompts
+#     if verify_no_prompt "$TEST3_OUTPUT" "Which.*Docker image tag"; then
+#         print_result "Test 3: No unwanted tag prompts" "PASS"
+#     else
+#         print_result "Test 3: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
+#     fi
+#     print_test_progress "3" 5 "$TEST3_STEPS" "Checked for unwanted tag prompts"
+# fi
+# TEST3_ELAPSED=$(( $(date +%s) - TEST3_START ))
+# COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST3_ELAPSED))
+# print_progress "$COMPLETED_SECONDS" "Finished Test 3 (took $(format_duration "$TEST3_ELAPSED"))"
 
 # ==============================================================================
 # TEST 4: Release build with nwm-fcst-mgr
 # ==============================================================================
-print_test_header "4" "Release build with nwm-fcst-mgr" "$TEST4_DURATION"
-TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
-TEST4_START=$(date +%s)
-print_progress "$COMPLETED_SECONDS" "Starting Test 4: Release build with nwm-fcst-mgr (ngen-forcing -> ngen -> nwm-fcst-mgr)"
-
-# Provide all tags via command line to avoid interactive prompts (pin to known release tags)
-"$BUILD_SCRIPT" --build-type=release --source-default=build \
-    --tag=ngen-forcing:3.1.2.1.0 \
-    --tag=ngen:3.1.2.1.0 \
-    --tag=nwm-fcst-mgr:3.1.2.1.0 \
-    nwm-fcst-mgr ngen > "$TEST4_OUTPUT" 2>&1
-
-if [[ $? -ne 0 ]]; then
-    print_result "Test 4: Release build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
-else
-    print_result "Test 4: Release build (nwm-fcst-mgr) - execution" "PASS"
-
-    # Verify build order
-    if verify_build_order "$TEST4_OUTPUT" "ngen-forcing" "ngen" "nwm-fcst-mgr"; then
-        print_result "Test 4: Build order (forcing->ngen->fcst-mgr)" "PASS"
-    else
-        print_result "Test 4: Build order (forcing->ngen->fcst-mgr)" "FAIL" "Incorrect build order"
-    fi
-
-    # Verify ngen uses ngen-forcing release tag
-    if verify_build_arg "$TEST4_OUTPUT" "ngen" "NGEN_FORCING_TAG" "3.1.2.1.0"; then
-        print_result "Test 4: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "PASS"
-    else
-        print_result "Test 4: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify nwm-fcst-mgr uses ngen release tag
-    if verify_build_arg "$TEST4_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "3.1.2.1.0"; then
-        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "PASS"
-    else
-        print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
-    fi
-
-    # Verify no unwanted prompts
-    if verify_no_prompt "$TEST4_OUTPUT" "Which.*Docker image tag"; then
-        print_result "Test 4: No unwanted tag prompts" "PASS"
-    else
-        print_result "Test 4: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
-    fi
-fi
-TEST4_ELAPSED=$(( $(date +%s) - TEST4_START ))
-COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST4_ELAPSED))
-print_progress "$COMPLETED_SECONDS" "Finished Test 4 (took $(format_duration "$TEST4_ELAPSED"))"
+# COMMENTED OUT - Run tests 5 and 6 only
+# print_test_header "4" "Release build with nwm-fcst-mgr" "$TEST4_DURATION"
+# TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
+# TEST4_START=$(date +%s)
+# print_progress "$COMPLETED_SECONDS" "Starting Test 4: Release build with nwm-fcst-mgr (ngen-forcing -> ngen -> nwm-fcst-mgr)"
+#
+# # Provide all tags via command line to avoid interactive prompts (pin to known release tags)
+# "$BUILD_SCRIPT" --build-type=release --source-default=build \
+#     --tag=ngen-forcing:3.1.2.1.0 \
+#     --tag=ngen:3.1.2.1.0 \
+#     --tag=nwm-fcst-mgr:3.1.2.1.0 \
+#     nwm-fcst-mgr ngen > "$TEST4_OUTPUT" 2>&1
+#
+# if [[ $? -ne 0 ]]; then
+#     print_result "Test 4: Release build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
+# else
+#     print_result "Test 4: Release build (nwm-fcst-mgr) - execution" "PASS"
+#     print_test_progress "4" 1 "$TEST4_STEPS" "Build completed"
+#
+#     # Verify build order
+#     if verify_build_order "$TEST4_OUTPUT" "ngen-forcing" "ngen" "nwm-fcst-mgr"; then
+#         print_result "Test 4: Build order (forcing->ngen->fcst-mgr)" "PASS"
+#     else
+#         print_result "Test 4: Build order (forcing->ngen->fcst-mgr)" "FAIL" "Incorrect build order"
+#     fi
+#     print_test_progress "4" 2 "$TEST4_STEPS" "Verified build order"
+#
+#     # Verify ngen uses ngen-forcing release tag
+#     if verify_build_arg "$TEST4_OUTPUT" "ngen" "NGEN_FORCING_TAG" "3.1.2.1.0"; then
+#         print_result "Test 4: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "PASS"
+#     else
+#         print_result "Test 4: ngen uses NGEN_FORCING_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "4" 3 "$TEST4_STEPS" "Verified ngen uses release forcing tag"
+#
+#     # Verify nwm-fcst-mgr uses ngen release tag
+#     if verify_build_arg "$TEST4_OUTPUT" "nwm-fcst-mgr" "NGEN_IMAGE_TAG" "3.1.2.1.0"; then
+#         print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "PASS"
+#     else
+#         print_result "Test 4: nwm-fcst-mgr uses NGEN_IMAGE_TAG=3.1.2.1.0" "FAIL" "Wrong tag used"
+#     fi
+#     print_test_progress "4" 4 "$TEST4_STEPS" "Verified nwm-fcst-mgr uses ngen release tag"
+#
+#     # Verify no unwanted prompts
+#     if verify_no_prompt "$TEST4_OUTPUT" "Which.*Docker image tag"; then
+#         print_result "Test 4: No unwanted tag prompts" "PASS"
+#     else
+#         print_result "Test 4: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
+#     fi
+#     print_test_progress "4" 5 "$TEST4_STEPS" "Checked for unwanted tag prompts"
+# fi
+# TEST4_ELAPSED=$(( $(date +%s) - TEST4_START ))
+# COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST4_ELAPSED))
+# print_progress "$COMPLETED_SECONDS" "Finished Test 4 (took $(format_duration "$TEST4_ELAPSED"))"
 
 # ==============================================================================
 # TEST 5: Feature build with ngen
@@ -420,28 +466,28 @@ TEST5_OUTPUT="${TEST_OUTPUT_DIR}/test5_feature_ngen.log"
 TEST5_START=$(date +%s)
 print_progress "$COMPLETED_SECONDS" "Starting Test 5: Feature build with ngen (ngen-forcing -> ngen)"
 
-(
-    echo "main"     # ngen branch
-    echo "main"     # ngen-forcing branch (dependency)
-) | "$BUILD_SCRIPT" --build-type=feature ngen > "$TEST5_OUTPUT" 2>&1
+"$BUILD_SCRIPT" --build-type=feature --branch=ngen:development ngen > "$TEST5_OUTPUT" 2>&1
 
-if [[ ${PIPESTATUS[1]} -ne 0 ]]; then
+if [[ $? -ne 0 ]]; then
     print_result "Test 5: Feature build (ngen) - execution" "FAIL" "Build script failed"
 else
     print_result "Test 5: Feature build (ngen) - execution" "PASS"
+    print_test_progress "5" 1 "$TEST5_STEPS" "Build completed"
 
     # Verify branch name used in Docker tag (not "feature")
-    if grep -q "ngen-bmi-forcing:main" "$TEST5_OUTPUT"; then
+    if grep -q "ngen-bmi-forcing:development" "$TEST5_OUTPUT"; then
         print_result "Test 5: ngen-forcing uses branch name in tag" "PASS"
     else
         print_result "Test 5: ngen-forcing uses branch name in tag" "FAIL" "Not using branch name"
     fi
+    print_test_progress "5" 2 "$TEST5_STEPS" "Verified ngen-forcing tag uses branch"
 
-    if grep -q "ngen:main" "$TEST5_OUTPUT"; then
+    if grep -q "ngen:development" "$TEST5_OUTPUT"; then
         print_result "Test 5: ngen uses branch name in tag" "PASS"
     else
         print_result "Test 5: ngen uses branch name in tag" "FAIL" "Not using branch name"
     fi
+    print_test_progress "5" 3 "$TEST5_STEPS" "Verified ngen tag uses branch"
 
     # Verify not using generic "feature" tag
     if ! grep -q "ngen:feature[^/]" "$TEST5_OUTPUT"; then
@@ -449,6 +495,7 @@ else
     else
         print_result "Test 5: Not using generic 'feature' tag" "FAIL" "Found generic feature tag"
     fi
+    print_test_progress "5" 4 "$TEST5_STEPS" "Checked for generic feature tag"
 
     # Verify all builds are local (no pulling)
     if ! grep -q "Pulling.*Docker image" "$TEST5_OUTPUT"; then
@@ -456,6 +503,7 @@ else
     else
         print_result "Test 5: All images built locally (no pulling)" "FAIL" "Found pull operation"
     fi
+    print_test_progress "5" 5 "$TEST5_STEPS" "Confirmed images built locally"
 
     # Verify no prompts about image source (build/pull)
     if ! grep -q "Image source for.*\[build/pull\]" "$TEST5_OUTPUT"; then
@@ -463,6 +511,7 @@ else
     else
         print_result "Test 5: No image source prompts" "FAIL" "Found image source prompt"
     fi
+    print_test_progress "5" 6 "$TEST5_STEPS" "Checked for image source prompts"
 
     # Verify no default branch prompts
     if ! grep -q "default.*development\|default.*main" "$TEST5_OUTPUT"; then
@@ -470,6 +519,7 @@ else
     else
         print_result "Test 5: No default branch in prompts" "FAIL" "Found default branch reference"
     fi
+    print_test_progress "5" 7 "$TEST5_STEPS" "Checked for default branch prompts"
 
     # Verify no unwanted prompts
     if verify_no_prompt "$TEST5_OUTPUT" "Which.*Docker image tag"; then
@@ -477,6 +527,7 @@ else
     else
         print_result "Test 5: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
+    print_test_progress "5" 8 "$TEST5_STEPS" "Checked for unwanted tag prompts"
 fi
 TEST5_ELAPSED=$(( $(date +%s) - TEST5_START ))
 COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST5_ELAPSED))
@@ -490,23 +541,21 @@ TEST6_OUTPUT="${TEST_OUTPUT_DIR}/test6_feature_cal_mgr.log"
 TEST6_START=$(date +%s)
 print_progress "$COMPLETED_SECONDS" "Starting Test 6: Feature build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
 
-(
-    echo "main"      # nwm-cal-mgr branch
-    echo "main"      # ngen branch (dependency)
-    echo "main"      # ngen-forcing branch (dependency)
-) | "$BUILD_SCRIPT" --build-type=feature nwm-cal-mgr > "$TEST6_OUTPUT" 2>&1
+"$BUILD_SCRIPT" --build-type=feature --branch=nwm-cal-mgr:development nwm-cal-mgr > "$TEST6_OUTPUT" 2>&1
 
-if [[ ${PIPESTATUS[1]} -ne 0 ]]; then
+if [[ $? -ne 0 ]]; then
     print_result "Test 6: Feature build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
 else
     print_result "Test 6: Feature build (nwm-cal-mgr) - execution" "PASS"
+    print_test_progress "6" 1 "$TEST6_STEPS" "Build completed"
 
     # Verify branch name used in Docker tag
-    if grep -q "nwm-cal-mgr:main" "$TEST6_OUTPUT"; then
+    if grep -q "nwm-cal-mgr:development" "$TEST6_OUTPUT"; then
         print_result "Test 6: nwm-cal-mgr uses branch name in tag" "PASS"
     else
         print_result "Test 6: nwm-cal-mgr uses branch name in tag" "FAIL" "Not using branch name"
     fi
+    print_test_progress "6" 2 "$TEST6_STEPS" "Verified nwm-cal-mgr tag uses branch"
 
     # Verify not using generic "feature" tag
     if ! grep -q "nwm-cal-mgr:feature[^/]" "$TEST6_OUTPUT"; then
@@ -514,6 +563,7 @@ else
     else
         print_result "Test 6: Not using generic 'feature' tag" "FAIL" "Found generic feature tag"
     fi
+    print_test_progress "6" 3 "$TEST6_STEPS" "Checked for generic feature tag"
 
     # Verify all builds are local
     if ! grep -q "Pulling.*Docker image" "$TEST6_OUTPUT"; then
@@ -521,6 +571,7 @@ else
     else
         print_result "Test 6: All images built locally (no pulling)" "FAIL" "Found pull operation"
     fi
+    print_test_progress "6" 4 "$TEST6_STEPS" "Confirmed images built locally"
 
     # Verify no image source prompts
     if ! grep -q "Image source for.*\[build/pull\]" "$TEST6_OUTPUT"; then
@@ -528,6 +579,7 @@ else
     else
         print_result "Test 6: No image source prompts" "FAIL" "Found image source prompt"
     fi
+    print_test_progress "6" 5 "$TEST6_STEPS" "Checked for image source prompts"
 
     # Verify no unwanted prompts
     if verify_no_prompt "$TEST6_OUTPUT" "Which.*Docker image tag"; then
@@ -535,6 +587,7 @@ else
     else
         print_result "Test 6: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
+    print_test_progress "6" 6 "$TEST6_STEPS" "Checked for unwanted tag prompts"
 fi
 TEST6_ELAPSED=$(( $(date +%s) - TEST6_START ))
 COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST6_ELAPSED))

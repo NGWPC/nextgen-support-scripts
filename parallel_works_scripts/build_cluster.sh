@@ -601,6 +601,11 @@ auto_include_dependencies() {
             SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen-forcing")
             echo "Auto-adding dependency: ngen-forcing (required by ngen)"
+            # For feature builds, inherit branch from ngen if not already set
+            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen-forcing]:-}" && -n "${REPO_BRANCHES[ngen]:-}" ]]; then
+                REPO_BRANCHES["ngen-forcing"]="${REPO_BRANCHES[ngen]}"
+                echo "Using branch '${REPO_BRANCHES[ngen]}' for ngen-forcing (inherited from ngen)"
+            fi
         fi
     fi
 
@@ -610,11 +615,26 @@ auto_include_dependencies() {
             SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen")
             echo "Auto-adding dependency: ngen (required by nwm-cal-mgr)"
+            # For feature builds, inherit branch from nwm-cal-mgr if not already set
+            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen]:-}" && -n "${REPO_BRANCHES[nwm-cal-mgr]:-}" ]]; then
+                REPO_BRANCHES["ngen"]="${REPO_BRANCHES[nwm-cal-mgr]}"
+                echo "Using branch '${REPO_BRANCHES[nwm-cal-mgr]}' for ngen (inherited from nwm-cal-mgr)"
+            fi
         fi
         if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
             SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen-forcing")
             echo "Auto-adding dependency: ngen-forcing (required by ngen)"
+            # For feature builds, inherit branch from ngen if set, otherwise from nwm-cal-mgr
+            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
+                if [[ -n "${REPO_BRANCHES[ngen]:-}" ]]; then
+                    REPO_BRANCHES["ngen-forcing"]="${REPO_BRANCHES[ngen]}"
+                    echo "Using branch '${REPO_BRANCHES[ngen]}' for ngen-forcing (inherited from ngen)"
+                elif [[ -n "${REPO_BRANCHES[nwm-cal-mgr]:-}" ]]; then
+                    REPO_BRANCHES["ngen-forcing"]="${REPO_BRANCHES[nwm-cal-mgr]}"
+                    echo "Using branch '${REPO_BRANCHES[nwm-cal-mgr]}' for ngen-forcing (inherited from nwm-cal-mgr)"
+                fi
+            fi
         fi
     fi
 
@@ -624,11 +644,26 @@ auto_include_dependencies() {
             SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen")
             echo "Auto-adding dependency: ngen (required by nwm-fcst-mgr)"
+            # For feature builds, inherit branch from nwm-fcst-mgr if not already set
+            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen]:-}" && -n "${REPO_BRANCHES[nwm-fcst-mgr]:-}" ]]; then
+                REPO_BRANCHES["ngen"]="${REPO_BRANCHES[nwm-fcst-mgr]}"
+                echo "Using branch '${REPO_BRANCHES[nwm-fcst-mgr]}' for ngen (inherited from nwm-fcst-mgr)"
+            fi
         fi
         if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
             SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen-forcing")
             echo "Auto-adding dependency: ngen-forcing (required by ngen)"
+            # For feature builds, inherit branch from ngen if set, otherwise from nwm-fcst-mgr
+            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
+                if [[ -n "${REPO_BRANCHES[ngen]:-}" ]]; then
+                    REPO_BRANCHES["ngen-forcing"]="${REPO_BRANCHES[ngen]}"
+                    echo "Using branch '${REPO_BRANCHES[ngen]}' for ngen-forcing (inherited from ngen)"
+                elif [[ -n "${REPO_BRANCHES[nwm-fcst-mgr]:-}" ]]; then
+                    REPO_BRANCHES["ngen-forcing"]="${REPO_BRANCHES[nwm-fcst-mgr]}"
+                    echo "Using branch '${REPO_BRANCHES[nwm-fcst-mgr]}' for ngen-forcing (inherited from nwm-fcst-mgr)"
+                fi
+            fi
         fi
     fi
 
