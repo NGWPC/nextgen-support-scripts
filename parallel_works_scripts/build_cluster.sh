@@ -754,6 +754,28 @@ get_image_key() {
     docker inspect --format='{{.Id}}' "$ref" 2>/dev/null || true
 }
 
+ensure_image_present() {
+    local repo="$1"
+    local image_ref="$2"
+    local mode="${3:-pull}"
+
+    # Only relevant for pull mode; build mode already guarantees local presence
+    if [[ "$mode" != "pull" ]]; then
+        return 0
+    fi
+
+    if docker image inspect "$image_ref" >/dev/null 2>&1; then
+        echo "[$(date '+%H:%M:%S')] Local image present for ${repo:-$image_ref}; using local copy (skipping pull)"
+    else
+        echo "[$(date '+%H:%M:%S')] Pulling docker image: $image_ref"
+        docker pull "$image_ref"
+    fi
+
+    if [[ -n "$repo" ]]; then
+        IMAGE_FETCHED["$repo"]="true"
+    fi
+}
+
 build_singularity_container_update_symlink() {
     local build_type="$1"
     local sif_base="$2"
@@ -927,8 +949,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
             fi
         else
-            echo "[$(date '+%H:%M:%S')] Pulling ngen-bmi-forcing Docker image"
-            docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
+            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-forcing; will reuse local images when present"
+            ensure_image_present "ngen-forcing" "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" "pull"
         fi
     fi
 
@@ -952,8 +974,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 --tag="${REGISTRY}/ngen:${TAGS[ngen]}" \
                 "${BASE_PATH}/ngen"
         else
-            echo "[$(date '+%H:%M:%S')] Pulling ngen Docker image"
-            docker pull "${REGISTRY}/ngen:${TAGS[ngen]}"
+            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen; will reuse local image when present"
+            ensure_image_present "ngen" "${REGISTRY}/ngen:${TAGS[ngen]}" "pull"
         fi
     fi
 
@@ -961,8 +983,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         case "$repo" in
             "nwm-cal-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "pull" ]]; then
-                    echo "[$(date '+%H:%M:%S')] Pulling nwm-cal-mgr Docker image"
-                    docker pull "${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}"
+                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-cal-mgr; will reuse local image when present"
+                    ensure_image_present "nwm-cal-mgr" "${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}" "pull"
                 else
                     checkout_repo_tag "nwm-cal-mgr" "${TAGS[nwm-cal-mgr]}"
 
@@ -983,8 +1005,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
             "nwm-fcst-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "pull" ]]; then
-                    echo "[$(date '+%H:%M:%S')] Pulling nwm-fcst-mgr Docker image"
-                    docker pull "${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}"
+                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-fcst-mgr; will reuse local image when present"
+                    ensure_image_present "nwm-fcst-mgr" "${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}" "pull"
                 else
                     checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
 
@@ -1002,8 +1024,8 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
             "nwm-verf")
                 if [[ "${IMAGE_SOURCE[nwm-verf]}" == "pull" ]]; then
-                    echo "[$(date '+%H:%M:%S')] Pulling nwm-verf Docker image"
-                    docker pull "${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}"
+                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-verf; will reuse local image when present"
+                    ensure_image_present "nwm-verf" "${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}" "pull"
                 else
                     checkout_repo_tag "nwm-verf" "${TAGS[nwm-verf]}"
                     echo "[$(date '+%H:%M:%S')] Building nwm-verf Docker image"
@@ -1103,8 +1125,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
                             "${BASE_PATH}/ngen-forcing"
                     else
-                        echo "[$(date '+%H:%M:%S')] Pulling ngen-bmi-forcing (development) Docker image"
-                        docker pull "${REGISTRY}/ngen-bmi-forcing:latest"
+                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-forcing; will reuse local images when present"
+                        ensure_image_present "ngen-forcing" "${REGISTRY}/ngen-bmi-forcing:latest" "pull"
                     fi
                     IMAGE_FETCHED["ngen-forcing"]="true"
                 else
@@ -1121,8 +1143,8 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             --tag="${REGISTRY}/ngen:latest" \
                             "${BASE_PATH}/ngen"
                     else
-                        echo "[$(date '+%H:%M:%S')] Pulling ngen (development) Docker image"
-                        docker pull "${REGISTRY}/ngen:latest"
+                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen; will reuse local image when present"
+                        ensure_image_present "ngen" "${REGISTRY}/ngen:latest" "pull"
                     fi
                     IMAGE_FETCHED["ngen"]="true"
                 else
@@ -1142,11 +1164,9 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
 
                 if [[ "${IMAGE_SOURCE[$repo]}" != "build" ]]; then
                     if [[ "${IMAGE_FETCHED[$repo]:-}" == "true" ]]; then
-                        echo "[$(date '+%H:%M:%S')] Using previously pulled image for SIF: $IMAGE"
+                        echo "[$(date '+%H:%M:%S')] Using available image for SIF: $IMAGE"
                     else
-                        echo "[$(date '+%H:%M:%S')] Pulling docker image for SIF: $IMAGE"
-                        docker pull "$IMAGE"
-                        IMAGE_FETCHED["$repo"]="true"
+                        ensure_image_present "$repo" "$IMAGE" "pull"
                     fi
                 else
                     echo "[$(date '+%H:%M:%S')] Using locally built image for SIF: $IMAGE"
