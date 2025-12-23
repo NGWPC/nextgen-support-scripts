@@ -41,6 +41,54 @@ TEST3_DURATION=3300  # 55 minutes - release build with --no-cache and tag checko
 TEST4_DURATION=3000  # 50 minutes - release build, similar to Test 3
 TEST5_DURATION=2100  # 35 minutes - feature build with ngen
 TEST6_DURATION=2700  # 45 minutes - feature build with nwm-cal-mgr and dependencies
+TOTAL_ESTIMATED_DURATION=$((TEST1_DURATION + TEST2_DURATION + TEST3_DURATION + TEST4_DURATION + TEST5_DURATION + TEST6_DURATION))
+SCRIPT_START_EPOCH=$(date +%s)
+COMPLETED_SECONDS=0
+
+format_duration() {
+    local total_seconds="$1"
+    local hours=$((total_seconds / 3600))
+    local minutes=$(((total_seconds % 3600) / 60))
+    local seconds=$((total_seconds % 60))
+    local parts=()
+
+    if (( hours > 0 )); then
+        parts+=("${hours}h")
+    fi
+
+    if (( minutes > 0 )); then
+        parts+=("${minutes}m")
+    fi
+
+    if (( hours == 0 && minutes == 0 )); then
+        parts+=("${seconds}s")
+    fi
+
+    echo "${parts[*]}"
+}
+
+print_progress() {
+    local completed_seconds="$1"
+    local context="$2"
+    local elapsed=$(( $(date +%s) - SCRIPT_START_EPOCH ))
+    local capped_completed="$completed_seconds"
+
+    if (( capped_completed > TOTAL_ESTIMATED_DURATION )); then
+        capped_completed=$TOTAL_ESTIMATED_DURATION
+    fi
+
+    local percent_complete=0
+    if (( TOTAL_ESTIMATED_DURATION > 0 )); then
+        percent_complete=$(( (capped_completed * 100) / TOTAL_ESTIMATED_DURATION ))
+    fi
+
+    local remaining=$((TOTAL_ESTIMATED_DURATION - capped_completed))
+    if (( remaining < 0 )); then
+        remaining=0
+    fi
+
+    echo -e "${YELLOW}Progress:${NC} ${percent_complete}% complete (elapsed $(format_duration "$elapsed"), ~$(format_duration "$remaining") remaining) - ${context}"
+}
 
 # Print test header with estimated duration
 print_test_header() {
@@ -175,6 +223,8 @@ verify_no_prompt() {
 # ==============================================================================
 print_test_header "1" "Development build with nwm-cal-mgr" "$TEST1_DURATION"
 TEST1_OUTPUT="${TEST_OUTPUT_DIR}/test1_dev_cal_mgr.log"
+TEST1_START=$(date +%s)
+print_progress "$COMPLETED_SECONDS" "Starting Test 1: Development build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
 
 if ! "$BUILD_SCRIPT" --build-type=development nwm-cal-mgr ngen > "$TEST1_OUTPUT" 2>&1; then
     print_result "Test 1: Development build (nwm-cal-mgr) - execution" "FAIL" "Build script failed"
@@ -209,12 +259,17 @@ else
         print_result "Test 1: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
 fi
+TEST1_ELAPSED=$(( $(date +%s) - TEST1_START ))
+COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST1_ELAPSED))
+print_progress "$COMPLETED_SECONDS" "Finished Test 1 (took $(format_duration "$TEST1_ELAPSED"))"
 
 # ==============================================================================
 # TEST 2: Development build with nwm-fcst-mgr
 # ==============================================================================
 print_test_header "2" "Development build with nwm-fcst-mgr" "$TEST2_DURATION"
 TEST2_OUTPUT="${TEST_OUTPUT_DIR}/test2_dev_fcst_mgr.log"
+TEST2_START=$(date +%s)
+print_progress "$COMPLETED_SECONDS" "Starting Test 2: Development build with nwm-fcst-mgr (ngen-forcing -> ngen -> nwm-fcst-mgr)"
 
 if ! "$BUILD_SCRIPT" --build-type=development nwm-fcst-mgr ngen > "$TEST2_OUTPUT" 2>&1; then
     print_result "Test 2: Development build (nwm-fcst-mgr) - execution" "FAIL" "Build script failed"
@@ -249,12 +304,17 @@ else
         print_result "Test 2: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
 fi
+TEST2_ELAPSED=$(( $(date +%s) - TEST2_START ))
+COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST2_ELAPSED))
+print_progress "$COMPLETED_SECONDS" "Finished Test 2 (took $(format_duration "$TEST2_ELAPSED"))"
 
 # ==============================================================================
 # TEST 3: Release build with nwm-cal-mgr
 # ==============================================================================
 print_test_header "3" "Release build with nwm-cal-mgr" "$TEST3_DURATION"
 TEST3_OUTPUT="${TEST_OUTPUT_DIR}/test3_release_cal_mgr.log"
+TEST3_START=$(date +%s)
+print_progress "$COMPLETED_SECONDS" "Starting Test 3: Release build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
 
 # Provide all tags via command line to avoid interactive prompts (pin to known release tags)
 "$BUILD_SCRIPT" --build-type=release --source-default=build \
@@ -296,12 +356,17 @@ else
         print_result "Test 3: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
 fi
+TEST3_ELAPSED=$(( $(date +%s) - TEST3_START ))
+COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST3_ELAPSED))
+print_progress "$COMPLETED_SECONDS" "Finished Test 3 (took $(format_duration "$TEST3_ELAPSED"))"
 
 # ==============================================================================
 # TEST 4: Release build with nwm-fcst-mgr
 # ==============================================================================
 print_test_header "4" "Release build with nwm-fcst-mgr" "$TEST4_DURATION"
 TEST4_OUTPUT="${TEST_OUTPUT_DIR}/test4_release_fcst_mgr.log"
+TEST4_START=$(date +%s)
+print_progress "$COMPLETED_SECONDS" "Starting Test 4: Release build with nwm-fcst-mgr (ngen-forcing -> ngen -> nwm-fcst-mgr)"
 
 # Provide all tags via command line to avoid interactive prompts (pin to known release tags)
 "$BUILD_SCRIPT" --build-type=release --source-default=build \
@@ -343,12 +408,17 @@ else
         print_result "Test 4: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
 fi
+TEST4_ELAPSED=$(( $(date +%s) - TEST4_START ))
+COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST4_ELAPSED))
+print_progress "$COMPLETED_SECONDS" "Finished Test 4 (took $(format_duration "$TEST4_ELAPSED"))"
 
 # ==============================================================================
 # TEST 5: Feature build with ngen
 # ==============================================================================
 print_test_header "5" "Feature build with ngen" "$TEST5_DURATION"
 TEST5_OUTPUT="${TEST_OUTPUT_DIR}/test5_feature_ngen.log"
+TEST5_START=$(date +%s)
+print_progress "$COMPLETED_SECONDS" "Starting Test 5: Feature build with ngen (ngen-forcing -> ngen)"
 
 (
     echo "main"     # ngen branch
@@ -408,12 +478,17 @@ else
         print_result "Test 5: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
 fi
+TEST5_ELAPSED=$(( $(date +%s) - TEST5_START ))
+COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST5_ELAPSED))
+print_progress "$COMPLETED_SECONDS" "Finished Test 5 (took $(format_duration "$TEST5_ELAPSED"))"
 
 # ==============================================================================
 # TEST 6: Feature build with nwm-cal-mgr
 # ==============================================================================
 print_test_header "6" "Feature build with nwm-cal-mgr" "$TEST6_DURATION"
 TEST6_OUTPUT="${TEST_OUTPUT_DIR}/test6_feature_cal_mgr.log"
+TEST6_START=$(date +%s)
+print_progress "$COMPLETED_SECONDS" "Starting Test 6: Feature build with nwm-cal-mgr (ngen-forcing -> ngen -> nwm-cal-mgr)"
 
 (
     echo "main"      # nwm-cal-mgr branch
@@ -461,6 +536,9 @@ else
         print_result "Test 6: No unwanted tag prompts" "FAIL" "Found unwanted prompt"
     fi
 fi
+TEST6_ELAPSED=$(( $(date +%s) - TEST6_START ))
+COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST6_ELAPSED))
+print_progress "$COMPLETED_SECONDS" "Finished Test 6 (took $(format_duration "$TEST6_ELAPSED"))"
 
 # ==============================================================================
 # SUMMARY
