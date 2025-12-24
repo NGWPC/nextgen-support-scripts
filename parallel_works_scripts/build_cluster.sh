@@ -843,10 +843,10 @@ build_singularity_container_update_symlink() {
     if [[ -f "$meta_file" ]]; then
         # validate meta file contains only expected variable assignments
         if grep -Eq '^[A-Z_]+=' "$meta_file" && ! grep -Eq '[;&|$(){}<>`]' "$meta_file"; then
-            # shellcheck disable=SC1090
-            source "$meta_file"
-            prev_key="${IMAGE_KEY:-}"
-            prev_sif="${SIF_FILE:-}"
+            # Extract only the specific variables we need instead of sourcing the entire file
+            # This prevents polluting the global environment with BUILD_TYPE from previous builds
+            prev_key="$(grep -E '^IMAGE_KEY=' "$meta_file" | cut -d'=' -f2- || true)"
+            prev_sif="$(grep -E '^SIF_FILE=' "$meta_file" | cut -d'=' -f2- || true)"
         else
             echo "Warning: meta file '$meta_file' appears corrupted or unsafe, ignoring it."
         fi
@@ -1340,9 +1340,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
         # for each repo that produces a SIF, use the locally built image
         if repo_has_sif "$repo"; then
             # get Docker tag for this repo based on its branch
-            echo "[DEBUG] Getting Docker tag for repo='$repo' BUILD_TYPE='$BUILD_TYPE' REPO_BRANCHES[$repo]='${REPO_BRANCHES[$repo]:-}'"
             repo_docker_tag="$(get_docker_tag_for_repo "$repo" "$BUILD_TYPE")"
-            echo "[DEBUG] Result: repo_docker_tag='$repo_docker_tag'"
 
             for pair in $(images_for_repo "$repo"); do
                 [[ -z "$pair" ]] && continue
