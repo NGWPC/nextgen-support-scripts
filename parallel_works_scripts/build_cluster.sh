@@ -1340,7 +1340,9 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
         # for each repo that produces a SIF, use the locally built image
         if repo_has_sif "$repo"; then
             # get Docker tag for this repo based on its branch
+            echo "[DEBUG] Getting Docker tag for repo='$repo' BUILD_TYPE='$BUILD_TYPE' REPO_BRANCHES[$repo]='${REPO_BRANCHES[$repo]:-}'"
             repo_docker_tag="$(get_docker_tag_for_repo "$repo" "$BUILD_TYPE")"
+            echo "[DEBUG] Result: repo_docker_tag='$repo_docker_tag'"
 
             for pair in $(images_for_repo "$repo"); do
                 [[ -z "$pair" ]] && continue
