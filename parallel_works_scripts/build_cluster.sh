@@ -598,7 +598,11 @@ reorder_repos_by_dependency() {
 #   - ngen is consumed by nwm-cal-mgr, nwm-fcst-mgr
 auto_include_dependencies() {
     local added_deps=()
+    # Save the originally selected repos (before auto-adding any dependencies)
+    # Only these repos will trigger downstream dependency additions
+    local -a originally_selected=("${SELECTED_REPOS[@]}")
 
+    # UPSTREAM DEPENDENCIES: Add required dependencies for selected repos
     # check if ngen is selected and add ngen-forcing if missing
     if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
         if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
@@ -671,9 +675,9 @@ auto_include_dependencies() {
         fi
     fi
 
-    # DOWNSTREAM DEPENDENCIES: if ngen-forcing is selected, add all downstream consumers
-    # because they need to be rebuilt to pick up changes from ngen-forcing
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
+    # DOWNSTREAM DEPENDENCIES: if ngen-forcing was ORIGINALLY selected (not auto-added),
+    # add all downstream consumers because they need to be rebuilt to pick up changes
+    if [[ " ${originally_selected[@]} " =~ " ngen-forcing " ]]; then
         # Add ngen (direct consumer of ngen-forcing)
         if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
             SELECTED_REPOS+=("ngen")
@@ -711,8 +715,8 @@ auto_include_dependencies() {
         fi
     fi
 
-    # Similarly, if ngen is selected, add downstream consumers
-    if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+    # Similarly, if ngen was ORIGINALLY selected (not auto-added), add downstream consumers
+    if [[ " ${originally_selected[@]} " =~ " ngen " ]]; then
         # Add nwm-cal-mgr (direct consumer of ngen)
         if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]]; then
             SELECTED_REPOS+=("nwm-cal-mgr")
