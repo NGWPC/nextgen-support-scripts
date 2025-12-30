@@ -675,69 +675,73 @@ auto_include_dependencies() {
         fi
     fi
 
-    # DOWNSTREAM DEPENDENCIES: if ngen-forcing was ORIGINALLY selected (not auto-added),
-    # add all downstream consumers because they need to be rebuilt to pick up changes
-    if [[ " ${originally_selected[@]} " =~ " ngen-forcing " ]]; then
-        # Add ngen (direct consumer of ngen-forcing)
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-            SELECTED_REPOS+=("ngen")
-            added_deps+=("ngen")
-            echo "Auto-adding downstream dependency: ngen (consumes ngen-forcing)"
-            # For feature builds, inherit branch from ngen-forcing if not already set
-            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-                REPO_BRANCHES["ngen"]="${REPO_BRANCHES[ngen-forcing]}"
-                echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for ngen (inherited from ngen-forcing)"
+    # DOWNSTREAM DEPENDENCIES: Only add for development and feature builds
+    # For release builds, the user must explicitly specify all repos and their tags
+    if [[ "$BUILD_TYPE" != "release" ]]; then
+        # if ngen-forcing was ORIGINALLY selected (not auto-added),
+        # add all downstream consumers because they need to be rebuilt to pick up changes
+        if [[ " ${originally_selected[@]} " =~ " ngen-forcing " ]]; then
+            # Add ngen (direct consumer of ngen-forcing)
+            if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+                SELECTED_REPOS+=("ngen")
+                added_deps+=("ngen")
+                echo "Auto-adding downstream dependency: ngen (consumes ngen-forcing)"
+                # For feature builds, inherit branch from ngen-forcing if not already set
+                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
+                    REPO_BRANCHES["ngen"]="${REPO_BRANCHES[ngen-forcing]}"
+                    echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for ngen (inherited from ngen-forcing)"
+                fi
+            fi
+
+            # Add nwm-cal-mgr (indirect consumer via ngen)
+            if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]]; then
+                SELECTED_REPOS+=("nwm-cal-mgr")
+                added_deps+=("nwm-cal-mgr")
+                echo "Auto-adding downstream dependency: nwm-cal-mgr (consumes ngen, which consumes ngen-forcing)"
+                # For feature builds, inherit branch from ngen-forcing if not already set
+                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-cal-mgr]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
+                    REPO_BRANCHES["nwm-cal-mgr"]="${REPO_BRANCHES[ngen-forcing]}"
+                    echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for nwm-cal-mgr (inherited from ngen-forcing)"
+                fi
+            fi
+
+            # Add nwm-fcst-mgr (indirect consumer via ngen)
+            if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
+                SELECTED_REPOS+=("nwm-fcst-mgr")
+                added_deps+=("nwm-fcst-mgr")
+                echo "Auto-adding downstream dependency: nwm-fcst-mgr (consumes ngen, which consumes ngen-forcing)"
+                # For feature builds, inherit branch from ngen-forcing if not already set
+                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-fcst-mgr]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
+                    REPO_BRANCHES["nwm-fcst-mgr"]="${REPO_BRANCHES[ngen-forcing]}"
+                    echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for nwm-fcst-mgr (inherited from ngen-forcing)"
+                fi
             fi
         fi
 
-        # Add nwm-cal-mgr (indirect consumer via ngen)
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]]; then
-            SELECTED_REPOS+=("nwm-cal-mgr")
-            added_deps+=("nwm-cal-mgr")
-            echo "Auto-adding downstream dependency: nwm-cal-mgr (consumes ngen, which consumes ngen-forcing)"
-            # For feature builds, inherit branch from ngen-forcing if not already set
-            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-cal-mgr]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-                REPO_BRANCHES["nwm-cal-mgr"]="${REPO_BRANCHES[ngen-forcing]}"
-                echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for nwm-cal-mgr (inherited from ngen-forcing)"
+        # Similarly, if ngen was ORIGINALLY selected (not auto-added), add downstream consumers
+        if [[ " ${originally_selected[@]} " =~ " ngen " ]]; then
+            # Add nwm-cal-mgr (direct consumer of ngen)
+            if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]]; then
+                SELECTED_REPOS+=("nwm-cal-mgr")
+                added_deps+=("nwm-cal-mgr")
+                echo "Auto-adding downstream dependency: nwm-cal-mgr (consumes ngen)"
+                # For feature builds, inherit branch from ngen if not already set
+                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-cal-mgr]:-}" && -n "${REPO_BRANCHES[ngen]:-}" ]]; then
+                    REPO_BRANCHES["nwm-cal-mgr"]="${REPO_BRANCHES[ngen]}"
+                    echo "Using branch '${REPO_BRANCHES[ngen]}' for nwm-cal-mgr (inherited from ngen)"
+                fi
             fi
-        fi
 
-        # Add nwm-fcst-mgr (indirect consumer via ngen)
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
-            SELECTED_REPOS+=("nwm-fcst-mgr")
-            added_deps+=("nwm-fcst-mgr")
-            echo "Auto-adding downstream dependency: nwm-fcst-mgr (consumes ngen, which consumes ngen-forcing)"
-            # For feature builds, inherit branch from ngen-forcing if not already set
-            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-fcst-mgr]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-                REPO_BRANCHES["nwm-fcst-mgr"]="${REPO_BRANCHES[ngen-forcing]}"
-                echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for nwm-fcst-mgr (inherited from ngen-forcing)"
-            fi
-        fi
-    fi
-
-    # Similarly, if ngen was ORIGINALLY selected (not auto-added), add downstream consumers
-    if [[ " ${originally_selected[@]} " =~ " ngen " ]]; then
-        # Add nwm-cal-mgr (direct consumer of ngen)
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]]; then
-            SELECTED_REPOS+=("nwm-cal-mgr")
-            added_deps+=("nwm-cal-mgr")
-            echo "Auto-adding downstream dependency: nwm-cal-mgr (consumes ngen)"
-            # For feature builds, inherit branch from ngen if not already set
-            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-cal-mgr]:-}" && -n "${REPO_BRANCHES[ngen]:-}" ]]; then
-                REPO_BRANCHES["nwm-cal-mgr"]="${REPO_BRANCHES[ngen]}"
-                echo "Using branch '${REPO_BRANCHES[ngen]}' for nwm-cal-mgr (inherited from ngen)"
-            fi
-        fi
-
-        # Add nwm-fcst-mgr (direct consumer of ngen)
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
-            SELECTED_REPOS+=("nwm-fcst-mgr")
-            added_deps+=("nwm-fcst-mgr")
-            echo "Auto-adding downstream dependency: nwm-fcst-mgr (consumes ngen)"
-            # For feature builds, inherit branch from ngen if not already set
-            if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-fcst-mgr]:-}" && -n "${REPO_BRANCHES[ngen]:-}" ]]; then
-                REPO_BRANCHES["nwm-fcst-mgr"]="${REPO_BRANCHES[ngen]}"
-                echo "Using branch '${REPO_BRANCHES[ngen]}' for nwm-fcst-mgr (inherited from ngen)"
+            # Add nwm-fcst-mgr (direct consumer of ngen)
+            if [[ ! " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
+                SELECTED_REPOS+=("nwm-fcst-mgr")
+                added_deps+=("nwm-fcst-mgr")
+                echo "Auto-adding downstream dependency: nwm-fcst-mgr (consumes ngen)"
+                # For feature builds, inherit branch from ngen if not already set
+                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-fcst-mgr]:-}" && -n "${REPO_BRANCHES[ngen]:-}" ]]; then
+                    REPO_BRANCHES["nwm-fcst-mgr"]="${REPO_BRANCHES[ngen]}"
+                    echo "Using branch '${REPO_BRANCHES[ngen]}' for nwm-fcst-mgr (inherited from ngen)"
+                fi
             fi
         fi
     fi
