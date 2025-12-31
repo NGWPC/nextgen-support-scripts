@@ -523,26 +523,79 @@ prompt_dependency_tags() {
             read -p "Enter nwm-eval-mgr tag (used by nwm-verf): " TAGS[nwm-eval-mgr] || { echo "Error reading input, exiting."; exit 1; }
         fi
     elif [[ "$build_type" == "feature" ]]; then
-        # for feature builds, prompt for dependency branches only if not already set
+        # for feature builds, prompt for dependency branches OR existing tags
         # ngen depends on ngen-forcing
-        if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-            read -p "Enter ngen-forcing branch (used by ngen): " ans || { echo "Error reading input, exiting."; exit 1; }
-            if [[ -z "$ans" ]]; then
-                echo "Error: ngen-forcing branch is required for building ngen"
-                exit 1
+        if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${DEPENDENCY_TAGS[ngen]:-}" ]] && [[ -z "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
+            # Check if ngen-forcing is also being built (in which case we'll use the branch)
+            if [[ " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
+                # ngen-forcing is being built, so we'll use its branch-derived tag
+                echo "ngen-forcing will be built; ngen will use the resulting image"
+            else
+                # Prompt: build ngen-forcing from branch OR use existing tag
+                echo "For ngen-forcing dependency (required by ngen):"
+                echo "  1) Build from branch"
+                echo "  2) Use existing Docker tag"
+                read -p "Choose [1-2]: " choice || { echo "Error reading input, exiting."; exit 1; }
+                case $choice in
+                    1)
+                        read -p "Enter ngen-forcing branch to build: " ans || { echo "Error reading input, exiting."; exit 1; }
+                        if [[ -z "$ans" ]]; then
+                            echo "Error: ngen-forcing branch is required"
+                            exit 1
+                        fi
+                        REPO_BRANCHES["ngen-forcing"]="$ans"
+                    ;;
+                    2)
+                        read -p "Enter ngen-forcing Docker tag to use (e.g., latest, v1.0): " ans || { echo "Error reading input, exiting."; exit 1; }
+                        if [[ -z "$ans" ]]; then
+                            echo "Error: ngen-forcing tag is required"
+                            exit 1
+                        fi
+                        DEPENDENCY_TAGS["ngen"]="$ans"
+                    ;;
+                    *)
+                        echo "Invalid choice, exiting."; exit 1
+                    ;;
+                esac
             fi
-            REPO_BRANCHES["ngen-forcing"]="$ans"
         fi
 
         # nwm-cal-mgr and nwm-fcst-mgr depend on ngen
         if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]] || [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
-            if [[ -z "${REPO_BRANCHES[ngen]:-}" ]]; then
-                read -p "Enter ngen branch (used by nwm-cal-mgr/nwm-fcst-mgr): " ans || { echo "Error reading input, exiting."; exit 1; }
-                if [[ -z "$ans" ]]; then
-                    echo "Error: ngen branch is required"
-                    exit 1
+            if [[ -z "${DEPENDENCY_TAGS[nwm-cal-mgr]:-}" ]] && [[ -z "${DEPENDENCY_TAGS[nwm-fcst-mgr]:-}" ]] && [[ -z "${REPO_BRANCHES[ngen]:-}" ]]; then
+                # Check if ngen is also being built
+                if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+                    # ngen is being built, so we'll use its branch-derived tag
+                    echo "ngen will be built; nwm-cal-mgr/nwm-fcst-mgr will use the resulting image"
+                else
+                    # Prompt: build ngen from branch OR use existing tag
+                    echo "For ngen dependency (required by nwm-cal-mgr/nwm-fcst-mgr):"
+                    echo "  1) Build from branch"
+                    echo "  2) Use existing Docker tag"
+                    read -p "Choose [1-2]: " choice || { echo "Error reading input, exiting."; exit 1; }
+                    case $choice in
+                        1)
+                            read -p "Enter ngen branch to build: " ans || { echo "Error reading input, exiting."; exit 1; }
+                            if [[ -z "$ans" ]]; then
+                                echo "Error: ngen branch is required"
+                                exit 1
+                            fi
+                            REPO_BRANCHES["ngen"]="$ans"
+                        ;;
+                        2)
+                            read -p "Enter ngen Docker tag to use (e.g., latest, v1.0): " ans || { echo "Error reading input, exiting."; exit 1; }
+                            if [[ -z "$ans" ]]; then
+                                echo "Error: ngen tag is required"
+                                exit 1
+                            fi
+                            DEPENDENCY_TAGS["nwm-cal-mgr"]="$ans"
+                            DEPENDENCY_TAGS["nwm-fcst-mgr"]="$ans"
+                        ;;
+                        *)
+                            echo "Invalid choice, exiting."; exit 1
+                        ;;
+                    esac
                 fi
-                REPO_BRANCHES["ngen"]="$ans"
             fi
         fi
 
@@ -605,7 +658,8 @@ auto_include_dependencies() {
     # UPSTREAM DEPENDENCIES: Add required dependencies for selected repos
     # check if ngen is selected and add ngen-forcing if missing
     if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
+        # Only add ngen-forcing if not already present AND user didn't specify an existing tag to use
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]] && [[ -z "${DEPENDENCY_TAGS[ngen]:-}" ]]; then
             SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen-forcing")
             echo "Auto-adding dependency: ngen-forcing (required by ngen)"
@@ -619,7 +673,8 @@ auto_include_dependencies() {
 
     # check if nwm-cal-mgr is selected and add ngen + ngen-forcing if missing
     if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-cal-mgr " ]]; then
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+        # Only add ngen if not already present AND user didn't specify an existing tag to use
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${DEPENDENCY_TAGS[nwm-cal-mgr]:-}" ]]; then
             SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen")
             echo "Auto-adding dependency: ngen (required by nwm-cal-mgr)"
@@ -648,7 +703,8 @@ auto_include_dependencies() {
 
     # check if nwm-fcst-mgr is selected and add ngen + ngen-forcing if missing
     if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-fcst-mgr " ]]; then
-        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
+        # Only add ngen if not already present AND user didn't specify an existing tag to use
+        if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${DEPENDENCY_TAGS[nwm-fcst-mgr]:-}" ]]; then
             SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen")
             echo "Auto-adding dependency: ngen (required by nwm-fcst-mgr)"
@@ -1325,8 +1381,14 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
             # get Docker tag for ngen based on its branch
             ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
 
-            # get ngen-forcing tag to use as build arg (from ngen-forcing's branch)
-            ngen_forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
+            # get ngen-forcing tag to use as build arg
+            # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen-forcing branch
+            if [[ -n "${DEPENDENCY_TAGS[ngen]:-}" ]]; then
+                ngen_forcing_docker_tag="${DEPENDENCY_TAGS[ngen]}"
+                echo "[$(date '+%H:%M:%S')] Using specified ngen-forcing tag: ${ngen_forcing_docker_tag}"
+            else
+                ngen_forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
+            fi
 
             echo "[$(date '+%H:%M:%S')] Building ngen (${ngen_docker_tag}) Docker image with NGEN_FORCING_TAG=${ngen_forcing_docker_tag}"
             docker build --progress=plain \
@@ -1355,8 +1417,14 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                     # get Docker tag for nwm-cal-mgr based on its branch
                     cal_mgr_docker_tag="$(get_docker_tag_for_repo "nwm-cal-mgr" "$BUILD_TYPE")"
 
-                    # get ngen tag to use as build arg (from ngen's branch)
-                    ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
+                    # get ngen tag to use as build arg
+                    # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen branch
+                    if [[ -n "${DEPENDENCY_TAGS[nwm-cal-mgr]:-}" ]]; then
+                        ngen_docker_tag="${DEPENDENCY_TAGS[nwm-cal-mgr]}"
+                        echo "[$(date '+%H:%M:%S')] Using specified ngen tag: ${ngen_docker_tag}"
+                    else
+                        ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
+                    fi
 
                     echo "[$(date '+%H:%M:%S')] Building nwm-cal-mgr (${cal_mgr_docker_tag}) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
                     docker build --progress=plain \
@@ -1374,8 +1442,14 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                     # get Docker tag for nwm-fcst-mgr based on its branch
                     fcst_mgr_docker_tag="$(get_docker_tag_for_repo "nwm-fcst-mgr" "$BUILD_TYPE")"
 
-                    # get ngen tag to use as build arg (from ngen's branch)
-                    ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
+                    # get ngen tag to use as build arg
+                    # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen branch
+                    if [[ -n "${DEPENDENCY_TAGS[nwm-fcst-mgr]:-}" ]]; then
+                        ngen_docker_tag="${DEPENDENCY_TAGS[nwm-fcst-mgr]}"
+                        echo "[$(date '+%H:%M:%S')] Using specified ngen tag: ${ngen_docker_tag}"
+                    else
+                        ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
+                    fi
 
                     echo "[$(date '+%H:%M:%S')] Building nwm-fcst-mgr (${fcst_mgr_docker_tag}) Docker image with NGEN_IMAGE_TAG=${ngen_docker_tag}"
                     docker build --progress=plain \
