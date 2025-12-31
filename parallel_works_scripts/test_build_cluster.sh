@@ -41,13 +41,15 @@ TEST3_DURATION=3300  # 55 minutes - release build with --no-cache and tag checko
 TEST4_DURATION=3000  # 50 minutes - release build, similar to Test 3
 TEST5_DURATION=2100  # 35 minutes - feature build with ngen
 TEST6_DURATION=2700  # 45 minutes - feature build with nwm-cal-mgr and dependencies
+TEST7_DURATION=1800  # 30 minutes - feature build with ngen using existing ngen-forcing tag
 TEST1_STEPS=5
 TEST2_STEPS=5
 TEST3_STEPS=5
 TEST4_STEPS=5
 TEST5_STEPS=8
 TEST6_STEPS=6
-TOTAL_ESTIMATED_DURATION=$((TEST1_DURATION + TEST2_DURATION + TEST3_DURATION + TEST4_DURATION + TEST5_DURATION + TEST6_DURATION))
+TEST7_STEPS=5
+TOTAL_ESTIMATED_DURATION=$((TEST1_DURATION + TEST2_DURATION + TEST3_DURATION + TEST4_DURATION + TEST5_DURATION + TEST6_DURATION + TEST7_DURATION))
 SCRIPT_START_EPOCH=$(date +%s)
 COMPLETED_SECONDS=0
 
@@ -588,6 +590,63 @@ fi
 TEST6_ELAPSED=$(( $(date +%s) - TEST6_START ))
 COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST6_ELAPSED))
 print_progress "$COMPLETED_SECONDS" "Finished Test 6 (took $(format_duration "$TEST6_ELAPSED"))"
+
+# ==============================================================================
+# TEST 7: Feature build with ngen using existing ngen-forcing tag
+# ==============================================================================
+print_test_header "7" "Feature build with ngen using existing ngen-forcing tag" 1800
+TEST7_OUTPUT="${TEST_OUTPUT_DIR}/test7_feature_ngen_existing_tag.log"
+TEST7_START=$(date +%s)
+print_progress "$COMPLETED_SECONDS" "Starting Test 7: Feature build with ngen using existing ngen-forcing tag"
+
+# This tests the new functionality: building ngen from branch but using existing ngen-forcing:latest
+"$BUILD_SCRIPT" --build-type=feature \
+    --branch=ngen:development \
+    --ngen-forcing-tag=latest \
+    ngen > "$TEST7_OUTPUT" 2>&1
+
+if [[ $? -ne 0 ]]; then
+    print_result "Test 7: Feature build (ngen with existing forcing tag) - execution" "FAIL" "Build script failed"
+    print_test_progress "7" 1 "$TEST7_STEPS" "Build failed"
+else
+    print_result "Test 7: Feature build (ngen with existing forcing tag) - execution" "PASS"
+    print_test_progress "7" 1 "$TEST7_STEPS" "Build completed"
+
+    # Verify ngen-forcing was NOT built (should use existing tag)
+    if ! grep -q "Building ngen-bmi-forcing" "$TEST7_OUTPUT"; then
+        print_result "Test 7: ngen-forcing not built (using existing tag)" "PASS"
+    else
+        print_result "Test 7: ngen-forcing not built (using existing tag)" "FAIL" "ngen-forcing was built"
+    fi
+    print_test_progress "7" 2 "$TEST7_STEPS" "Verified ngen-forcing not built"
+
+    # Verify ngen was built
+    if grep -q "Building ngen.*development" "$TEST7_OUTPUT"; then
+        print_result "Test 7: ngen built from development branch" "PASS"
+    else
+        print_result "Test 7: ngen built from development branch" "FAIL" "ngen not built or wrong branch"
+    fi
+    print_test_progress "7" 3 "$TEST7_STEPS" "Verified ngen built from branch"
+
+    # Verify ngen uses specified ngen-forcing tag
+    if verify_build_arg "$TEST7_OUTPUT" "ngen" "NGEN_FORCING_TAG" "latest"; then
+        print_result "Test 7: ngen uses NGEN_FORCING_TAG=latest" "PASS"
+    else
+        print_result "Test 7: ngen uses NGEN_FORCING_TAG=latest" "FAIL" "Wrong tag used"
+    fi
+    print_test_progress "7" 4 "$TEST7_STEPS" "Verified ngen uses existing forcing tag"
+
+    # Verify message about using specified tag
+    if grep -q "Using specified ngen-forcing tag: latest" "$TEST7_OUTPUT"; then
+        print_result "Test 7: Confirms using specified ngen-forcing tag" "PASS"
+    else
+        print_result "Test 7: Confirms using specified ngen-forcing tag" "FAIL" "No confirmation message"
+    fi
+    print_test_progress "7" 5 "$TEST7_STEPS" "Verified confirmation message"
+fi
+TEST7_ELAPSED=$(( $(date +%s) - TEST7_START ))
+COMPLETED_SECONDS=$((COMPLETED_SECONDS + TEST7_ELAPSED))
+print_progress "$COMPLETED_SECONDS" "Finished Test 7 (took $(format_duration "$TEST7_ELAPSED"))"
 
 # ==============================================================================
 # SUMMARY
