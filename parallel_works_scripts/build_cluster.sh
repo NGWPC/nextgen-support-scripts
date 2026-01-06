@@ -3,6 +3,30 @@
 set -e
 set -o pipefail
 
+# Trap errors to provide better error reporting
+trap 'handle_error $? $LINENO' ERR
+
+handle_error() {
+    local exit_code=$1
+    local line_number=$2
+
+    echo ""
+    echo "=========================================="
+    echo "BUILD FAILED"
+    echo "=========================================="
+    echo "Error occurred at line: $line_number"
+    echo "Exit code: $exit_code"
+    echo "Time: $(date '+%Y-%m-%d %H:%M:%S')"
+    echo ""
+    echo "Check the build output above for details."
+    echo "Log file: ${LOGFILE:-build_cluster.log}"
+    echo "=========================================="
+    echo ""
+
+    # Exit cleanly without killing the parent shell
+    exit $exit_code
+}
+
 # ==============================================================================
 # NGEN/NGENCERF Build Script
 # ==============================================================================
@@ -1111,10 +1135,21 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                 checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}"
                 echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing Docker image"
-                docker build --progress=plain --no-cache \
+                if ! docker build --progress=plain --no-cache \
                     --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                     --tag="${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" \
-                    "${BASE_PATH}/ngen-forcing"
+                    "${BASE_PATH}/ngen-forcing"; then
+                    echo ""
+                    echo "=========================================="
+                    echo "DOCKER BUILD FAILED: ngen-bmi-forcing"
+                    echo "=========================================="
+                    echo "Image: ${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
+                    echo "Dockerfile: ${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings"
+                    echo "The build has stopped. Review the error above."
+                    echo "Log file: ${LOGFILE}"
+                    echo "=========================================="
+                    exit 1
+                fi
             else
                 echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
             fi
@@ -1290,10 +1325,21 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                     if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                         update_repo_branch "ngen-forcing" "development"
                         echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (development) Docker image"
-                        docker build --progress=plain \
+                        if ! docker build --progress=plain \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
-                            "${BASE_PATH}/ngen-forcing"
+                            "${BASE_PATH}/ngen-forcing"; then
+                            echo ""
+                            echo "=========================================="
+                            echo "DOCKER BUILD FAILED: ngen-bmi-forcing"
+                            echo "=========================================="
+                            echo "Image: ${REGISTRY}/ngen-bmi-forcing:latest"
+                            echo "Dockerfile: ${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings"
+                            echo "The build has stopped. Review the error above."
+                            echo "Log file: ${LOGFILE}"
+                            echo "=========================================="
+                            exit 1
+                        fi
                     else
                         echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-forcing; will reuse local images when present"
                         ensure_image_present "ngen-forcing" "${REGISTRY}/ngen-bmi-forcing:latest" "pull"
@@ -1364,10 +1410,21 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
             forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
 
             echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (${forcing_docker_tag}) Docker image"
-            docker build --progress=plain \
+            if ! docker build --progress=plain \
                 --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                 --tag="${REGISTRY}/ngen-bmi-forcing:${forcing_docker_tag}" \
-                "${BASE_PATH}/ngen-forcing"
+                "${BASE_PATH}/ngen-forcing"; then
+                echo ""
+                echo "=========================================="
+                echo "DOCKER BUILD FAILED: ngen-bmi-forcing"
+                echo "=========================================="
+                echo "Image: ${REGISTRY}/ngen-bmi-forcing:${forcing_docker_tag}"
+                echo "Dockerfile: ${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings"
+                echo "The build has stopped. Review the error above."
+                echo "Log file: ${LOGFILE}"
+                echo "=========================================="
+                exit 1
+            fi
         else
             echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
         fi
