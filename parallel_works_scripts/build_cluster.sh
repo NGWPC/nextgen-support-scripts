@@ -778,11 +778,6 @@ auto_include_dependencies() {
                 SELECTED_REPOS+=("nwm-cal-mgr")
                 added_deps+=("nwm-cal-mgr")
                 echo "Auto-adding downstream dependency: nwm-cal-mgr (consumes ngen, which consumes ngen-forcing)"
-                # For feature builds, inherit branch from ngen-forcing if not already set
-                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-cal-mgr]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-                    REPO_BRANCHES["nwm-cal-mgr"]="${REPO_BRANCHES[ngen-forcing]}"
-                    echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for nwm-cal-mgr (inherited from ngen-forcing)"
-                fi
             fi
 
             # Add nwm-fcst-mgr (indirect consumer via ngen)
@@ -790,11 +785,6 @@ auto_include_dependencies() {
                 SELECTED_REPOS+=("nwm-fcst-mgr")
                 added_deps+=("nwm-fcst-mgr")
                 echo "Auto-adding downstream dependency: nwm-fcst-mgr (consumes ngen, which consumes ngen-forcing)"
-                # For feature builds, inherit branch from ngen-forcing if not already set
-                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-fcst-mgr]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-                    REPO_BRANCHES["nwm-fcst-mgr"]="${REPO_BRANCHES[ngen-forcing]}"
-                    echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for nwm-fcst-mgr (inherited from ngen-forcing)"
-                fi
             fi
         fi
 
@@ -805,11 +795,6 @@ auto_include_dependencies() {
                 SELECTED_REPOS+=("nwm-cal-mgr")
                 added_deps+=("nwm-cal-mgr")
                 echo "Auto-adding downstream dependency: nwm-cal-mgr (consumes ngen)"
-                # For feature builds, inherit branch from ngen if not already set
-                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-cal-mgr]:-}" && -n "${REPO_BRANCHES[ngen]:-}" ]]; then
-                    REPO_BRANCHES["nwm-cal-mgr"]="${REPO_BRANCHES[ngen]}"
-                    echo "Using branch '${REPO_BRANCHES[ngen]}' for nwm-cal-mgr (inherited from ngen)"
-                fi
             fi
 
             # Add nwm-fcst-mgr (direct consumer of ngen)
@@ -817,11 +802,6 @@ auto_include_dependencies() {
                 SELECTED_REPOS+=("nwm-fcst-mgr")
                 added_deps+=("nwm-fcst-mgr")
                 echo "Auto-adding downstream dependency: nwm-fcst-mgr (consumes ngen)"
-                # For feature builds, inherit branch from ngen if not already set
-                if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[nwm-fcst-mgr]:-}" && -n "${REPO_BRANCHES[ngen]:-}" ]]; then
-                    REPO_BRANCHES["nwm-fcst-mgr"]="${REPO_BRANCHES[ngen]}"
-                    echo "Using branch '${REPO_BRANCHES[ngen]}' for nwm-fcst-mgr (inherited from ngen)"
-                fi
             fi
         fi
     fi
@@ -923,6 +903,30 @@ fi
 
 # auto-include missing dependencies
 auto_include_dependencies
+
+# For feature builds in interactive mode, prompt for branches of any repos that don't have them set yet
+# (this handles auto-added downstream dependencies)
+if [[ "$BUILD_TYPE" == "feature" && -t 0 ]]; then
+    for repo in "${SELECTED_REPOS[@]}"; do
+        if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
+            if [[ "$repo" == "ngen-forcing" ]]; then
+                read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+            else
+                read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+            fi
+            # require a branch name (no default) for feature builds
+            while [[ -z "$ans" ]]; do
+                echo "Error: Branch name cannot be empty for feature builds"
+                if [[ "$repo" == "ngen-forcing" ]]; then
+                    read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                else
+                    read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                fi
+            done
+            REPO_BRANCHES["$repo"]="$ans"
+        fi
+    done
+fi
 
 # prompt for dependency tags/branches (after auto-include so all repos are in SELECTED_REPOS)
 prompt_dependency_tags "$BUILD_TYPE"
