@@ -1,6 +1,59 @@
 #!/bin/bash
 
 NGENCERF_APP=/ngencerf-app
+NON_INTERACTIVE=false
+AWS_ACCESS_KEY_ID_INPUT=""
+AWS_SECRET_ACCESS_KEY_INPUT=""
+AWS_SESSION_TOKEN_INPUT=""
+
+# ------------------------------------------------------------------------------
+# Parse command line arguments
+# ------------------------------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -y|--non-interactive)
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  -y, --non-interactive    Run in non-interactive mode (skip file editing prompts)"
+            echo "  -h, --help               Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use -h or --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# ------------------------------------------------------------------------------
+# Prompt for AWS credentials if in non-interactive mode
+# ------------------------------------------------------------------------------
+if [[ "$NON_INTERACTIVE" == "true" ]]; then
+    STATIC_DIR="$NGENCERF_APP/data/ngen-static-files"
+
+    # Only prompt if static files don't exist yet
+    if [[ ! -d "$STATIC_DIR" ]]; then
+        echo "================================================================================"
+        echo "AWS Credentials Required"
+        echo "================================================================================"
+        echo "Please provide temporary AWS credentials to download static files."
+        echo "You can obtain these from your AWS console."
+        echo ""
+
+        read -p "AWS Access Key ID: " AWS_ACCESS_KEY_ID_INPUT
+        read -p "AWS Secret Access Key: " -s AWS_SECRET_ACCESS_KEY_INPUT
+        echo
+        read -p "AWS Session Token (press Enter if not using temporary credentials): " AWS_SESSION_TOKEN_INPUT
+        echo "================================================================================"
+        echo
+    fi
+fi
 
 # ------------------------------------------------------------------------------
 # Helper: Prompt user with a message, then open the file in an editor
@@ -8,6 +61,16 @@ NGENCERF_APP=/ngencerf-app
 edit_file_with_message() {
     local file="$1"
     local message="$2"
+
+    if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        echo
+        echo "================================================================================"
+        echo "[NON-INTERACTIVE MODE] Skipping file edit: $file"
+        echo "$message"
+        echo "================================================================================"
+        echo
+        return 0
+    fi
 
     echo
     echo "================================================================================"
@@ -291,15 +354,37 @@ else
     sudo chown -R $(whoami):pwuser $NGENCERF_APP/data
     sudo chmod -R g+rwx $NGENCERF_APP/data
 
-    # Create temporary AWS credentials file for user to edit
-    edit_file_with_message "/tmp/aws.credentials" \
-        "Paste export statements for your AWS credentials in this file. These are temporary credentials to copy the static files."
+    # Handle AWS credentials
+    if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        echo "Non-interactive mode: Using provided AWS credentials"
+        echo
+        echo "Copying data from NGWPC data bucket..."
 
-    source /tmp/aws.credentials
+        # Export credentials for AWS CLI
+        export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID_INPUT"
+        export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY_INPUT"
+        if [[ -n "$AWS_SESSION_TOKEN_INPUT" ]]; then
+            export AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN_INPUT"
+        fi
 
-    echo
-    echo "Copying data from NGWPC data bucket..."
-    aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files "$STATIC_DIR/"
+        aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files "$STATIC_DIR/"
+
+        # Unset credentials after use
+        unset AWS_ACCESS_KEY_ID
+        unset AWS_SECRET_ACCESS_KEY
+        unset AWS_SESSION_TOKEN
+    else
+        # Create temporary AWS credentials file for user to edit
+        edit_file_with_message "/tmp/aws.credentials" \
+            "Paste export statements for your AWS credentials in this file. These are temporary credentials to copy the static files."
+
+        source /tmp/aws.credentials
+
+        echo
+        echo "Copying data from NGWPC data bucket..."
+        aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files "$STATIC_DIR/"
+        rm -f /tmp/aws.credentials
+    fi
 
     echo
     echo "Retrieving module parameter files from nwm-msw-mgr repository..."
@@ -338,7 +423,6 @@ else
     cd ..
     rm -rf tmp-ngen-verf
 
-    rm -f /tmp/aws.credentials
     echo "Static files setup complete."
 fi
 
