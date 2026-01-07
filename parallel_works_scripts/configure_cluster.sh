@@ -447,6 +447,17 @@ else
     echo ".env-override already exists."
 fi
 
+# Automatically add TAG variables to .env-override
+echo "Adding TAG variables to .env-override..."
+cat >> "$NGENCERF_APP/ngencerf-server/cerfServer/.env-override" << 'EOF'
+
+# TAG variables for branch/commit/tag selection
+MSWM_TAG=development
+NGEN_FORCING_TAG=development
+DATA_ASSIMILATION_TAG=development
+EOF
+echo "TAG variables added successfully."
+
 edit_file_with_message "$NGENCERF_APP/ngencerf-server/cerfServer/.env-override" \
     "Set the following environment variables in .env-override:
     - CERF_SERVER_SECRET_KEY
@@ -455,14 +466,9 @@ edit_file_with_message "$NGENCERF_APP/ngencerf-server/cerfServer/.env-override" 
     - CERF_SERVER_DATABASE_USER
     - CERF_SERVER_DATABASE_PASSWORD
     - CERF_SERVER_DATABASE_HOST
-    - ENTERPRISE_DATA_URL"
+    - ENTERPRISE_DATA_URL
 
-edit_file_with_message "$NGENCERF_APP/ngencerf-server/.env" \
-    "Copy these lines from the .env file and add them to .env-override:
-    - MSWM_TAG=development
-    - NGEN_FORCING_TAG=development
-    - DATA_ASSIMILATION_TAG=development
-    Leave as 'development' unless using a specific branch/tag."
+    Note: MSWM_TAG, NGEN_FORCING_TAG, and DATA_ASSIMILATION_TAG have been automatically set to 'development'"
 
 echo
 
