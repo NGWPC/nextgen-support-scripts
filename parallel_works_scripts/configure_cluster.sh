@@ -42,14 +42,21 @@ if [[ "$NON_INTERACTIVE" == "true" ]]; then
         echo "================================================================================"
         echo "AWS Credentials Required"
         echo "================================================================================"
-        echo "Please provide temporary AWS credentials to download static files."
-        echo "You can obtain these from your AWS console."
+        echo "Please paste your AWS credentials export statements below."
+        echo "Paste all three lines (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)"
+        echo "then press Ctrl+D on a new line when done."
         echo ""
 
-        read -p "AWS Access Key ID: " AWS_ACCESS_KEY_ID_INPUT
-        read -p "AWS Secret Access Key: " -s AWS_SECRET_ACCESS_KEY_INPUT
-        echo
-        read -p "AWS Session Token (press Enter if not using temporary credentials): " AWS_SESSION_TOKEN_INPUT
+        # Read multiline input until EOF (Ctrl+D)
+        AWS_CREDS_INPUT=$(cat)
+
+        # Parse the credentials from the pasted export statements
+        AWS_ACCESS_KEY_ID_INPUT=$(echo "$AWS_CREDS_INPUT" | grep "AWS_ACCESS_KEY_ID" | sed 's/.*AWS_ACCESS_KEY_ID="\(.*\)"/\1/' | sed "s/.*AWS_ACCESS_KEY_ID='\(.*\)'/\1/" | sed 's/.*AWS_ACCESS_KEY_ID=\(.*\)/\1/')
+        AWS_SECRET_ACCESS_KEY_INPUT=$(echo "$AWS_CREDS_INPUT" | grep "AWS_SECRET_ACCESS_KEY" | sed 's/.*AWS_SECRET_ACCESS_KEY="\(.*\)"/\1/' | sed "s/.*AWS_SECRET_ACCESS_KEY='\(.*\)'/\1/" | sed 's/.*AWS_SECRET_ACCESS_KEY=\(.*\)/\1/')
+        AWS_SESSION_TOKEN_INPUT=$(echo "$AWS_CREDS_INPUT" | grep "AWS_SESSION_TOKEN" | sed 's/.*AWS_SESSION_TOKEN="\(.*\)"/\1/' | sed "s/.*AWS_SESSION_TOKEN='\(.*\)'/\1/" | sed 's/.*AWS_SESSION_TOKEN=\(.*\)/\1/')
+
+        echo ""
+        echo "Credentials parsed successfully."
         echo "================================================================================"
         echo
     fi
