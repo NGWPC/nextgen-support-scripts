@@ -97,7 +97,7 @@ images_for_repo() {
         ngencerf-server) echo "" ;;
         ngencerf-docker) echo "" ;;
         nwm-cal-mgr)     echo "nwm-cal-mgr|nwm-cal-mgr" ;;
-        ngen-forcing)    echo "ngen-bmi-forcing|ngen-bmi-forcing ngen-lumped-forcing|ngen-lumped-forcing ngen-coastal|ngen-coastal" ;;
+        ngen-forcing)    echo "ngen-bmi-forcing|ngen-bmi-forcing" ;;
         nwm-fcst-mgr)    echo "nwm-fcst-mgr|nwm-fcst-mgr" ;;
         nwm-verf)        echo "nwm-verf|nwm-verf" ;;
         *)               echo "$repo|$repo" ;;
@@ -118,10 +118,10 @@ set_image_source_defaults() {
     for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]=''; done
 
     # set default for each repo
-    IMAGE_SOURCE["ngen"]="pull"
+    IMAGE_SOURCE["ngen"]="build"
     IMAGE_SOURCE["nwm-cal-mgr"]="build"
     IMAGE_SOURCE["nwm-fcst-mgr"]="build"
-    IMAGE_SOURCE["nwm-verf"]="build"
+    IMAGE_SOURCE["nwm-verf"]="pull"
     IMAGE_SOURCE["ngen-forcing"]="pull"
 
     if [[ -n "$IMAGE_SOURCE_DEFAULT" ]]; then
@@ -373,7 +373,7 @@ if [[ -t 0 ]]; then
             if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
                 # special handling for ngen-forcing
                 if [[ "$repo" == "ngen-forcing" ]]; then
-                    read -p "Enter ngen-forcing branch (shared for bmi/lumped/coastal): " ans
+                    read -p "Enter ngen-forcing branch: " ans
                 else
                     read -p "Enter ${repo} branch: " ans
                 fi
@@ -422,7 +422,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                     read -p "Enter ngen tag (required by nwm-cal-mgr): " TAGS[ngen]
                 fi
             ;;
-            ngen-forcing)    read -p "Enter ngen-forcing tag (shared for bmi/lumped/coastal): " TAGS[ngen-forcing] ;;
+            ngen-forcing)    read -p "Enter ngen-forcing tag: " TAGS[ngen-forcing] ;;
             nwm-fcst-mgr)
                 read -p "Enter nwm-fcst-mgr tag: " TAGS[nwm-fcst-mgr]
                 if [[ -z "${TAGS[ngen]:-}" ]]; then
@@ -467,7 +467,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                     fi
                 ;;
                 ngen-forcing)
-                    read -p "Enter Docker tag to pull for ngen-forcing (shared for bmi/lumped): " TAGS[ngen-forcing]
+                    read -p "Enter Docker tag to pull for ngen-forcing: " TAGS[ngen-forcing]
                 ;;
                 nwm-fcst-mgr)
                     read -p "Enter Docker tag to pull for nwm-fcst-mgr: " TAGS[nwm-fcst-mgr]
@@ -692,19 +692,6 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" \
                             "${BASE_PATH}/ngen-forcing"
-
-                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
-                            --tag="${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}" \
-                            "${BASE_PATH}/ngen-forcing"
-
-                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
-                            --tag="${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}" \
-                            "${BASE_PATH}/ngen-forcing"
-
                     else
                         echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                     fi
@@ -712,10 +699,6 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
 
                     echo "[$(date '+%H:%M:%S')] Pulling ngen-bmi-forcing Docker image"
                     docker pull "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
-                    echo "[$(date '+%H:%M:%S')] Pulling ngen-lumped-forcing Docker image"
-                    docker pull "${REGISTRY}/ngen-lumped-forcing:${TAGS[ngen-forcing]}"
-                    echo "[$(date '+%H:%M:%S')] Pulling ngen-coastal Docker image"
-                    docker pull "${REGISTRY}/ngen-coastal:${TAGS[ngen-forcing]}"
                 fi
             ;;
             "nwm-fcst-mgr")
@@ -858,17 +841,6 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
                             "${BASE_PATH}/ngen-forcing"
-
-                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing (development) Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
-                            --tag="${REGISTRY}/ngen-lumped-forcing:latest" \
-                            "${BASE_PATH}/ngen-forcing"
-                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal (development) Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
-                            --tag="${REGISTRY}/ngen-coastal:latest" \
-                            "${BASE_PATH}/ngen-forcing"
                     else
                         echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
                     fi
@@ -998,18 +970,6 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                         docker build --progress=plain --no-cache \
                             --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
                             --tag="${REGISTRY}/ngen-bmi-forcing:feature" \
-                            "${BASE_PATH}/ngen-forcing"
-
-                        echo "[$(date '+%H:%M:%S')] Building ngen-lumped-forcing (feature) Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.lumped-forcings" \
-                            --tag="${REGISTRY}/ngen-lumped-forcing:feature" \
-                            "${BASE_PATH}/ngen-forcing"
-
-                        echo "[$(date '+%H:%M:%S')] Building ngen-coastal (feature) Docker image"
-                        docker build --progress=plain --no-cache \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.ngencoastal" \
-                            --tag="${REGISTRY}/ngen-coastal:feature" \
                             "${BASE_PATH}/ngen-forcing"
                     else
                         echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
