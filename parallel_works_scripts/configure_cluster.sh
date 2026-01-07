@@ -495,5 +495,23 @@ fi
 
 echo
 echo "================================================================================"
+echo "                              IMPORTANT NOTICE                                  "
+echo "================================================================================"
+echo ""
+echo "The following TAG variables have been set to 'development' in .env-override:"
+echo "  - MSWM_TAG=development"
+echo "  - NGEN_FORCING_TAG=development"
+echo "  - DATA_ASSIMILATION_TAG=development"
+echo ""
+echo "These values should ONLY be changed if you need to use a specific branch,"
+echo "commit, or tag for release candidates or official releases."
+echo ""
+echo "For normal development work, leave these as 'development'."
+echo ""
+echo "================================================================================"
+sleep 5
+
+echo
+echo "================================================================================"
 echo "Cluster configuration complete!"
 echo "================================================================================"
