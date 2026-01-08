@@ -435,23 +435,7 @@ echo "Build type selected: $BUILD_TYPE"
 echo "Selected repos: ${SELECTED_REPOS[*]}"
 
 if [[ -t 0 ]]; then
-    # skip image source prompting unless the user was already interacting with the script
-    if [[ "$BUILD_TYPE" != "feature" && "$PROMPTED_FOR_CORE_INPUT" == true ]]; then
-        for repo in "${SELECTED_REPOS[@]}"; do
-            if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
-                default_mode="${IMAGE_SOURCE[$repo]}"
-                read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans || { echo "Error reading input, exiting."; exit 1; }
-                if [[ -n "$ans" ]]; then
-                    if [[ "$ans" != "build" && "$ans" != "pull" ]]; then
-                        echo "Invalid choice '${ans}' for ${repo}. Use build or pull."; exit 1
-                    fi
-                    IMAGE_SOURCE["$repo"]="$ans"
-                fi
-            fi
-        done
-    fi
-
-    # branch prompting after image sources (only for feature builds in interactive mode)
+    # branch prompting for feature builds (only for feature builds in interactive mode)
     if [[ "$BUILD_TYPE" == "feature" ]]; then
         for repo in "${SELECTED_REPOS[@]}"; do
             if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
@@ -857,6 +841,26 @@ reorder_repos_by_dependency
 
 # Display the final build order so users understand the dependency chain
 echo "Build order (respecting dependencies): ${SELECTED_REPOS[*]}"
+
+# --- image source prompts (build/pull) for development and release builds ---
+# This happens AFTER auto-including dependencies so all repos get prompted
+if [[ -t 0 ]]; then
+    # skip image source prompting unless the user was already interacting with the script
+    if [[ "$BUILD_TYPE" != "feature" && "$PROMPTED_FOR_CORE_INPUT" == true ]]; then
+        for repo in "${SELECTED_REPOS[@]}"; do
+            if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
+                default_mode="${IMAGE_SOURCE[$repo]}"
+                read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans || { echo "Error reading input, exiting."; exit 1; }
+                if [[ -n "$ans" ]]; then
+                    if [[ "$ans" != "build" && "$ans" != "pull" ]]; then
+                        echo "Invalid choice '${ans}' for ${repo}. Use build or pull."; exit 1
+                    fi
+                    IMAGE_SOURCE["$repo"]="$ans"
+                fi
+            fi
+        done
+    fi
+fi
 
 # --- tag prompts for release and feature (when pulling) ---
 if [[ "$BUILD_TYPE" == "release" ]]; then
