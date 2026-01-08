@@ -847,6 +847,17 @@ validate_dependencies() {
     fi
 }
 
+# auto-include missing dependencies BEFORE prompting for tags
+# This ensures we prompt for all necessary repos in the correct order
+auto_include_dependencies
+
+# reorder repos to respect dependencies BEFORE prompting for tags
+# This ensures tag prompts appear in the correct dependency order
+reorder_repos_by_dependency
+
+# Display the final build order so users understand the dependency chain
+echo "Build order (respecting dependencies): ${SELECTED_REPOS[*]}"
+
 # --- tag prompts for release and feature (when pulling) ---
 if [[ "$BUILD_TYPE" == "release" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
@@ -907,9 +918,6 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     fi
 fi
 
-# auto-include missing dependencies
-auto_include_dependencies
-
 # For feature builds in interactive mode, prompt for branches of any repos that don't have them set yet
 # (this handles auto-added downstream dependencies)
 if [[ "$BUILD_TYPE" == "feature" && -t 0 ]]; then
@@ -934,11 +942,8 @@ if [[ "$BUILD_TYPE" == "feature" && -t 0 ]]; then
     done
 fi
 
-# prompt for dependency tags/branches (after auto-include so all repos are in SELECTED_REPOS)
+# prompt for dependency tags/branches (after auto-include and reorder so all repos are properly ordered)
 prompt_dependency_tags "$BUILD_TYPE"
-
-# reorder repos to respect dependencies
-reorder_repos_by_dependency
 
 # validate dependencies
 validate_dependencies
@@ -1183,11 +1188,32 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             fi
             forcing_tag="${TAGS[ngen-forcing]}"
 
+            # Additional validation to ensure forcing_tag is not empty and has expected value
+            if [[ -z "$forcing_tag" ]]; then
+                echo "Error: forcing_tag is empty after assignment from TAGS[ngen-forcing]"; exit 1
+            fi
+            if [[ "$forcing_tag" != "${TAGS[ngen-forcing]}" ]]; then
+                echo "Error: forcing_tag mismatch! Expected '${TAGS[ngen-forcing]}' but got '${forcing_tag}'"; exit 1
+            fi
+
             echo "[$(date '+%H:%M:%S')] Building ngen Docker image with NGEN_FORCING_TAG=${forcing_tag}"
-            docker build --progress=plain --no-cache \
+            if ! docker build --progress=plain --no-cache \
                 --build-arg NGEN_FORCING_TAG="${forcing_tag}" \
                 --tag="${REGISTRY}/ngen:${TAGS[ngen]}" \
-                "${BASE_PATH}/ngen"
+                "${BASE_PATH}/ngen"; then
+                echo ""
+                echo "=========================================="
+                echo "DOCKER BUILD FAILED: ngen"
+                echo "=========================================="
+                echo "Image: ${REGISTRY}/ngen:${TAGS[ngen]}"
+                echo "Build arg NGEN_FORCING_TAG was set to: ${forcing_tag}"
+                echo "Expected: ${TAGS[ngen-forcing]}"
+                echo "Dockerfile: ${BASE_PATH}/ngen/Dockerfile"
+                echo "The build has stopped. Review the error above."
+                echo "Log file: ${LOGFILE}"
+                echo "=========================================="
+                exit 1
+            fi
         else
             echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen; will reuse local image when present"
             ensure_image_present "ngen" "${REGISTRY}/ngen:${TAGS[ngen]}" "pull"
