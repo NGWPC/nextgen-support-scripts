@@ -828,7 +828,7 @@ validate_dependencies() {
             # check if ngen-forcing is being built or pulled
             if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
                 # ngen-forcing not selected, but might be available from previous build
-                echo "Warning: ngen will be built with NGEN_FORCING_TAG=${forcing_tag}, but ngen-forcing is not selected for build/pull."
+                echo "Warning: ngen will be built with NGEN_FORCING_IMAGE_TAG=${forcing_tag}, but ngen-forcing is not selected for build/pull."
                 echo "         Ensure ngen-forcing:${forcing_tag} exists or select ngen-forcing for build/pull."
             fi
         fi
@@ -1196,9 +1196,9 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 echo "Error: forcing_tag mismatch! Expected '${TAGS[ngen-forcing]}' but got '${forcing_tag}'"; exit 1
             fi
 
-            echo "[$(date '+%H:%M:%S')] Building ngen Docker image with NGEN_FORCING_TAG=${forcing_tag}"
+            echo "[$(date '+%H:%M:%S')] Building ngen Docker image with NGEN_FORCING_IMAGE_TAG=${forcing_tag}"
             if ! docker build --progress=plain --no-cache \
-                --build-arg NGEN_FORCING_TAG="${forcing_tag}" \
+                --build-arg NGEN_FORCING_IMAGE_TAG="${forcing_tag}" \
                 --tag="${REGISTRY}/ngen:${TAGS[ngen]}" \
                 "${BASE_PATH}/ngen"; then
                 echo ""
@@ -1206,7 +1206,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 echo "DOCKER BUILD FAILED: ngen"
                 echo "=========================================="
                 echo "Image: ${REGISTRY}/ngen:${TAGS[ngen]}"
-                echo "Build arg NGEN_FORCING_TAG was set to: ${forcing_tag}"
+                echo "Build arg NGEN_FORCING_IMAGE_TAG was set to: ${forcing_tag}"
                 echo "Expected: ${TAGS[ngen-forcing]}"
                 echo "Dockerfile: ${BASE_PATH}/ngen/Dockerfile"
                 echo "The build has stopped. Review the error above."
@@ -1389,9 +1389,9 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ -d "${BASE_PATH}/ngen" ]]; then
                     if [[ "${IMAGE_SOURCE[ngen]}" == "build" ]]; then
                         update_repo_branch "ngen" "development"
-                        echo "[$(date '+%H:%M:%S')] Building ngen (development) Docker image with NGEN_FORCING_TAG=latest"
+                        echo "[$(date '+%H:%M:%S')] Building ngen (development) Docker image with NGEN_FORCING_IMAGE_TAG=latest"
                         docker build --progress=plain \
-                            --build-arg NGEN_FORCING_TAG="latest" \
+                            --build-arg NGEN_FORCING_IMAGE_TAG="latest" \
                             --tag="${REGISTRY}/ngen:latest" \
                             "${BASE_PATH}/ngen"
                     else
@@ -1483,9 +1483,9 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 ngen_forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
             fi
 
-            echo "[$(date '+%H:%M:%S')] Building ngen (${ngen_docker_tag}) Docker image with NGEN_FORCING_TAG=${ngen_forcing_docker_tag}"
+            echo "[$(date '+%H:%M:%S')] Building ngen (${ngen_docker_tag}) Docker image with NGEN_FORCING_IMAGE_TAG=${ngen_forcing_docker_tag}"
             docker build --progress=plain \
-                --build-arg NGEN_FORCING_TAG="${ngen_forcing_docker_tag}" \
+                --build-arg NGEN_FORCING_IMAGE_TAG="${ngen_forcing_docker_tag}" \
                 --tag="${REGISTRY}/ngen:${ngen_docker_tag}" \
                 "${BASE_PATH}/ngen"
         else
