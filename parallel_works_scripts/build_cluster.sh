@@ -977,7 +977,25 @@ ensure_image_present() {
         echo "[$(date '+%H:%M:%S')] Local image present for ${repo:-$image_ref}; using local copy (skipping pull)"
     else
         echo "[$(date '+%H:%M:%S')] Pulling docker image: $image_ref"
-        docker pull "$image_ref"
+        if ! docker pull "$image_ref"; then
+            echo ""
+            echo "=========================================="
+            echo "DOCKER PULL FAILED"
+            echo "=========================================="
+            echo "Repository: ${repo}"
+            echo "Image: ${image_ref}"
+            echo ""
+            echo "The image does not exist in the registry."
+            echo "This typically happens when:"
+            echo "  1. The tag hasn't been published to the registry yet"
+            echo "  2. The tag name is incorrect"
+            echo ""
+            echo "To fix this:"
+            echo "  - Select 'build' mode for ${repo} instead of 'pull'"
+            echo "  - Or use a different tag that exists in the registry"
+            echo "=========================================="
+            exit 1
+        fi
     fi
 
     if [[ -n "$repo" ]]; then
