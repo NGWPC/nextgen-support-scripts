@@ -739,15 +739,14 @@ auto_include_dependencies() {
         fi
     fi
 
-    # DOWNSTREAM DEPENDENCIES: Only add for development builds and interactive feature builds
-    # For release builds, the user must explicitly specify all repos and their tags
+    # DOWNSTREAM DEPENDENCIES: Auto-add for development and release builds, and interactive feature builds
     # For CLI feature builds, user must explicitly specify downstream repos to avoid branch ambiguity
     local skip_downstream_for_feature=false
     if [[ "$BUILD_TYPE" == "feature" && ! -t 0 ]]; then
         skip_downstream_for_feature=true
     fi
 
-    if [[ "$BUILD_TYPE" != "release" && "$skip_downstream_for_feature" != "true" ]]; then
+    if [[ "$skip_downstream_for_feature" != "true" ]]; then
         # if ngen-forcing was ORIGINALLY selected (not auto-added),
         # add all downstream consumers because they need to be rebuilt to pick up changes
         if [[ " ${originally_selected[@]} " =~ " ngen-forcing " ]]; then
