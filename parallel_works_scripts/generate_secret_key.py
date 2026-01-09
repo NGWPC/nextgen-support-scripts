@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Generates a unique Django secret key and assigns it to CERF_SERVER_SECRET_KEY
-in /ngencerf-app/cerfServer/.env-override (default file)
+in /ngencerf-app/ngencerf-server/cerfServer/.env-override (default file)
 
 Parameters
 ----------
 env_file : str
     path to the env file to update
-    (default: /ngencerf-app/cerfServer/.env-override)
+    (default: /ngencerf-app/ngencerf-server/cerfServer/.env-override)
 
 Returns
 -------
@@ -116,7 +116,7 @@ def main(argv: List[str]) -> int:
     parser.add_argument(
         "env_file",
         nargs="?",
-        default="/ngencerf-app/cerfServer/.env-override",
+        default="/ngencerf-app/ngencerf-server/cerfServer/.env-override",
         help="path to the env file to update",
     )
 
