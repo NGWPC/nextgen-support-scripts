@@ -482,6 +482,15 @@ else
     echo ".env-override already exists."
 fi
 
+# Generate and assign CERF_SERVER_SECRET_KEY
+echo "Generating CERF_SERVER_SECRET_KEY..."
+if [[ -f "$NGENCERF_APP/nwm-automation-scripts/parallel_works_scripts/generate_secret_key.py" ]]; then
+    python3 "$NGENCERF_APP/nwm-automation-scripts/parallel_works_scripts/generate_secret_key.py"
+    echo "CERF_SERVER_SECRET_KEY generated and set successfully."
+else
+    echo "Warning: generate_secret_key.py not found. You will need to set CERF_SERVER_SECRET_KEY manually."
+fi
+
 # Automatically add TAG variables to .env-override
 echo "Adding TAG variables to .env-override..."
 cat >> "$NGENCERF_APP/ngencerf-server/cerfServer/.env-override" << 'EOF'
@@ -495,7 +504,6 @@ echo "TAG variables added successfully."
 
 edit_file_with_message "$NGENCERF_APP/ngencerf-server/cerfServer/.env-override" \
     "Set the following environment variables in .env-override:
-    - CERF_SERVER_SECRET_KEY
     - NGENCERF_ARCHIVE_S3_PATH
     - CERF_SERVER_DATABASE_NAME
     - CERF_SERVER_DATABASE_USER
@@ -503,6 +511,7 @@ edit_file_with_message "$NGENCERF_APP/ngencerf-server/cerfServer/.env-override" 
     - CERF_SERVER_DATABASE_HOST
     - ENTERPRISE_DATA_URL
 
+    Note: CERF_SERVER_SECRET_KEY has been automatically generated.
     Note: MSWM_TAG, NGEN_FORCING_TAG, and DATA_ASSIMILATION_TAG have been automatically set to 'development'"
 
 echo
