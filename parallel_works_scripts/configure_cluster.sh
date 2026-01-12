@@ -192,6 +192,28 @@ fi
 echo
 
 # ------------------------------------------------------------------------------
+# Create Singularity Directory
+# ------------------------------------------------------------------------------
+echo "Creating singularity directory..."
+mkdir -p $NGENCERF_APP/singularity
+echo
+
+# ------------------------------------------------------------------------------
+# Download Singularity Container for nginx
+# ------------------------------------------------------------------------------
+echo "Downloading singularity container for nginx..."
+if [[ ! -f "$NGENCERF_APP/singularity/nginx-unprivileged.sif" ]]; then
+    cd $NGENCERF_APP
+    git clone https://github.com/parallelworks/interactive_session.git
+    cp interactive_session/downloads/jupyter/nginx-unprivileged.sif singularity/
+    rm -rf interactive_session
+    echo "nginx-unprivileged.sif downloaded successfully."
+else
+    echo "nginx-unprivileged.sif already exists, skipping download."
+fi
+echo
+
+# ------------------------------------------------------------------------------
 # Load Static Files
 # ------------------------------------------------------------------------------
 echo "Loading static files..."
