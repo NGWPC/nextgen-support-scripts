@@ -3,6 +3,7 @@
 # Array of repository URLs
 repos=(
     "https://github.com/NGWPC/ngencerf-server"
+    "https://github.com/NGWPC/ngencerf-ui"
     "https://github.com/NGWPC/ngen"
     "https://github.com/NGWPC/ngen-forcing"
     "https://github.com/NGWPC/nwm-cal-mgr"
