@@ -192,6 +192,40 @@ fi
 echo
 
 # ------------------------------------------------------------------------------
+# Set up AWS Credentials
+# ------------------------------------------------------------------------------
+echo "Setting up AWS credentials..."
+echo
+echo "You will need the AWS credentials from 's3-ro-ngwpc-hydrofabric' in AWS Secrets Manager."
+echo "These credentials are required for ngencerf-server to authenticate and access AWS."
+echo
+
+# Create AWS directory with proper permissions
+sudo mkdir -p $NGENCERF_APP/aws
+sudo touch $NGENCERF_APP/aws/credentials
+sudo chown -R root:root $NGENCERF_APP/aws
+sudo chmod 700 $NGENCERF_APP/aws
+sudo chmod 600 $NGENCERF_APP/aws/credentials
+
+echo "Please add your AWS credentials to $NGENCERF_APP/aws/credentials"
+echo "Format:"
+echo "[default]"
+echo "aws_access_key_id=<ADD AWS ACCESS KEY>"
+echo "aws_secret_access_key=<ADD AWS SECRET ACCESS KEY>"
+echo
+
+if [[ "$NON_INTERACTIVE" == "true" ]]; then
+    echo "[NON-INTERACTIVE MODE] Skipping AWS credentials file editing."
+    echo "You will need to manually edit $NGENCERF_APP/aws/credentials"
+else
+    read -p "Press ENTER to open $NGENCERF_APP/aws/credentials in an editor..."
+    sudo "${EDITOR:-vim}" "$NGENCERF_APP/aws/credentials"
+fi
+
+echo "AWS credentials setup complete."
+echo
+
+# ------------------------------------------------------------------------------
 # Create Singularity Directory
 # ------------------------------------------------------------------------------
 echo "Creating singularity directory..."
@@ -217,7 +251,7 @@ echo
 # Load Static Files
 # ------------------------------------------------------------------------------
 echo "Loading static files..."
-STATIC_DIR="$NGENCERF_APP/data/ngen-static-files"
+STATIC_DIR="$NGENCERF_APP/data/ngen-cal-data/ngen-static-files"
 
 if [[ -d "$STATIC_DIR" ]]; then
     echo "Static data directory already exists at $STATIC_DIR"
