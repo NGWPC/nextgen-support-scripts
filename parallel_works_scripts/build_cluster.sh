@@ -54,6 +54,9 @@ handle_error() {
 # and tags images as :feature):
 #   ./build_cluster.sh --build-type=feature ngen nwm-cal-mgr
 #
+# Feature build with commit hash:
+#   ./build_cluster.sh --build-type=feature --branch=ngen:a1b2c3d ngen
+#
 # Per-repo image source (build|pull), applies to dev/rc/release:
 #   ./build_cluster.sh --build-type=development \
 #     --source=ngen:build --source=nwm-cal-mgr:build ngen nwm-cal-mgr
@@ -68,7 +71,8 @@ handle_error() {
 #   --source=REPO:MODE       For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
 #                            MODE is build or pull. Can be repeated.
 #   --source-default=MODE    Global default (build|pull) for the above repos (optional).
-#   --branch=BRANCH         Specify a custom branch to build from (optional).
+#   --branch=REPO:BRANCH    Specify a custom branch or commit hash to build from (optional).
+#                            Example: --branch=ngen:feature/my-feature or --branch=ngen:a1b2c3d
 #   --tag=REPO:TAG          For feature builds: specify tag to pull for REPO (only used when pulling).
 #                            Example: --tag=ngen-forcing:latest
 #   repo names               List of repos to build (space-separated), or use "all"
@@ -81,6 +85,7 @@ handle_error() {
 # - If no arguments are passed, the script runs interactively.
 # - If "all" is passed as a repo, it expands to all supported repos.
 # - For release, tag prompts will appear.
+# - Feature builds support commit hashes in addition to branch names.
 #
 # ==============================================================================
 
@@ -188,8 +193,9 @@ USAGE:
 
 OPTIONS:
   --build-type=TYPE          One of: development, release, feature
-  --branch=REPO:BRANCH       Specify a branch for a specific repo. Can be repeated.
+  --branch=REPO:BRANCH       Specify a branch or commit hash for a specific repo. Can be repeated.
                              Example: --branch=ngen:feature/my-feature
+                             Example: --branch=ngen:a1b2c3d (commit hash)
   --branch-default=BRANCH    Global default branch for all repos (optional)
   --source=REPO:MODE         For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
                              MODE is build or pull. Can be repeated.
@@ -240,11 +246,17 @@ EXAMPLES:
       --source=ngen:build --source=nwm-cal-mgr:build \
       ngen-forcing ngen nwm-cal-mgr
 
+  Feature build with commit hash:
+    ./build_cluster.sh --build-type=feature \
+      --branch=ngen:a1b2c3d4e5f6 \
+      ngen nwm-cal-mgr
+
 NOTES:
   - If no arguments are passed, the script runs interactively
   - If "all" is passed as a repo, it expands to all supported repos
   - For release builds, tag prompts will appear
   - Branch priority: --branch=REPO:BRANCH > --branch-default > build-type default
+  - Feature builds support commit hashes in addition to branch names
   - Logs are written to: ${SINGULARITY_DIR}/build_cluster_<timestamp>.log
 EOF
 }
@@ -501,6 +513,17 @@ get_docker_tag_for_repo() {
         # release build
         echo "${TAGS[$repo]:-}"
     fi
+}
+
+# check if a git reference is a commit hash (vs a branch/tag name)
+# returns 0 (true) if it's a commit hash, 1 (false) otherwise
+is_commit_hash() {
+    local ref="$1"
+    # check if it's a valid hex string of 7-40 characters (short or full SHA)
+    if [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+        return 0
+    fi
+    return 1
 }
 
 # prompt for dependency tags/branches in interactive mode
@@ -1053,37 +1076,58 @@ build_singularity_container_update_symlink() {
     )
 }
 
-# update repo to latest from specified branch
+# update repo to latest from specified branch or checkout specific commit hash
 update_repo_branch() {
     local repo="$1"
     local default_branch="$2"
 
-    local branch_to_use
-    branch_to_use="$(get_repo_branch "$repo" "$default_branch")"
+    local ref_to_use
+    ref_to_use="$(get_repo_branch "$repo" "$default_branch")"
 
     if [[ ! -d "$BASE_PATH/$repo" ]]; then
         echo "Error: Repository directory '$BASE_PATH/$repo' does not exist"; exit 1
     fi
     cd "$BASE_PATH/$repo"
 
-    echo "[$(date '+%H:%M:%S')] Updating $repo to latest from $branch_to_use branch..."
+    # check if ref is a commit hash or branch name
+    if is_commit_hash "$ref_to_use"; then
+        echo "[$(date '+%H:%M:%S')] Checking out $repo at commit $ref_to_use..."
 
-    echo "[$(date '+%H:%M:%S')] Fetching from origin"
-    git fetch origin
+        echo "[$(date '+%H:%M:%S')] Fetching from origin"
+        git fetch origin
 
-    local stash_result
-    stash_result="$(git stash push 2>&1)"
+        local stash_result
+        stash_result="$(git stash push 2>&1)"
 
-    if ! git checkout "$branch_to_use"; then
-        echo "Error: Branch '$branch_to_use' does not exist in $repo"; exit 1
-    fi
+        if ! git checkout "$ref_to_use"; then
+            echo "Error: Commit '$ref_to_use' does not exist in $repo"; exit 1
+        fi
 
-    echo "[$(date '+%H:%M:%S')] Pulling latest changes from $branch_to_use"
-    git pull origin "$branch_to_use" --rebase
+        if [[ "$stash_result" != "No local changes to save" ]]; then
+            if ! git stash pop; then
+                echo "Warning: git stash pop failed, likely due to conflicts. Stashed changes remain in stash."
+            fi
+        fi
+    else
+        echo "[$(date '+%H:%M:%S')] Updating $repo to latest from $ref_to_use branch..."
 
-    if [[ "$stash_result" != "No local changes to save" ]]; then
-        if ! git stash pop; then
-            echo "Warning: git stash pop failed, likely due to conflicts. Stashed changes remain in stash."
+        echo "[$(date '+%H:%M:%S')] Fetching from origin"
+        git fetch origin
+
+        local stash_result
+        stash_result="$(git stash push 2>&1)"
+
+        if ! git checkout "$ref_to_use"; then
+            echo "Error: Branch '$ref_to_use' does not exist in $repo"; exit 1
+        fi
+
+        echo "[$(date '+%H:%M:%S')] Pulling latest changes from $ref_to_use"
+        git pull origin "$ref_to_use" --rebase
+
+        if [[ "$stash_result" != "No local changes to save" ]]; then
+            if ! git stash pop; then
+                echo "Warning: git stash pop failed, likely due to conflicts. Stashed changes remain in stash."
+            fi
         fi
     fi
 
