@@ -6,6 +6,7 @@ ADD_USERS=(
   "ngen-pw-user"
   "miguel.pena"
   "peter.a.kronenberg"
+  "christopher.nealen"
   "khalid.ali"
   "bijan.zarean"
   "christina.osumi"
