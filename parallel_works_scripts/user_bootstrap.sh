@@ -2,7 +2,16 @@
 set -euo pipefail
 
 # set sudo users, dnf packages, and python packages
-ADD_USERS="ngen-pw-user miguel.pena peter.a.kronenberg khalid.ali bijan.zarean christina.osumi mohammed.karim"
+ADD_USERS=(
+  "ngen-pw-user"
+  "miguel.pena"
+  "peter.a.kronenberg"
+  "khalid.ali"
+  "bijan.zarean"
+  "christina.osumi"
+  "mohammed.karim"
+  "yuqiong.liu"
+)
 PY_PIP_PKGS="Flask gunicorn"
 
 # set startup_cluster script paths
@@ -31,6 +40,6 @@ curl -fsSL --retry 3 --retry-connrefused "${REPO_URL}/${MOUNT_SCRIPT}" -o "$MOUN
 chmod +x "$MOUNT_SCRIPT_PATH"
 
 # run script with environment variables
-ADD_USERS="$ADD_USERS" \
+ADD_USERS="${ADD_USERS[*]}" \
 PY_PIP_PKGS="$PY_PIP_PKGS" \
 "$STARTUP_SCRIPT_PATH"
