@@ -163,17 +163,17 @@ set_image_source_defaults() {
     fi
 
     if [[ "$BUILD_TYPE" == "development" ]]; then
-        [[ -z "${IMAGE_SOURCE[ngen]:-}" ]] && IMAGE_SOURCE["ngen"]="build"
-        [[ -z "${IMAGE_SOURCE[ngen-forcing]:-}" ]] && IMAGE_SOURCE["ngen-forcing"]="build"
+        [[ -z "${IMAGE_SOURCE["ngen"]:-}" ]] && IMAGE_SOURCE["ngen"]="build"
+        [[ -z "${IMAGE_SOURCE["ngen-forcing"]:-}" ]] && IMAGE_SOURCE["ngen-forcing"]="build"
     else
         # for release builds, default to "build" for all repos
         # (user can override with --source or --source-default flags)
-        [[ -z "${IMAGE_SOURCE[ngen]:-}" ]] && IMAGE_SOURCE["ngen"]="build"
-        [[ -z "${IMAGE_SOURCE[ngen-forcing]:-}" ]] && IMAGE_SOURCE["ngen-forcing"]="build"
+        [[ -z "${IMAGE_SOURCE["ngen"]:-}" ]] && IMAGE_SOURCE["ngen"]="build"
+        [[ -z "${IMAGE_SOURCE["ngen-forcing"]:-}" ]] && IMAGE_SOURCE["ngen-forcing"]="build"
     fi
-    [[ -z "${IMAGE_SOURCE[nwm-cal-mgr]:-}" ]] && IMAGE_SOURCE["nwm-cal-mgr"]="build"
-    [[ -z "${IMAGE_SOURCE[nwm-fcst-mgr]:-}" ]] && IMAGE_SOURCE["nwm-fcst-mgr"]="build"
-    [[ -z "${IMAGE_SOURCE[nwm-verf]:-}" ]] && IMAGE_SOURCE["nwm-verf"]="build"
+    [[ -z "${IMAGE_SOURCE["nwm-cal-mgr"]:-}" ]] && IMAGE_SOURCE["nwm-cal-mgr"]="build"
+    [[ -z "${IMAGE_SOURCE["nwm-fcst-mgr"]:-}" ]] && IMAGE_SOURCE["nwm-fcst-mgr"]="build"
+    [[ -z "${IMAGE_SOURCE["nwm-verf"]:-}" ]] && IMAGE_SOURCE["nwm-verf"]="build"
 
     if [[ -n "$IMAGE_SOURCE_DEFAULT" ]]; then
         for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do
