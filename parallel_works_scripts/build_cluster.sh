@@ -321,6 +321,7 @@ parse_args() {
                     echo "Error: --source '${kv}' must be build or pull."; exit 1
                 fi
                 IMAGE_SOURCE["$repo"]="$mode"
+                echo "DEBUG: Set IMAGE_SOURCE[$repo]=$mode"
             ;;
             --tag=*)
                 local kv="${1#*=}"
@@ -361,6 +362,12 @@ parse_args() {
 }
 
 parse_args "$@"
+
+# Debug: show IMAGE_SOURCE values after parse_args
+echo "DEBUG: IMAGE_SOURCE values after parse_args:"
+for repo in "${TARGET_REPOS_FOR_SOURCE[@]}"; do
+    echo "  IMAGE_SOURCE[$repo]='${IMAGE_SOURCE[$repo]:-<not set>}'"
+done
 
 # validate BUILD_TYPE if provided via CLI
 if [[ -n "$BUILD_TYPE" ]] && [[ "$BUILD_TYPE" != "development" ]] && [[ "$BUILD_TYPE" != "release" ]] && [[ "$BUILD_TYPE" != "feature" ]]; then
