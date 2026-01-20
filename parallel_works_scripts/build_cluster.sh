@@ -153,9 +153,6 @@ repo_has_sif() {
 
 # set workflow (build or pull) default for repos with SIF (overridden by --source-default/--source)
 set_image_source_defaults() {
-    # initialize all to empty
-    for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]=''; done
-
     # for feature builds, force all to "build" (no pulling allowed)
     if [[ "$BUILD_TYPE" == "feature" ]]; then
         for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do IMAGE_SOURCE["$r"]="build"; done
