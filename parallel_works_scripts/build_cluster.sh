@@ -163,21 +163,21 @@ set_image_source_defaults() {
     fi
 
     if [[ "$BUILD_TYPE" == "development" ]]; then
-        [[ -z "${IMAGE_SOURCE["ngen"]:-}" ]] && IMAGE_SOURCE["ngen"]="build"
-        [[ -z "${IMAGE_SOURCE["ngen-forcing"]:-}" ]] && IMAGE_SOURCE["ngen-forcing"]="build"
+        [[ ! -v IMAGE_SOURCE["ngen"] ]] && IMAGE_SOURCE["ngen"]="build"
+        [[ ! -v IMAGE_SOURCE["ngen-forcing"] ]] && IMAGE_SOURCE["ngen-forcing"]="build"
     else
         # for release builds, default to "build" for all repos
         # (user can override with --source or --source-default flags)
-        [[ -z "${IMAGE_SOURCE["ngen"]:-}" ]] && IMAGE_SOURCE["ngen"]="build"
-        [[ -z "${IMAGE_SOURCE["ngen-forcing"]:-}" ]] && IMAGE_SOURCE["ngen-forcing"]="build"
+        [[ ! -v IMAGE_SOURCE["ngen"] ]] && IMAGE_SOURCE["ngen"]="build"
+        [[ ! -v IMAGE_SOURCE["ngen-forcing"] ]] && IMAGE_SOURCE["ngen-forcing"]="build"
     fi
-    [[ -z "${IMAGE_SOURCE["nwm-cal-mgr"]:-}" ]] && IMAGE_SOURCE["nwm-cal-mgr"]="build"
-    [[ -z "${IMAGE_SOURCE["nwm-fcst-mgr"]:-}" ]] && IMAGE_SOURCE["nwm-fcst-mgr"]="build"
-    [[ -z "${IMAGE_SOURCE["nwm-verf"]:-}" ]] && IMAGE_SOURCE["nwm-verf"]="build"
+    [[ ! -v IMAGE_SOURCE["nwm-cal-mgr"] ]] && IMAGE_SOURCE["nwm-cal-mgr"]="build"
+    [[ ! -v IMAGE_SOURCE["nwm-fcst-mgr"] ]] && IMAGE_SOURCE["nwm-fcst-mgr"]="build"
+    [[ ! -v IMAGE_SOURCE["nwm-verf"] ]] && IMAGE_SOURCE["nwm-verf"]="build"
 
     if [[ -n "$IMAGE_SOURCE_DEFAULT" ]]; then
         for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do
-            [[ -z "${IMAGE_SOURCE[$r]:-}" ]] && IMAGE_SOURCE["$r"]="$IMAGE_SOURCE_DEFAULT"
+            [[ ! -v IMAGE_SOURCE["$r"] ]] && IMAGE_SOURCE["$r"]="$IMAGE_SOURCE_DEFAULT"
         done
     fi
 }
@@ -422,11 +422,7 @@ if [[ -z "$BUILD_TYPE" || ${#SELECTED_REPOS[@]} -eq 0 ]]; then
     echo "Error: build type and at least one repo must be provided."; exit 1
 fi
 
-echo "DEBUG: Before set_image_source_defaults - IMAGE_SOURCE[ngen-forcing]='${IMAGE_SOURCE[ngen-forcing]:-<empty>}'"
-
 set_image_source_defaults
-
-echo "DEBUG: After set_image_source_defaults - IMAGE_SOURCE[ngen-forcing]='${IMAGE_SOURCE[ngen-forcing]:-<empty>}'"
 
 # expand 'all'
 if [[ " ${SELECTED_REPOS[*]} " =~ " all " ]]; then
@@ -1395,7 +1391,6 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 fi
             ;;
             "ngen-forcing")
-                echo "DEBUG: In development workflow - IMAGE_SOURCE[ngen-forcing]='${IMAGE_SOURCE[ngen-forcing]:-<empty>}'"
                 if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                     if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                         update_repo_branch "ngen-forcing" "development"
