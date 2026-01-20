@@ -1094,7 +1094,7 @@ update_repo_branch() {
         git fetch origin
 
         local stash_result
-        stash_result="$(git stash push 2>&1)"
+        stash_result="$(git stash push --include-untracked 2>&1)"
 
         if ! git checkout "$ref_to_use"; then
             echo "Error: Commit '$ref_to_use' does not exist in $repo"; exit 1
@@ -1112,7 +1112,7 @@ update_repo_branch() {
         git fetch origin
 
         local stash_result
-        stash_result="$(git stash push 2>&1)"
+        stash_result="$(git stash push --include-untracked 2>&1)"
 
         if ! git checkout "$ref_to_use"; then
             echo "Error: Branch '$ref_to_use' does not exist in $repo"; exit 1
@@ -1150,7 +1150,7 @@ checkout_repo_tag() {
     git fetch origin
 
     local stash_result
-    stash_result="$(git stash push 2>&1)"
+    stash_result="$(git stash push --include-untracked 2>&1)"
 
     if ! git checkout "$tag"; then
         echo "Error: Tag '$tag' does not exist in $repo"; exit 1
