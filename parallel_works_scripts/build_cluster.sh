@@ -426,6 +426,12 @@ fi
 
 set_image_source_defaults
 
+# Debug: show IMAGE_SOURCE values
+echo "DEBUG: IMAGE_SOURCE values after set_image_source_defaults:"
+for repo in "${TARGET_REPOS_FOR_SOURCE[@]}"; do
+    echo "  IMAGE_SOURCE[$repo]='${IMAGE_SOURCE[$repo]:-<not set>}'"
+done
+
 # expand 'all'
 if [[ " ${SELECTED_REPOS[*]} " =~ " all " ]]; then
     echo "'all' specified — building all available repos."
