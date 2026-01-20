@@ -50,7 +50,7 @@ handle_error() {
 # Build for release (will still prompt for tags):
 #   ./build_cluster.sh --build-type=release ngen nwm-cal-mgr nwm-verf
 #
-# Feature build (mirrors development but uses the feature branch
+# Feature build (mirrors development but uses branch/commit refs
 # and tags images as :feature):
 #   ./build_cluster.sh --build-type=feature ngen nwm-cal-mgr
 #
@@ -71,7 +71,7 @@ handle_error() {
 #   --source=REPO:MODE       For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
 #                            MODE is build or pull. Can be repeated.
 #   --source-default=MODE    Global default (build|pull) for the above repos (optional).
-#   --branch=REPO:BRANCH    Specify a custom branch or commit hash to build from (optional).
+#   --branch=REPO:REF       Specify a custom branch or commit hash to build from (optional).
 #                            Example: --branch=ngen:feature/my-feature or --branch=ngen:a1b2c3d
 #   --tag=REPO:TAG          For feature builds: specify tag to pull for REPO (only used when pulling).
 #                            Example: --tag=ngen-forcing:latest
@@ -86,6 +86,7 @@ handle_error() {
 # - If "all" is passed as a repo, it expands to all supported repos.
 # - For release, tag prompts will appear.
 # - Feature builds support commit hashes in addition to branch names.
+# - Release builds only accept tags (no branches or commit hashes).
 #
 # ==============================================================================
 
@@ -94,8 +95,8 @@ BASE_PATH="/ngencerf-app"
 SINGULARITY_DIR="${BASE_PATH}/singularity"
 
 # Branch selection for building - now per-repo
-declare -A REPO_BRANCHES   # map: repo -> branch
-BRANCH_DEFAULT=""          # global default branch (optional)
+declare -A REPO_BRANCHES   # map: repo -> ref (branch or commit hash)
+BRANCH_DEFAULT=""          # global default ref (optional)
 
 REPOS=(
     "ngencerf-ui"
@@ -195,10 +196,10 @@ USAGE:
 
 OPTIONS:
   --build-type=TYPE          One of: development, release, feature
-  --branch=REPO:BRANCH       Specify a branch or commit hash for a specific repo. Can be repeated.
-                             Example: --branch=ngen:feature/my-feature
-                             Example: --branch=ngen:a1b2c3d (commit hash)
-  --branch-default=BRANCH    Global default branch for all repos (optional)
+  --branch=REPO:REF          Specify a branch or commit hash for a specific repo. Can be repeated.
+                              Example: --branch=ngen:feature/my-feature
+                              Example: --branch=ngen:a1b2c3d (commit hash)
+  --branch-default=REF       Global default branch/commit for all repos (optional)
   --source=REPO:MODE         For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
                              MODE is build or pull. Can be repeated.
   --source-default=MODE      Global default (build|pull) for the above repos (optional)
@@ -214,22 +215,22 @@ REPOS:
   Use "all" to build all supported repos
 
 EXAMPLES:
-  Interactive mode (will prompt for build type, repos, branches, and sources):
+  Interactive mode (will prompt for build type, repos, refs, and sources):
     ./build_cluster.sh
 
-  Development build with default branches:
+  Development build with default refs:
     ./build_cluster.sh --build-type=development ngen nwm-cal-mgr
 
-  Development build with custom branches per repo:
+  Development build with custom refs per repo:
     ./build_cluster.sh --build-type=development \
       --branch=ngen:feature/new-hydro --branch=nwm-cal-mgr:bugfix/123 \
       ngen nwm-cal-mgr
 
-  Development build with global default branch:
+  Development build with global default ref:
     ./build_cluster.sh --build-type=development --branch-default=my-feature \
       ngen nwm-cal-mgr ngen-forcing
 
-  Build all repos with custom branch and source options:
+  Build all repos with custom ref and source options:
     ./build_cluster.sh --build-type=development \
       --branch-default=feature/test \
       --branch=ngen:main \
@@ -257,8 +258,9 @@ NOTES:
   - If no arguments are passed, the script runs interactively
   - If "all" is passed as a repo, it expands to all supported repos
   - For release builds, tag prompts will appear
-  - Branch priority: --branch=REPO:BRANCH > --branch-default > build-type default
+  - Ref priority: --branch=REPO:REF > --branch-default > build-type default
   - Feature builds support commit hashes in addition to branch names
+  - Release builds only accept tags (no branches or commit hashes)
   - Logs are written to: ${SINGULARITY_DIR}/build_cluster_<timestamp>.log
 EOF
 }
@@ -285,7 +287,7 @@ parse_args() {
                     echo "Error: --branch targets unsupported repo '${repo}'. Allowed: ${REPOS[*]}"; exit 1
                 fi
                 if [[ -z "$branch" ]]; then
-                    echo "Error: --branch '${kv}' must specify a branch (format: REPO:BRANCH)"; exit 1
+                    echo "Error: --branch '${kv}' must specify a ref (format: REPO:REF)"; exit 1
                 fi
                 REPO_BRANCHES["$repo"]="$branch"
             ;;
@@ -364,6 +366,12 @@ parse_args "$@"
 if [[ -n "$BUILD_TYPE" ]] && [[ "$BUILD_TYPE" != "development" ]] && [[ "$BUILD_TYPE" != "release" ]] && [[ "$BUILD_TYPE" != "feature" ]]; then
     echo "Error: Invalid --build-type '${BUILD_TYPE}'. Must be one of: development, release, feature"
     exit 1
+fi
+if [[ "$BUILD_TYPE" == "release" ]]; then
+    if [[ -n "$BRANCH_DEFAULT" || ${#REPO_BRANCHES[@]} -gt 0 ]]; then
+        echo "Error: Release builds only accept tags; do not use --branch or --branch-default."
+        exit 1
+    fi
 fi
 
 # validate that branch arguments are not used with development build type
@@ -444,28 +452,28 @@ if [[ ${#INVALID_REPOS[@]} -gt 0 ]]; then
     exit 1
 fi
 
-# display summary and optional interactive per-repo source/branch selection
+# display summary and optional interactive per-repo source/ref selection
 echo "Build type selected: $BUILD_TYPE"
 echo "Selected repos: ${SELECTED_REPOS[*]}"
 
 if [[ -t 0 ]]; then
-    # branch prompting for feature builds (only for feature builds in interactive mode)
+    # ref prompting for feature builds (only for feature builds in interactive mode)
     if [[ "$BUILD_TYPE" == "feature" ]]; then
         for repo in "${SELECTED_REPOS[@]}"; do
             if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
                 # special handling for ngen-forcing
                 if [[ "$repo" == "ngen-forcing" ]]; then
-                    read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                    read -p "Enter ngen-forcing ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                 else
-                    read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                    read -p "Enter ${repo} ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                 fi
-                # require a branch name (no default) for feature builds
+                # require a ref (no default) for feature builds
                 while [[ -z "$ans" ]]; do
-                    echo "Error: Branch name cannot be empty for feature builds"
+                    echo "Error: Ref cannot be empty for feature builds"
                     if [[ "$repo" == "ngen-forcing" ]]; then
-                        read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                        read -p "Enter ngen-forcing ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                     else
-                        read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                        read -p "Enter ${repo} ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                     fi
                 done
                 REPO_BRANCHES["$repo"]="$ans"
@@ -474,13 +482,13 @@ if [[ -t 0 ]]; then
     fi
 fi
 
-# get the branch to use for a specific repo
+# get the ref to use for a specific repo
 # priority: REPO_BRANCHES[repo] > BRANCH_DEFAULT > build_type_default
 get_repo_branch() {
     local repo="$1"
     local build_type_default="$2"
 
-    # check if repo has specific branch set
+    # check if repo has specific ref set
     if [[ -n "${REPO_BRANCHES[$repo]:-}" ]]; then
         echo "${REPO_BRANCHES[$repo]}"
     # check if global default is set
@@ -493,7 +501,7 @@ get_repo_branch() {
 }
 
 # get the Docker tag to use for a repo based on build type
-# for feature builds, returns the branch name (sanitized)
+# for feature builds, returns the ref (sanitized)
 # for development builds, returns "latest"
 # for release builds, returns the tag from TAGS array
 get_docker_tag_for_repo() {
@@ -503,14 +511,15 @@ get_docker_tag_for_repo() {
     if [[ "$build_type" == "development" ]]; then
         echo "latest"
     elif [[ "$build_type" == "feature" ]]; then
-        # get branch name for this repo
-        local branch="${REPO_BRANCHES[$repo]:-}"
-        if [[ -z "$branch" ]]; then
-            echo "Error: No branch specified for $repo in feature build" >&2
+        # use the effective ref (repo-specific, branch-default, or feature)
+        local ref
+        ref="$(get_repo_branch "$repo" "feature")"
+        if [[ -z "$ref" ]]; then
+            echo "Error: No ref specified for $repo in feature build" >&2
             exit 1
         fi
-        # sanitize branch name for Docker tag (replace / with -)
-        echo "${branch//\//-}"
+        # sanitize ref for Docker tag (replace / with -)
+        echo "${ref//\//-}"
     else
         # release build
         echo "${TAGS[$repo]:-}"
@@ -528,7 +537,7 @@ is_commit_hash() {
     return 1
 }
 
-# prompt for dependency tags/branches in interactive mode
+# prompt for dependency tags/refs in interactive mode
 # this is used for release and feature builds to collect dependency information
 prompt_dependency_tags() {
     local build_type="$1"
@@ -556,24 +565,24 @@ prompt_dependency_tags() {
             read -p "Enter nwm-eval-mgr tag (used by nwm-verf): " TAGS[nwm-eval-mgr] || { echo "Error reading input, exiting."; exit 1; }
         fi
     elif [[ "$build_type" == "feature" ]]; then
-        # for feature builds, prompt for dependency branches OR existing tags
+        # for feature builds, prompt for dependency refs OR existing tags
         # ngen depends on ngen-forcing
         if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${DEPENDENCY_TAGS[ngen]:-}" ]] && [[ -z "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
-            # Check if ngen-forcing is also being built (in which case we'll use the branch)
+            # Check if ngen-forcing is also being built (in which case we'll use the ref)
             if [[ " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
-                # ngen-forcing is being built, so we'll use its branch-derived tag
+                # ngen-forcing is being built, so we'll use its ref-derived tag
                 echo "ngen-forcing will be built; ngen will use the resulting image"
             else
-                # Prompt: build ngen-forcing from branch OR use existing tag
+                # Prompt: build ngen-forcing from ref OR use existing tag
                 echo "For ngen-forcing dependency (required by ngen):"
-                echo "  1) Build from branch"
+                echo "  1) Build from ref"
                 echo "  2) Use existing Docker tag"
                 read -p "Choose [1-2]: " choice || { echo "Error reading input, exiting."; exit 1; }
                 case $choice in
                     1)
-                        read -p "Enter ngen-forcing branch to build: " ans || { echo "Error reading input, exiting."; exit 1; }
+                        read -p "Enter ngen-forcing ref to build (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                         if [[ -z "$ans" ]]; then
-                            echo "Error: ngen-forcing branch is required"
+                            echo "Error: ngen-forcing ref is required"
                             exit 1
                         fi
                         REPO_BRANCHES["ngen-forcing"]="$ans"
@@ -598,19 +607,19 @@ prompt_dependency_tags() {
             if [[ -z "${DEPENDENCY_TAGS[nwm-cal-mgr]:-}" ]] && [[ -z "${DEPENDENCY_TAGS[nwm-fcst-mgr]:-}" ]] && [[ -z "${REPO_BRANCHES[ngen]:-}" ]]; then
                 # Check if ngen is also being built
                 if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]]; then
-                    # ngen is being built, so we'll use its branch-derived tag
+                    # ngen is being built, so we'll use its ref-derived tag
                     echo "ngen will be built; nwm-cal-mgr/nwm-fcst-mgr will use the resulting image"
                 else
-                    # Prompt: build ngen from branch OR use existing tag
+                    # Prompt: build ngen from ref OR use existing tag
                     echo "For ngen dependency (required by nwm-cal-mgr/nwm-fcst-mgr):"
-                    echo "  1) Build from branch"
+                    echo "  1) Build from ref"
                     echo "  2) Use existing Docker tag"
                     read -p "Choose [1-2]: " choice || { echo "Error reading input, exiting."; exit 1; }
                     case $choice in
                         1)
-                            read -p "Enter ngen branch to build: " ans || { echo "Error reading input, exiting."; exit 1; }
+                            read -p "Enter ngen ref to build (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                             if [[ -z "$ans" ]]; then
-                                echo "Error: ngen branch is required"
+                                echo "Error: ngen ref is required"
                                 exit 1
                             fi
                             REPO_BRANCHES["ngen"]="$ans"
@@ -632,11 +641,11 @@ prompt_dependency_tags() {
             fi
         fi
 
-        # nwm-verf depends on nwm-eval-mgr (branch)
+        # nwm-verf depends on nwm-eval-mgr (ref)
         if [[ " ${SELECTED_REPOS[@]} " =~ " nwm-verf " ]] && [[ -z "${DEPENDENCY_TAGS[nwm-verf]:-}" ]]; then
-            read -p "Enter nwm-eval-mgr branch (used by nwm-verf): " ans || { echo "Error reading input, exiting."; exit 1; }
+            read -p "Enter nwm-eval-mgr ref (used by nwm-verf): " ans || { echo "Error reading input, exiting."; exit 1; }
             if [[ -z "$ans" ]]; then
-                echo "Error: nwm-eval-mgr branch is required"
+                echo "Error: nwm-eval-mgr ref is required"
                 exit 1
             fi
             DEPENDENCY_TAGS["nwm-verf"]="$ans"
@@ -696,7 +705,7 @@ auto_include_dependencies() {
             SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen-forcing")
             echo "Auto-adding dependency: ngen-forcing (required by ngen)"
-            # For feature builds, user will be prompted for ngen-forcing branch later
+            # For feature builds, user will be prompted for ngen-forcing ref later
         fi
     fi
 
@@ -707,13 +716,13 @@ auto_include_dependencies() {
             SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen")
             echo "Auto-adding dependency: ngen (required by nwm-cal-mgr)"
-            # For feature builds, user will be prompted for ngen branch later
+            # For feature builds, user will be prompted for ngen ref later
         fi
         if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
             SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen-forcing")
             echo "Auto-adding dependency: ngen-forcing (required by ngen)"
-            # For feature builds, user will be prompted for ngen-forcing branch later
+            # For feature builds, user will be prompted for ngen-forcing ref later
         fi
     fi
 
@@ -724,18 +733,18 @@ auto_include_dependencies() {
             SELECTED_REPOS=("ngen" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen")
             echo "Auto-adding dependency: ngen (required by nwm-fcst-mgr)"
-            # For feature builds, user will be prompted for ngen branch later
+            # For feature builds, user will be prompted for ngen ref later
         fi
         if [[ ! " ${SELECTED_REPOS[@]} " =~ " ngen-forcing " ]]; then
             SELECTED_REPOS=("ngen-forcing" "${SELECTED_REPOS[@]}")
             added_deps+=("ngen-forcing")
             echo "Auto-adding dependency: ngen-forcing (required by ngen)"
-            # For feature builds, user will be prompted for ngen-forcing branch later
+            # For feature builds, user will be prompted for ngen-forcing ref later
         fi
     fi
 
     # DOWNSTREAM DEPENDENCIES: Auto-add for development and release builds, and interactive feature builds
-    # For CLI feature builds, user must explicitly specify downstream repos to avoid branch ambiguity
+    # For CLI feature builds, user must explicitly specify downstream repos to avoid ref ambiguity
     local skip_downstream_for_feature=false
     if [[ "$BUILD_TYPE" == "feature" && ! -t 0 ]]; then
         skip_downstream_for_feature=true
@@ -750,10 +759,10 @@ auto_include_dependencies() {
                 SELECTED_REPOS+=("ngen")
                 added_deps+=("ngen")
                 echo "Auto-adding downstream dependency: ngen (consumes ngen-forcing)"
-                # For feature builds, inherit branch from ngen-forcing if not already set
+                # For feature builds, inherit ref from ngen-forcing if not already set
                 if [[ "$BUILD_TYPE" == "feature" && -z "${REPO_BRANCHES[ngen]:-}" && -n "${REPO_BRANCHES[ngen-forcing]:-}" ]]; then
                     REPO_BRANCHES["ngen"]="${REPO_BRANCHES[ngen-forcing]}"
-                    echo "Using branch '${REPO_BRANCHES[ngen-forcing]}' for ngen (inherited from ngen-forcing)"
+                    echo "Using ref '${REPO_BRANCHES[ngen-forcing]}' for ngen (inherited from ngen-forcing)"
                 fi
             fi
 
@@ -916,23 +925,23 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     fi
 fi
 
-# For feature builds in interactive mode, prompt for branches of any repos that don't have them set yet
+# For feature builds in interactive mode, prompt for refs of any repos that don't have them set yet
 # (this handles auto-added downstream dependencies)
 if [[ "$BUILD_TYPE" == "feature" && -t 0 ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
             if [[ "$repo" == "ngen-forcing" ]]; then
-                read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                read -p "Enter ngen-forcing ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
             else
-                read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                read -p "Enter ${repo} ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
             fi
-            # require a branch name (no default) for feature builds
+            # require a ref (no default) for feature builds
             while [[ -z "$ans" ]]; do
-                echo "Error: Branch name cannot be empty for feature builds"
+                echo "Error: Ref cannot be empty for feature builds"
                 if [[ "$repo" == "ngen-forcing" ]]; then
-                    read -p "Enter ngen-forcing branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                    read -p "Enter ngen-forcing ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                 else
-                    read -p "Enter ${repo} branch: " ans || { echo "Error reading input, exiting."; exit 1; }
+                    read -p "Enter ${repo} ref (branch or commit hash): " ans || { echo "Error reading input, exiting."; exit 1; }
                 fi
             done
             REPO_BRANCHES["$repo"]="$ans"
@@ -940,7 +949,7 @@ if [[ "$BUILD_TYPE" == "feature" && -t 0 ]]; then
     done
 fi
 
-# prompt for dependency tags/branches (after auto-include and reorder so all repos are properly ordered)
+# prompt for dependency tags/refs (after auto-include and reorder so all repos are properly ordered)
 prompt_dependency_tags "$BUILD_TYPE"
 
 # validate dependencies
@@ -1010,11 +1019,11 @@ build_singularity_container_update_symlink() {
     local sif_file
     local meta_file="${sif_dir}/${sif_base}.meta"
 
-    # naming: dev -> latest; feature -> branch name; release -> explicit tag
+    # naming: dev -> latest; feature -> ref name; release -> explicit tag
     if [[ "$build_type" == "development" ]]; then
         sif_file="${sif_base}-latest-${ts}.sif"
     elif [[ "$build_type" == "feature" ]]; then
-        # use branch name for feature builds (sanitize by replacing / with -)
+        # use ref for feature builds (sanitize by replacing / with -)
         local sanitized_tag="${tag//\//-}"
         sif_file="${sif_base}-${sanitized_tag}-${ts}.sif"
     else
@@ -1108,7 +1117,7 @@ update_repo_branch() {
             fi
         fi
     else
-        echo "[$(date '+%H:%M:%S')] Updating $repo to latest from $ref_to_use branch..."
+        echo "[$(date '+%H:%M:%S')] Updating $repo to latest from $ref_to_use ref..."
 
         echo "[$(date '+%H:%M:%S')] Fetching from origin"
         git fetch origin
@@ -1339,7 +1348,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         echo
 
-        # update ngencerf* repo's development branch
+        # update ngencerf* repo's development ref
         if [[ "$repo" == ngencerf* ]]; then
             update_repo_branch "$repo" "development"
         fi
@@ -1476,7 +1485,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
         if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
             update_repo_branch "ngen-forcing" "feature"
 
-            # get Docker tag based on branch name
+            # get Docker tag based on ref
             forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
 
             echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (${forcing_docker_tag}) Docker image"
@@ -1505,11 +1514,11 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
         if [[ -d "${BASE_PATH}/ngen" ]]; then
             update_repo_branch "ngen" "feature"
 
-            # get Docker tag for ngen based on its branch
+            # get Docker tag for ngen based on its ref
             ngen_docker_tag="$(get_docker_tag_for_repo "ngen" "$BUILD_TYPE")"
 
             # get ngen-forcing tag to use as build arg
-            # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen-forcing branch
+            # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen-forcing ref
             if [[ -n "${DEPENDENCY_TAGS[ngen]:-}" ]]; then
                 ngen_forcing_docker_tag="${DEPENDENCY_TAGS[ngen]}"
                 echo "[$(date '+%H:%M:%S')] Using specified ngen-forcing tag: ${ngen_forcing_docker_tag}"
@@ -1530,7 +1539,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
     for repo in "${SELECTED_REPOS[@]}"; do
         echo
 
-        # update ngencerf* repo's feature branch
+        # update ngencerf* repo's feature ref
         if [[ "$repo" == ngencerf* ]]; then
             update_repo_branch "$repo" "feature"
         fi
@@ -1541,11 +1550,11 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 if [[ -d "${BASE_PATH}/nwm-cal-mgr" ]]; then
                     update_repo_branch "nwm-cal-mgr" "feature"
 
-                    # get Docker tag for nwm-cal-mgr based on its branch
+                    # get Docker tag for nwm-cal-mgr based on its ref
                     cal_mgr_docker_tag="$(get_docker_tag_for_repo "nwm-cal-mgr" "$BUILD_TYPE")"
 
                     # get ngen tag to use as build arg
-                    # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen branch
+                    # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen ref
                     if [[ -n "${DEPENDENCY_TAGS[nwm-cal-mgr]:-}" ]]; then
                         ngen_docker_tag="${DEPENDENCY_TAGS[nwm-cal-mgr]}"
                         echo "[$(date '+%H:%M:%S')] Using specified ngen tag: ${ngen_docker_tag}"
@@ -1566,11 +1575,11 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 if [[ -d "${BASE_PATH}/nwm-fcst-mgr" ]]; then
                     update_repo_branch "nwm-fcst-mgr" "feature"
 
-                    # get Docker tag for nwm-fcst-mgr based on its branch
+                    # get Docker tag for nwm-fcst-mgr based on its ref
                     fcst_mgr_docker_tag="$(get_docker_tag_for_repo "nwm-fcst-mgr" "$BUILD_TYPE")"
 
                     # get ngen tag to use as build arg
-                    # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen branch
+                    # Use DEPENDENCY_TAGS if specified (existing tag), otherwise derive from ngen ref
                     if [[ -n "${DEPENDENCY_TAGS[nwm-fcst-mgr]:-}" ]]; then
                         ngen_docker_tag="${DEPENDENCY_TAGS[nwm-fcst-mgr]}"
                         echo "[$(date '+%H:%M:%S')] Using specified ngen tag: ${ngen_docker_tag}"
@@ -1591,10 +1600,10 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
                 if [[ -d "${BASE_PATH}/nwm-verf" ]]; then
                     update_repo_branch "nwm-verf" "feature"
 
-                    # get Docker tag for nwm-verf based on its branch
+                    # get Docker tag for nwm-verf based on its ref
                     verf_docker_tag="$(get_docker_tag_for_repo "nwm-verf" "$BUILD_TYPE")"
 
-                    # nwm-eval-mgr branch is stored in DEPENDENCY_TAGS[nwm-verf]
+                    # nwm-eval-mgr ref is stored in DEPENDENCY_TAGS[nwm-verf]
                     nwm_eval_mgr_branch="${DEPENDENCY_TAGS[nwm-verf]:-}"
                     if [[ -z "$nwm_eval_mgr_branch" ]]; then
                         nwm_eval_mgr_branch="development"
@@ -1619,7 +1628,7 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
 
         # for each repo that produces a SIF, use the locally built image
         if repo_has_sif "$repo"; then
-            # get Docker tag for this repo based on its branch
+            # get Docker tag for this repo based on its ref
             repo_docker_tag="$(get_docker_tag_for_repo "$repo" "$BUILD_TYPE")"
 
             for pair in $(images_for_repo "$repo"); do
