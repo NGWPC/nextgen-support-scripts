@@ -159,19 +159,7 @@ set_image_source_defaults() {
         return
     fi
 
-    if [[ "$BUILD_TYPE" == "development" ]]; then
-        if [[ ! -v IMAGE_SOURCE["ngen"] ]]; then IMAGE_SOURCE["ngen"]="build"; fi
-        if [[ ! -v IMAGE_SOURCE["ngen-forcing"] ]]; then IMAGE_SOURCE["ngen-forcing"]="build"; fi
-    else
-        # for release builds, default to "build" for all repos
-        # (user can override with --source or --source-default flags)
-        if [[ ! -v IMAGE_SOURCE["ngen"] ]]; then IMAGE_SOURCE["ngen"]="build"; fi
-        if [[ ! -v IMAGE_SOURCE["ngen-forcing"] ]]; then IMAGE_SOURCE["ngen-forcing"]="build"; fi
-    fi
-    if [[ ! -v IMAGE_SOURCE["nwm-cal-mgr"] ]]; then IMAGE_SOURCE["nwm-cal-mgr"]="build"; fi
-    if [[ ! -v IMAGE_SOURCE["nwm-fcst-mgr"] ]]; then IMAGE_SOURCE["nwm-fcst-mgr"]="build"; fi
-    if [[ ! -v IMAGE_SOURCE["nwm-verf"] ]]; then IMAGE_SOURCE["nwm-verf"]="build"; fi
-
+    # Apply --source-default if specified (applies to all unset repos)
     if [[ -n "$IMAGE_SOURCE_DEFAULT" ]]; then
         for r in "${TARGET_REPOS_FOR_SOURCE[@]}"; do
             if [[ ! -v IMAGE_SOURCE["$r"] ]]; then
@@ -179,6 +167,19 @@ set_image_source_defaults() {
             fi
         done
     fi
+
+    # Apply hardcoded defaults for any repos that are still not set
+    if [[ "$BUILD_TYPE" == "development" ]]; then
+        if [[ ! -v IMAGE_SOURCE["ngen"] ]]; then IMAGE_SOURCE["ngen"]="build"; fi
+        if [[ ! -v IMAGE_SOURCE["ngen-forcing"] ]]; then IMAGE_SOURCE["ngen-forcing"]="build"; fi
+    else
+        # for release builds, default to "build" for all repos
+        if [[ ! -v IMAGE_SOURCE["ngen"] ]]; then IMAGE_SOURCE["ngen"]="build"; fi
+        if [[ ! -v IMAGE_SOURCE["ngen-forcing"] ]]; then IMAGE_SOURCE["ngen-forcing"]="build"; fi
+    fi
+    if [[ ! -v IMAGE_SOURCE["nwm-cal-mgr"] ]]; then IMAGE_SOURCE["nwm-cal-mgr"]="build"; fi
+    if [[ ! -v IMAGE_SOURCE["nwm-fcst-mgr"] ]]; then IMAGE_SOURCE["nwm-fcst-mgr"]="build"; fi
+    if [[ ! -v IMAGE_SOURCE["nwm-verf"] ]]; then IMAGE_SOURCE["nwm-verf"]="build"; fi
 }
 
 # --- Help function ---
