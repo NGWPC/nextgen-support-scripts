@@ -422,7 +422,11 @@ if [[ -z "$BUILD_TYPE" || ${#SELECTED_REPOS[@]} -eq 0 ]]; then
     echo "Error: build type and at least one repo must be provided."; exit 1
 fi
 
+echo "DEBUG: Before set_image_source_defaults - IMAGE_SOURCE[ngen-forcing]='${IMAGE_SOURCE[ngen-forcing]:-<empty>}'"
+
 set_image_source_defaults
+
+echo "DEBUG: After set_image_source_defaults - IMAGE_SOURCE[ngen-forcing]='${IMAGE_SOURCE[ngen-forcing]:-<empty>}'"
 
 # expand 'all'
 if [[ " ${SELECTED_REPOS[*]} " =~ " all " ]]; then
@@ -1391,6 +1395,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 fi
             ;;
             "ngen-forcing")
+                echo "DEBUG: In development workflow - IMAGE_SOURCE[ngen-forcing]='${IMAGE_SOURCE[ngen-forcing]:-<empty>}'"
                 if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                     if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                         update_repo_branch "ngen-forcing" "development"
