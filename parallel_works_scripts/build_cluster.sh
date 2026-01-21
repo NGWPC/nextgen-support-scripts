@@ -165,7 +165,7 @@ dockerfile_for_forcing_type() {
     local ft="$1"
     case "$ft" in
         bmi)    echo "Dockerfile.bmi-forcings" ;;
-        sfincs) echo "Dockerfile.sfincs-forcings" ;;
+        sfincs) echo "Dockerfile.sfincs" ;;
     esac
 }
 
