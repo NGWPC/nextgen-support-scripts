@@ -63,6 +63,9 @@ handle_error() {
 #   ./build_cluster.sh --build-type=release \
 #     --source-default=build ngen nwm-cal-mgr ngen-forcing nwm-fcst-mgr nwm-verf
 #
+# Forcing type selection for ngen-forcing (default: bmi):
+#   ./build_cluster.sh --build-type=development --forcing-types=bmi,sfincs ngen-forcing
+#
 # ------------------------------------------------------------------------------
 # ARGUMENTS
 # ------------------------------------------------------------------------------
@@ -120,6 +123,10 @@ declare -A IMAGE_SOURCE   # map: repo -> build|pull
 IMAGE_SOURCE_DEFAULT=""
 declare -A IMAGE_FETCHED  # map: repo -> true when image already built/pulled
 
+# Forcing types configuration
+AVAILABLE_FORCING_TYPES=("bmi" "sfincs")
+FORCING_TYPES=()  # Selected types, defaults set later
+
 # Dependency image tags for build arguments
 declare -A DEPENDENCY_TAGS  # map: dependent_repo -> dependency_tag
 # e.g., DEPENDENCY_TAGS["ngen"]="feature"  # ngen will use ngen-forcing:feature
@@ -137,10 +144,37 @@ images_for_repo() {
         ngencerf-server) echo "" ;;
         ngencerf-docker) echo "" ;;
         nwm-cal-mgr)     echo "nwm-cal-mgr|nwm-cal-mgr" ;;
-        ngen-forcing)    echo "ngen-bmi-forcing|ngen-bmi-forcing" ;;
+        ngen-forcing)
+            local images=""
+            for ft in "${FORCING_TYPES[@]}"; do
+                case "$ft" in
+                    bmi)    images+="ngen-bmi-forcing|ngen-bmi-forcing " ;;
+                    sfincs) images+="ngen-sfincs-forcing|ngen-sfincs-forcing " ;;
+                esac
+            done
+            echo "$images"
+        ;;
         nwm-fcst-mgr)    echo "nwm-fcst-mgr|nwm-fcst-mgr" ;;
         nwm-verf)        echo "nwm-verf|nwm-verf" ;;
         *)               echo "$repo|$repo" ;;
+    esac
+}
+
+# Get Dockerfile name for a forcing type
+dockerfile_for_forcing_type() {
+    local ft="$1"
+    case "$ft" in
+        bmi)    echo "Dockerfile.bmi-forcings" ;;
+        sfincs) echo "Dockerfile.sfincs-forcings" ;;
+    esac
+}
+
+# Get image name for a forcing type
+image_name_for_forcing_type() {
+    local ft="$1"
+    case "$ft" in
+        bmi)    echo "ngen-bmi-forcing" ;;
+        sfincs) echo "ngen-sfincs-forcing" ;;
     esac
 }
 
@@ -203,6 +237,9 @@ OPTIONS:
   --source=REPO:MODE         For REPO in {ngen, nwm-cal-mgr, ngen-forcing, nwm-verf, nwm-fcst-mgr},
                              MODE is build or pull. Can be repeated.
   --source-default=MODE      Global default (build|pull) for the above repos (optional)
+  --forcing-types=TYPES      Comma-separated list of forcing types to build.
+                             Available: bmi, sfincs. Default: bmi
+                             Example: --forcing-types=bmi,sfincs
   --tag=REPO:TAG             For feature builds: specify tag to pull for REPO (only used when pulling).
                              Example: --tag=ngen-forcing:latest
   --ngen-forcing-tag=TAG     For feature builds: specify ngen-forcing tag for ngen to use as build arg
@@ -349,6 +386,15 @@ parse_args() {
                 DEPENDENCY_TAGS["nwm-cal-mgr"]="$tag"
                 DEPENDENCY_TAGS["nwm-fcst-mgr"]="$tag"
             ;;
+            --forcing-types=*)
+                IFS=',' read -ra FORCING_TYPES <<< "${1#*=}"
+                # Validate each type
+                for ft in "${FORCING_TYPES[@]}"; do
+                    if [[ ! " ${AVAILABLE_FORCING_TYPES[*]} " =~ " ${ft} " ]]; then
+                        echo "Error: Invalid forcing type '${ft}'. Allowed: ${AVAILABLE_FORCING_TYPES[*]}"; exit 1
+                    fi
+                done
+            ;;
             -*)
                 echo "Unknown option: $1"; exit 1
             ;;
@@ -432,6 +478,11 @@ fi
 
 set_image_source_defaults
 
+# Set default forcing types if not specified via CLI
+if [[ ${#FORCING_TYPES[@]} -eq 0 ]]; then
+    FORCING_TYPES=("bmi")
+fi
+
 # expand 'all'
 if [[ " ${SELECTED_REPOS[*]} " =~ " all " ]]; then
     echo "'all' specified — building all available repos."
@@ -457,7 +508,36 @@ echo "Build type selected: $BUILD_TYPE"
 echo "Selected repos: ${SELECTED_REPOS[*]}"
 
 if [[ -t 0 ]]; then
-    # ref prompting for feature builds (only for feature builds in interactive mode)
+    # skip image source prompting unless the user was already interacting with the script
+    if [[ "$BUILD_TYPE" != "feature" && "$PROMPTED_FOR_CORE_INPUT" == true ]]; then
+        for repo in "${SELECTED_REPOS[@]}"; do
+            if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
+                default_mode="${IMAGE_SOURCE[$repo]}"
+                read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans || { echo "Error reading input, exiting."; exit 1; }
+                if [[ -n "$ans" ]]; then
+                    if [[ "$ans" != "build" && "$ans" != "pull" ]]; then
+                        echo "Invalid choice '${ans}' for ${repo}. Use build or pull."; exit 1
+                    fi
+                    IMAGE_SOURCE["$repo"]="$ans"
+                fi
+            fi
+        done
+    fi
+
+    if [[ " ${SELECTED_REPOS[*]} " =~ " ngen-forcing " ]] && [[ "$PROMPTED_FOR_CORE_INPUT" == true ]]; then
+        echo "Available forcing types: ${AVAILABLE_FORCING_TYPES[*]}"
+        read -p "Enter forcing types to build (comma-separated, default: bmi): " forcing_input || { echo "Error reading input, exiting."; exit 1; }
+        if [[ -n "$forcing_input" ]]; then
+            IFS=',' read -ra FORCING_TYPES <<< "$forcing_input"
+            for ft in "${FORCING_TYPES[@]}"; do
+                if [[ ! " ${AVAILABLE_FORCING_TYPES[*]} " =~ " ${ft} " ]]; then
+                    echo "Error: Invalid forcing type '${ft}'. Allowed: ${AVAILABLE_FORCING_TYPES[*]}"; exit 1
+                fi
+            done
+        fi
+    fi
+
+    # ref prompting after image sources (only for feature builds in interactive mode)
     if [[ "$BUILD_TYPE" == "feature" ]]; then
         for repo in "${SELECTED_REPOS[@]}"; do
             if [[ -z "${REPO_BRANCHES[$repo]:-}" ]]; then
@@ -1192,28 +1272,35 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
             if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                 checkout_repo_tag "ngen-forcing" "${TAGS[ngen-forcing]}"
-                echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing Docker image"
-                if ! docker build --progress=plain --no-cache \
-                    --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
-                    --tag="${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" \
-                    "${BASE_PATH}/ngen-forcing"; then
-                    echo ""
-                    echo "=========================================="
-                    echo "DOCKER BUILD FAILED: ngen-bmi-forcing"
-                    echo "=========================================="
-                    echo "Image: ${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}"
-                    echo "Dockerfile: ${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings"
-                    echo "The build has stopped. Review the error above."
-                    echo "Log file: ${LOGFILE}"
-                    echo "=========================================="
-                    exit 1
-                fi
+                for ft in "${FORCING_TYPES[@]}"; do
+                    dockerfile="$(dockerfile_for_forcing_type "$ft")"
+                    image_name="$(image_name_for_forcing_type "$ft")"
+                    echo "[$(date '+%H:%M:%S')] Building ${image_name} Docker image"
+                    if ! docker build --progress=plain --no-cache \
+                        --file "${BASE_PATH}/ngen-forcing/${dockerfile}" \
+                        --tag="${REGISTRY}/${image_name}:${TAGS[ngen-forcing]}" \
+                        "${BASE_PATH}/ngen-forcing"; then
+                        echo ""
+                        echo "=========================================="
+                        echo "DOCKER BUILD FAILED: ${image_name}"
+                        echo "=========================================="
+                        echo "Image: ${REGISTRY}/${image_name}:${TAGS[ngen-forcing]}"
+                        echo "Dockerfile: ${BASE_PATH}/ngen-forcing/${dockerfile}"
+                        echo "The build has stopped. Review the error above."
+                        echo "Log file: ${LOGFILE}"
+                        echo "=========================================="
+                        exit 1
+                    fi
+                done
             else
                 echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
             fi
         else
-            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-forcing"
-            ensure_image_present "ngen-forcing" "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-forcing]}" "pull"
+            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-forcing; will reuse local images when present"
+            for ft in "${FORCING_TYPES[@]}"; do
+                image_name="$(image_name_for_forcing_type "$ft")"
+                ensure_image_present "ngen-forcing" "${REGISTRY}/${image_name}:${TAGS[ngen-forcing]}" "pull"
+            done
         fi
     fi
 
@@ -1403,25 +1490,32 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                 if [[ -d "${BASE_PATH}/ngen-forcing" ]]; then
                     if [[ "${IMAGE_SOURCE[ngen-forcing]}" == "build" ]]; then
                         update_repo_branch "ngen-forcing" "development"
-                        echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (development) Docker image"
-                        if ! docker build --progress=plain \
-                            --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
-                            --tag="${REGISTRY}/ngen-bmi-forcing:latest" \
-                            "${BASE_PATH}/ngen-forcing"; then
-                            echo ""
-                            echo "=========================================="
-                            echo "DOCKER BUILD FAILED: ngen-bmi-forcing"
-                            echo "=========================================="
-                            echo "Image: ${REGISTRY}/ngen-bmi-forcing:latest"
-                            echo "Dockerfile: ${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings"
-                            echo "The build has stopped. Review the error above."
-                            echo "Log file: ${LOGFILE}"
-                            echo "=========================================="
-                            exit 1
-                        fi
+                        for ft in "${FORCING_TYPES[@]}"; do
+                            dockerfile="$(dockerfile_for_forcing_type "$ft")"
+                            image_name="$(image_name_for_forcing_type "$ft")"
+                            echo "[$(date '+%H:%M:%S')] Building ${image_name} (development) Docker image"
+                            if ! docker build --progress=plain \
+                                --file "${BASE_PATH}/ngen-forcing/${dockerfile}" \
+                                --tag="${REGISTRY}/${image_name}:latest" \
+                                "${BASE_PATH}/ngen-forcing"; then
+                                echo ""
+                                echo "=========================================="
+                                echo "DOCKER BUILD FAILED: ${image_name}"
+                                echo "=========================================="
+                                echo "Image: ${REGISTRY}/${image_name}:latest"
+                                echo "Dockerfile: ${BASE_PATH}/ngen-forcing/${dockerfile}"
+                                echo "The build has stopped. Review the error above."
+                                echo "Log file: ${LOGFILE}"
+                                echo "=========================================="
+                                exit 1
+                            fi
+                        done
                     else
-                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-forcing"
-                        ensure_image_present "ngen-forcing" "${REGISTRY}/ngen-bmi-forcing:latest" "pull"
+                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-forcing; will reuse local images when present"
+                        for ft in "${FORCING_TYPES[@]}"; do
+                            image_name="$(image_name_for_forcing_type "$ft")"
+                            ensure_image_present "ngen-forcing" "${REGISTRY}/${image_name}:latest" "pull"
+                        done
                     fi
                     IMAGE_FETCHED["ngen-forcing"]="true"
                 else
@@ -1488,22 +1582,26 @@ if [[ "$BUILD_TYPE" == "feature" ]]; then
             # get Docker tag based on ref
             forcing_docker_tag="$(get_docker_tag_for_repo "ngen-forcing" "$BUILD_TYPE")"
 
-            echo "[$(date '+%H:%M:%S')] Building ngen-bmi-forcing (${forcing_docker_tag}) Docker image"
-            if ! docker build --progress=plain \
-                --file "${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings" \
-                --tag="${REGISTRY}/ngen-bmi-forcing:${forcing_docker_tag}" \
-                "${BASE_PATH}/ngen-forcing"; then
-                echo ""
-                echo "=========================================="
-                echo "DOCKER BUILD FAILED: ngen-bmi-forcing"
-                echo "=========================================="
-                echo "Image: ${REGISTRY}/ngen-bmi-forcing:${forcing_docker_tag}"
-                echo "Dockerfile: ${BASE_PATH}/ngen-forcing/Dockerfile.bmi-forcings"
-                echo "The build has stopped. Review the error above."
-                echo "Log file: ${LOGFILE}"
-                echo "=========================================="
-                exit 1
-            fi
+            for ft in "${FORCING_TYPES[@]}"; do
+                dockerfile="$(dockerfile_for_forcing_type "$ft")"
+                image_name="$(image_name_for_forcing_type "$ft")"
+                echo "[$(date '+%H:%M:%S')] Building ${image_name} (${forcing_docker_tag}) Docker image"
+                if ! docker build --progress=plain \
+                    --file "${BASE_PATH}/ngen-forcing/${dockerfile}" \
+                    --tag="${REGISTRY}/${image_name}:${forcing_docker_tag}" \
+                    "${BASE_PATH}/ngen-forcing"; then
+                    echo ""
+                    echo "=========================================="
+                    echo "DOCKER BUILD FAILED: ${image_name}"
+                    echo "=========================================="
+                    echo "Image: ${REGISTRY}/${image_name}:${forcing_docker_tag}"
+                    echo "Dockerfile: ${BASE_PATH}/ngen-forcing/${dockerfile}"
+                    echo "The build has stopped. Review the error above."
+                    echo "Log file: ${LOGFILE}"
+                    echo "=========================================="
+                    exit 1
+                fi
+            done
         else
             echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
         fi
