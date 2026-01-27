@@ -993,6 +993,9 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
     done
 
     # validate that all required tags have been provided
+    # but first, ensure we have prompted for any dependency tags (like nwm-eval-mgr)
+    prompt_dependency_tags "$BUILD_TYPE"
+
     for repo in "${SELECTED_REPOS[@]}"; do
         if [[ -z "${TAGS[$repo]:-}" ]]; then
             echo "Error: Tag for '$repo' cannot be empty"; exit 1
