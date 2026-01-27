@@ -509,20 +509,7 @@ echo "Selected repos: ${SELECTED_REPOS[*]}"
 
 if [[ -t 0 ]]; then
     # skip image source prompting unless the user was already interacting with the script
-    if [[ "$BUILD_TYPE" != "feature" && "$PROMPTED_FOR_CORE_INPUT" == true ]]; then
-        for repo in "${SELECTED_REPOS[@]}"; do
-            if [[ " ${TARGET_REPOS_FOR_SOURCE[*]} " =~ " ${repo} " ]]; then
-                default_mode="${IMAGE_SOURCE[$repo]}"
-                read -p "Image source for '${repo}' [build/pull] (default: ${default_mode}): " ans || { echo "Error reading input, exiting."; exit 1; }
-                if [[ -n "$ans" ]]; then
-                    if [[ "$ans" != "build" && "$ans" != "pull" ]]; then
-                        echo "Invalid choice '${ans}' for ${repo}. Use build or pull."; exit 1
-                    fi
-                    IMAGE_SOURCE["$repo"]="$ans"
-                fi
-            fi
-        done
-    fi
+    # (Redundant loop removed: logic is handled after dependency reordering at approx line 930)
 
     if [[ " ${SELECTED_REPOS[*]} " =~ " ngen-forcing " ]] && [[ "$PROMPTED_FOR_CORE_INPUT" == true ]]; then
         echo "Available forcing types: ${AVAILABLE_FORCING_TYPES[*]}"
