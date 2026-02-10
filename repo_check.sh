@@ -92,7 +92,7 @@ for repo_url in "${repos[@]}"; do
     echo ""
     echo "🔄 Last 5 Workflow Runs:"
     echo "   ──────────────────────────────────────────────────────────────────"
-    echo "      Status [Commit] Branch                    Date & Time"
+    echo "      Status [Commit] Branch                    Event          Date & Time"
     echo "   ──────────────────────────────────────────────────────────────────"
     
     # Try to fetch workflow runs from GitHub API
@@ -121,7 +121,8 @@ try:
             created_time = created_full[11:16]  # HH:MM
             commit = run.get('head_sha', '')[:7]
             branch = run.get('head_branch', 'unknown')[:25]
-            
+            event = run.get('event', 'unknown')[:14]
+
             # Determine status icon
             if conclusion == 'success':
                 icon = '✓'
@@ -134,7 +135,7 @@ try:
             else:
                 icon = '?'
             
-            print(f'   {i}. {icon} [{commit}] {branch:<25} {created_date} {created_time}')
+            print(f'   {i}. {icon} [{commit}] {branch:<25} {event:<14} {created_date} {created_time}')
 except Exception as e:
     print(f'   ⚠ Error parsing workflow data: {e}')
 " 2>/dev/null || echo "   ⚠ Error: Python3 required for workflow parsing"
