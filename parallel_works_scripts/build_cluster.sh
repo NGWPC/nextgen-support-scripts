@@ -617,8 +617,8 @@ prompt_dependency_tags() {
 
     if [[ "$build_type" == "release" ]]; then
         # for release builds, prompt for dependency tags only if not already set
-        # ngen depends on ngen-bmi-forcing
-        if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ -z "${TAGS[ngen-bmi-forcing]:-}" ]]; then
+        # ngen depends on ngen-bmi-forcing (only when ngen is being built, not pulled)
+        if [[ " ${SELECTED_REPOS[@]} " =~ " ngen " ]] && [[ "${IMAGE_SOURCE[ngen]:-build}" == "build" ]] && [[ -z "${TAGS[ngen-bmi-forcing]:-}" ]]; then
             read -p "Enter ngen-bmi-forcing tag (used by ngen): " TAGS[ngen-bmi-forcing] || { echo "Error reading input, exiting."; exit 1; }
         fi
 
