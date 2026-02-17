@@ -1026,29 +1026,25 @@ ensure_image_present() {
         return 0
     fi
 
-    if docker image inspect "$image_ref" >/dev/null 2>&1; then
-        echo "[$(date '+%H:%M:%S')] Local image present for ${repo:-$image_ref}; using local copy (skipping pull)"
-    else
-        echo "[$(date '+%H:%M:%S')] Pulling docker image: $image_ref"
-        if ! docker pull "$image_ref"; then
-            echo ""
-            echo "=========================================="
-            echo "DOCKER PULL FAILED"
-            echo "=========================================="
-            echo "Repository: ${repo}"
-            echo "Image: ${image_ref}"
-            echo ""
-            echo "The image does not exist in the registry."
-            echo "This typically happens when:"
-            echo "  1. The tag hasn't been published to the registry yet"
-            echo "  2. The tag name is incorrect"
-            echo ""
-            echo "To fix this:"
-            echo "  - Select 'build' mode for ${repo} instead of 'pull'"
-            echo "  - Or use a different tag that exists in the registry"
-            echo "=========================================="
-            exit 1
-        fi
+    echo "[$(date '+%H:%M:%S')] Pulling docker image: $image_ref"
+    if ! docker pull "$image_ref"; then
+        echo ""
+        echo "=========================================="
+        echo "DOCKER PULL FAILED"
+        echo "=========================================="
+        echo "Repository: ${repo}"
+        echo "Image: ${image_ref}"
+        echo ""
+        echo "The image does not exist in the registry."
+        echo "This typically happens when:"
+        echo "  1. The tag hasn't been published to the registry yet"
+        echo "  2. The tag name is incorrect"
+        echo ""
+        echo "To fix this:"
+        echo "  - Select 'build' mode for ${repo} instead of 'pull'"
+        echo "  - Or use a different tag that exists in the registry"
+        echo "=========================================="
+        exit 1
     fi
 
     if [[ -n "$repo" ]]; then
@@ -1267,7 +1263,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
             fi
         else
-            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-bmi-forcing; will reuse local images when present"
+            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-bmi-forcing; pulling from registry"
             ensure_image_present "ngen-bmi-forcing" "${REGISTRY}/ngen-bmi-forcing:${TAGS[ngen-bmi-forcing]}" "pull"
         fi
     fi
@@ -1304,7 +1300,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
             fi
         else
-            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-coastal; will reuse local images when present"
+            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-coastal; pulling from registry"
             ensure_image_present "ngen-coastal" "${REGISTRY}/ngen-coastal:${TAGS[ngen-coastal]}" "pull"
         fi
     fi
@@ -1341,7 +1337,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 echo "Error: ${BASE_PATH}/ngen-forcing not found; cannot build."; exit 1
             fi
         else
-            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-sfincs-forcing; will reuse local images when present"
+            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-sfincs-forcing; pulling from registry"
             ensure_image_present "ngen-sfincs-forcing" "${REGISTRY}/ngen-sfincs-forcing:${TAGS[ngen-sfincs-forcing]}" "pull"
         fi
     fi
@@ -1387,7 +1383,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
                 exit 1
             fi
         else
-            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen; will reuse local image when present"
+            echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen; pulling from registry"
             ensure_image_present "ngen" "${REGISTRY}/ngen:${TAGS[ngen]}" "pull"
         fi
     fi
@@ -1396,7 +1392,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
         case "$repo" in
             "nwm-cal-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-cal-mgr]}" == "pull" ]]; then
-                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-cal-mgr; will reuse local image when present"
+                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-cal-mgr; pulling from registry"
                     ensure_image_present "nwm-cal-mgr" "${REGISTRY}/nwm-cal-mgr:${TAGS[nwm-cal-mgr]}" "pull"
                 else
                     checkout_repo_tag "nwm-cal-mgr" "${TAGS[nwm-cal-mgr]}"
@@ -1424,7 +1420,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
             "nwm-fcst-mgr")
                 if [[ "${IMAGE_SOURCE[nwm-fcst-mgr]}" == "pull" ]]; then
-                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-fcst-mgr; will reuse local image when present"
+                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-fcst-mgr; pulling from registry"
                     ensure_image_present "nwm-fcst-mgr" "${REGISTRY}/nwm-fcst-mgr:${TAGS[nwm-fcst-mgr]}" "pull"
                 else
                     checkout_repo_tag "nwm-fcst-mgr" "${TAGS[nwm-fcst-mgr]}"
@@ -1443,7 +1439,7 @@ if [[ "$BUILD_TYPE" == "release" ]]; then
             ;;
             "nwm-verf")
                 if [[ "${IMAGE_SOURCE[nwm-verf]}" == "pull" ]]; then
-                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-verf; will reuse local image when present"
+                    echo "[$(date '+%H:%M:%S')] Pull mode requested for nwm-verf; pulling from registry"
                     ensure_image_present "nwm-verf" "${REGISTRY}/nwm-verf:${TAGS[nwm-verf]}" "pull"
                 else
                     checkout_repo_tag "nwm-verf" "${TAGS[nwm-verf]}"
@@ -1555,7 +1551,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             exit 1
                         fi
                     else
-                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-bmi-forcing; will reuse local images when present"
+                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-bmi-forcing; pulling from registry"
                         ensure_image_present "ngen-bmi-forcing" "${REGISTRY}/ngen-bmi-forcing:latest" "pull"
                     fi
                     IMAGE_FETCHED["ngen-bmi-forcing"]="true"
@@ -1584,7 +1580,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             exit 1
                         fi
                     else
-                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-sfincs-forcing; will reuse local images when present"
+                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-sfincs-forcing; pulling from registry"
                         ensure_image_present "ngen-sfincs-forcing" "${REGISTRY}/ngen-sfincs-forcing:latest" "pull"
                     fi
                     IMAGE_FETCHED["ngen-sfincs-forcing"]="true"
@@ -1613,7 +1609,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             exit 1
                         fi
                     else
-                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-coastal; will reuse local images when present"
+                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen-coastal; pulling from registry"
                         ensure_image_present "ngen-coastal" "${REGISTRY}/ngen-coastal:latest" "pull"
                     fi
                     IMAGE_FETCHED["ngen-coastal"]="true"
@@ -1631,7 +1627,7 @@ if [[ "$BUILD_TYPE" == "development" ]]; then
                             --tag="${REGISTRY}/ngen:latest" \
                             "${BASE_PATH}/ngen"
                     else
-                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen; will reuse local image when present"
+                        echo "[$(date '+%H:%M:%S')] Pull mode requested for ngen; pulling from registry"
                         ensure_image_present "ngen" "${REGISTRY}/ngen:latest" "pull"
                     fi
                     IMAGE_FETCHED["ngen"]="true"
