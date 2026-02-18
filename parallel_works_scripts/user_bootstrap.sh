@@ -12,6 +12,11 @@ ADD_USERS=(
   "christina.osumi"
   "mohammed.karim"
   "yuqiong.liu"
+  "kyle.larkin"
+  "matthew.deshotel"
+  "max.kipp"
+  "ian.todd"
+  "taher.chegini"
 )
 PY_PIP_PKGS="Flask gunicorn"
 
