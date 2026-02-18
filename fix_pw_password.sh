@@ -6,7 +6,7 @@ sudo chown "${USER}:pwuser" -R /ngencerf-app/ngen-forcing
 sudo chown "${USER}:pwuser" -R /ngencerf-app/nwm-fcst-mgr
 sudo chown "${USER}:pwuser" -R /ngencerf-app/nwm-verf
 sudo chown "${USER}:pwuser" -R /ngencerf-app/ngencerf-server
-sudo chown "${USER}:pwuser" -R /ngencerf-app/ngencerf-docker
+sudo chown "${USER}:pwuser" -R /ngencerf-app/ngencerf-ui
 sudo chown "${USER}:pwuser" -R /ngencerf-app/data-assimilation-engine
 sudo chown "${USER}:pwuser" -R /ngencerf-app/nwm-rte
 sudo chown "${USER}:pwuser" -R /ngencerf-app/nwm-region-mgr
