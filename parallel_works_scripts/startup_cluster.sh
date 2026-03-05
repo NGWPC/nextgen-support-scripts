@@ -49,6 +49,28 @@ sudo chmod +x /etc/profile.d/openmpi.sh
 echo "/usr/lib64/openmpi/lib" | sudo tee /etc/ld.so.conf.d/openmpi.conf >/dev/null
 sudo ldconfig
 
+# install DuckDB CLI (default LTS version; override with DUCKDB_VERSION if needed)
+DUCKDB_VERSION="${DUCKDB_VERSION:-1.4.4}"
+if command -v duckdb >/dev/null 2>&1; then
+    CURRENT_DUCKDB_VERSION="$(duckdb --version 2>/dev/null | sed -n 's/.* v\([0-9][0-9.]*\).*/\1/p' | head -n1 || true)"
+else
+    CURRENT_DUCKDB_VERSION=""
+fi
+
+if [ "$CURRENT_DUCKDB_VERSION" != "$DUCKDB_VERSION" ]; then
+    TMP_DUCKDB_DIR="$(mktemp -d /tmp/duckdb-install-XXXXXX)"
+    trap 'rm -rf "$TMP_DUCKDB_DIR"' EXIT
+    DUCKDB_ZIP="duckdb_cli-linux-amd64.zip"
+    DUCKDB_URL="https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/${DUCKDB_ZIP}"
+
+    curl -fsSL "$DUCKDB_URL" -o "$TMP_DUCKDB_DIR/$DUCKDB_ZIP"
+    unzip -o "$TMP_DUCKDB_DIR/$DUCKDB_ZIP" -d "$TMP_DUCKDB_DIR" >/dev/null
+    sudo install -m 0755 "$TMP_DUCKDB_DIR/duckdb" /usr/local/bin/duckdb
+fi
+
+# verify DuckDB installation
+duckdb --version
+
 # install python packages
 if [ -n "${PY_PIP_PKGS:-}" ]; then
     sudo dnf -y install python3-pip
