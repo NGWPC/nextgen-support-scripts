@@ -58,6 +58,7 @@ else
 fi
 
 if [ "$CURRENT_DUCKDB_VERSION" != "$DUCKDB_VERSION" ]; then
+    command -v unzip >/dev/null 2>&1 || sudo dnf -y install unzip
     TMP_DUCKDB_DIR="$(mktemp -d /tmp/duckdb-install-XXXXXX)"
     trap 'rm -rf "$TMP_DUCKDB_DIR"' EXIT
     DUCKDB_ZIP="duckdb_cli-linux-amd64.zip"
