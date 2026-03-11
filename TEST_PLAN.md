@@ -231,15 +231,18 @@ Same as Test 3, but with nwm-fcst-mgr instead of nwm-cal-mgr.
 ## Quick Test Commands
 
 ```bash
-# Test 1: Development with managers
+# Development builds
 ./parallel_works_scripts/build_cluster.sh --build-type=development nwm-cal-mgr ngen
 ./parallel_works_scripts/build_cluster.sh --build-type=development nwm-fcst-mgr ngen
+./parallel_works_scripts/build_cluster.sh --build-type=development all
 
-# Test 3: Release with managers (interactive - will prompt for tags)
+# Release builds (interactive - will prompt for tags)
+./parallel_works_scripts/build_cluster.sh --build-type=release ngen
 ./parallel_works_scripts/build_cluster.sh --build-type=release nwm-cal-mgr ngen
 ./parallel_works_scripts/build_cluster.sh --build-type=release nwm-fcst-mgr ngen
+./parallel_works_scripts/build_cluster.sh --build-type=release nwm-verf
 
-# Test 5: Feature builds (interactive - will prompt for branches)
+# Feature builds (interactive - will prompt for branches)
 ./parallel_works_scripts/build_cluster.sh --build-type=feature ngen
 ./parallel_works_scripts/build_cluster.sh --build-type=feature nwm-cal-mgr
 ./parallel_works_scripts/build_cluster.sh --build-type=feature nwm-verf
