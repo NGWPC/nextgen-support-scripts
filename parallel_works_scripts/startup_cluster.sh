@@ -41,6 +41,10 @@ sudo dnf -y install openmpi \
  && sudo dnf clean all \
  && sudo rm -rf /var/cache/dnf
 
+# install Boost C++ libraries
+sudo dnf -y install epel-release
+sudo dnf -y install boost-devel
+
 # make bin visible for new shells (optional but convenient)
 echo 'export PATH="/usr/lib64/openmpi/bin:$PATH"' | sudo tee /etc/profile.d/openmpi.sh >/dev/null
 sudo chmod +x /etc/profile.d/openmpi.sh
