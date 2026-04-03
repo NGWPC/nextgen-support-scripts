@@ -22,6 +22,7 @@
 #   "nginx-unprivileged.sif" is always excluded regardless of --exclude.
 #   --exclude accepts a comma-separated list of filenames (no paths).
 #   --dry-run prints what would be deleted without removing anything.
+#   Without --dry-run, shows the file list and asks for confirmation before deleting.
 #
 #   Example:
 #     cleanup_cluster.sh --files \
@@ -35,6 +36,7 @@
 #   NEVER deletes directories that are currently active PW job sessions.
 #   --targets accepts a comma-separated list of directory names (not full paths).
 #   --dry-run prints what would be deleted without removing anything.
+#   Without --dry-run, shows the directory list and asks for confirmation before deleting.
 #
 #   Example:
 #     cleanup_cluster.sh --dirs \
@@ -145,39 +147,57 @@ cmd_files() {
     echo "  Path    : $path"
     echo "  Cutoff  : files older than $cutoff will be deleted"
     echo "  Excluded: ${!exclude_set[*]}"
-    echo "  Dry run : $dry_run"
+    if $dry_run; then
+        echo "  Mode    : DRY RUN — nothing will be deleted"
+    else
+        echo "  Mode    : LIVE — will prompt for confirmation before deleting"
+    fi
     echo ""
 
-    # Find files strictly older than cutoff (not modified on or after cutoff)
-    local found=0
+    # Collect eligible files (separated from skipped ones)
+    local -a to_delete=()
     while IFS= read -r -d '' file; do
         local name
         name="$(basename "$file")"
-
         if [[ -n "${exclude_set[$name]:-}" ]]; then
             echo "  [SKIP]   $file  (excluded)"
-            continue
-        fi
-
-        found=1
-        if $dry_run; then
-            echo "  [DRY-RUN] would delete: $file"
         else
-            echo "  [DELETE]  $file"
-            rm -f "$file"
+            to_delete+=("$file")
         fi
     done < <(find "$path" -maxdepth 1 -type f ! -newermt "$cutoff" -print0)
 
-    if [[ $found -eq 0 ]]; then
+    if [[ ${#to_delete[@]} -eq 0 ]]; then
         echo "  No eligible files found."
+        echo ""
+        echo "Nothing to delete."
+        return 0
     fi
 
     echo ""
+    echo "  Files to be deleted (${#to_delete[@]}):"
+    for file in "${to_delete[@]}"; do
+        echo "    $file"
+    done
+    echo ""
+
     if $dry_run; then
         echo "Dry run complete. No files were deleted."
-    else
-        echo "File cleanup complete."
+        return 0
     fi
+
+    read -r -p "Proceed with deleting the ${#to_delete[@]} file(s) listed above? [y/N] " confirm
+    if [[ "${confirm,,}" != "y" ]]; then
+        echo "Aborted. No files were deleted."
+        return 0
+    fi
+
+    echo ""
+    for file in "${to_delete[@]}"; do
+        echo "  [DELETE]  $file"
+        rm -f "$file"
+    done
+    echo ""
+    echo "File cleanup complete."
 }
 
 # ---------------------------------------------------------------------------
@@ -212,13 +232,18 @@ cmd_dirs() {
     echo "=== Directory cleanup ==="
     echo "  Path     : $path"
     echo "  Targets  : ${targets[*]}"
-    echo "  Dry run  : $dry_run"
+    if $dry_run; then
+        echo "  Mode     : DRY RUN — nothing will be deleted"
+    else
+        echo "  Mode     : LIVE — will prompt for confirmation before deleting"
+    fi
     echo ""
-    echo "  IMPORTANT: Only directories verified as inactive should be deleted."
-    echo "  Check the PW Sessions tab before proceeding."
+    echo "  !! IMPORTANT: Only delete directories you have verified are NOT active"
+    echo "  !! in the PW Sessions tab. Active job directories must not be removed."
     echo ""
 
-    local found=0
+    # Collect directories that actually exist
+    local -a to_delete=()
     for target in "${targets[@]}"; do
         target="${target// /}"   # strip accidental spaces
         [[ -z "$target" ]] && continue
@@ -227,28 +252,44 @@ cmd_dirs() {
 
         if [[ ! -d "$full_path" ]]; then
             echo "  [SKIP]   $full_path  (not found)"
-            continue
-        fi
-
-        found=1
-        if $dry_run; then
-            echo "  [DRY-RUN] would delete: $full_path"
         else
-            echo "  [DELETE]  $full_path"
-            rm -rf "$full_path"
+            to_delete+=("$full_path")
         fi
     done
 
-    if [[ $found -eq 0 ]]; then
+    if [[ ${#to_delete[@]} -eq 0 ]]; then
         echo "  No target directories found."
+        echo ""
+        echo "Nothing to delete."
+        return 0
     fi
 
     echo ""
+    echo "  Directories to be deleted (${#to_delete[@]}):"
+    for dir in "${to_delete[@]}"; do
+        echo "    $dir"
+    done
+    echo ""
+
     if $dry_run; then
         echo "Dry run complete. No directories were deleted."
-    else
-        echo "Directory cleanup complete."
+        return 0
     fi
+
+    echo "  Have you confirmed these directories are NOT active in the PW Sessions tab?"
+    read -r -p "  Proceed with deleting the ${#to_delete[@]} director(y/ies) listed above? [y/N] " confirm
+    if [[ "${confirm,,}" != "y" ]]; then
+        echo "Aborted. No directories were deleted."
+        return 0
+    fi
+
+    echo ""
+    for dir in "${to_delete[@]}"; do
+        echo "  [DELETE]  $dir"
+        rm -rf "$dir"
+    done
+    echo ""
+    echo "Directory cleanup complete."
 }
 
 # ---------------------------------------------------------------------------
