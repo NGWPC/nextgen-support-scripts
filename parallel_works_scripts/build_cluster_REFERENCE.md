@@ -21,7 +21,7 @@ The script targets repos in `/ngencerf-app` and writes SIF files under `/ngencer
 - nwm-fcst-mgr
 - nwm-verf
 
-Only a subset produce SIFs (all except `ngencerf-*`).
+Only a subset produce SIFs (all except `ngencerf-*`, `ngen`, and `ngen-bmi-forcing`). Docker images are still built for `ngen` and `ngen-bmi-forcing` because `nwm-cal-mgr` and `nwm-fcst-mgr` consume them via `FROM`; at runtime the ngen binary and forcing engine are accessed through `nwm-cal-mgr.sif`.
 
 ## Inputs and CLI options
 - `--build-type=TYPE` with TYPE in `development`, `release`, `feature`.
@@ -39,7 +39,7 @@ Interactive mode is used if no args are passed and stdin is a TTY.
 ## Outputs
 - Docker images built or pulled from `ghcr.io/ngwpc`.
 - SIF files stored in `/ngencerf-app/singularity`.
-- A stable symlink per SIF base name (e.g., `ngen.sif`).
+- A stable symlink per SIF base name (e.g., `nwm-cal-mgr.sif`).
 - A log file at `/ngencerf-app/singularity/build_cluster_<timestamp>.log`.
 - A `.meta` file per SIF base name to track the last built image digest.
 
@@ -165,7 +165,7 @@ Interactive mode is used if no args are passed and stdin is a TTY.
 - `images_for_repo(repo)`
   - Maps repo names to Docker image and SIF base names.
 - `repo_has_sif(repo)`
-  - Excludes `ngencerf-*` repos from SIF generation.
+  - Excludes `ngencerf-*`, `ngen`, and `ngen-bmi-forcing` from SIF generation (Docker-only images).
 - `set_image_source_defaults()`
   - Applies default build/pull modes; forces build for feature builds.
 - `get_repo_branch(repo, build_type_default)`

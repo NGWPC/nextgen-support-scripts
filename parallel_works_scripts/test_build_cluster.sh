@@ -33,9 +33,11 @@ TESTS_FAILED=0
 TEST_OUTPUT_DIR="/tmp/build_cluster_tests_$(date +%s)"
 mkdir -p "$TEST_OUTPUT_DIR"
 
-# Estimated test durations in seconds
-# Updated based on actual test runs
-TEST1_DURATION=3000  # 50 minutes - fresh dev build with dependencies (actual: 50 min)
+# Estimated test durations in seconds.
+# Note: ngen and ngen-bmi-forcing no longer produce SIFs (Docker-only), so these
+# estimates are higher than actual post-refactor runs. Recalibrate after the
+# next full test pass.
+TEST1_DURATION=3000  # 50 minutes - fresh dev build with dependencies
 TEST2_DURATION=2700  # 45 minutes - dev build, some cached layers but still rebuilds most
 TEST3_DURATION=3300  # 55 minutes - release build with --no-cache and tag checkouts
 TEST4_DURATION=3000  # 50 minutes - release build, similar to Test 3

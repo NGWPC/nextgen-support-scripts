@@ -134,8 +134,7 @@ Same as Test 3, but with nwm-fcst-mgr instead of nwm-cal-mgr.
    - ngen image tagged as: `feature-new-functionality`
 5. **Build arguments**:
    - ngen: `Building ngen (feature) Docker image with NGEN_FORCING_TAG=feature-forcing-update`
-6. **SIF files**: Should be named like:
-   - `ngen-feature-new-functionality-2024-01-15T10:30:00Z.sif`
+6. **No SIF files**: `ngen` and `ngen-bmi-forcing` are Docker-only — no `ngen-*.sif` or `ngen-bmi-forcing-*.sif` should be produced. The ngen binary and forcing engine are accessed via `nwm-cal-mgr.sif` at runtime.
 
 ### Verification Checklist
 - [ ] ngen-forcing auto-added to SELECTED_REPOS
@@ -143,7 +142,7 @@ Same as Test 3, but with nwm-fcst-mgr instead of nwm-cal-mgr.
 - [ ] NO default branch values in prompts
 - [ ] Branch name required (empty rejected)
 - [ ] Docker tags use actual branch names (sanitized)
-- [ ] SIF files use actual branch names
+- [ ] NO `ngen-*.sif` or `ngen-bmi-forcing-*.sif` created under `/ngencerf-app/singularity`
 - [ ] All images built locally (no pulling)
 - [ ] ngen uses ngen-forcing's branch-based tag
 

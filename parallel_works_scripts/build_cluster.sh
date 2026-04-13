@@ -150,9 +150,12 @@ images_for_repo() {
 }
 
 # function to determine if a repo has an associated SIF to build
+# ngen and ngen-bmi-forcing are built as Docker images only (consumed via FROM
+# by nwm-cal-mgr/nwm-fcst-mgr); at runtime the ngen binary and forcing engine
+# are accessed through nwm-cal-mgr.sif, so no standalone SIF is produced.
 repo_has_sif() {
     case "$1" in
-        ngencerf-server|ngencerf-ui|ngencerf-docker) return 1 ;;
+        ngencerf-server|ngencerf-ui|ngencerf-docker|ngen|ngen-bmi-forcing) return 1 ;;
         *) return 0 ;;
     esac
 }
