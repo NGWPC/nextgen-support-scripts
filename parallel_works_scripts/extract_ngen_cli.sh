@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# overridable container path; fixed inner binary path (change if your image layout changes)
-NGEN_CONTAINER="${NGEN_CONTAINER:-/ngencerf-app/singularity/ngen.sif}"
+# overridable container path and ngen binary path inside container
+NGEN_CONTAINER="${NGEN_CONTAINER:-/ngencerf-app/singularity/nwm-cal-mgr.sif}"
 NGEN_BINARY="${NGEN_BINARY:-/ngen-app/ngen/cmake_build/ngen}"
 
 # test if singularity file and ngen binary are available
