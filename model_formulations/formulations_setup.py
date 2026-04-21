@@ -2,8 +2,7 @@
 from a table of vernacular descriptions.
 
 Usage:
-    1. Install openpyxl so pandas can read the transposed excel file: `pip install openpyxl`
-    2. Run from repo root: python -um formulations_models.formulations_extract
+    1. Run from repo root: python -um model_formulations.formulations_setup
 """
 
 import itertools
