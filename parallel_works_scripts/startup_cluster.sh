@@ -148,3 +148,15 @@ for user_home in /home/*/; do
         sudo chown -R "${username}" "${user_home}.local" 2>/dev/null || true
     fi
 done
+
+# Create QGIS desktop entry for GNOME app launcher
+sudo tee /usr/share/applications/qgis.desktop > /dev/null << 'DESKTOP'
+[Desktop Entry]
+Name=QGIS
+Comment=QGIS Geographic Information System
+Exec=bash -c "source /ngen-test/miniconda3/etc/profile.d/conda.sh && conda activate /ngen-test/envs/qgis-344 && qgis"
+Icon=/ngen-test/envs/qgis-344/share/icons/hicolor/128x128/apps/qgis.png
+Terminal=false
+Type=Application
+Categories=Education;Science;Geography;
+DESKTOP
