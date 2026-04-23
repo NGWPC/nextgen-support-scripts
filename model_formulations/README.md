@@ -41,5 +41,5 @@ Created by script. Based on `formulations_munged.tsv`, but with the following co
 # Set up the formulations list coded in MSWM `models=` csv format (writes new tsv file)
 python -um model_formulations.formulations_setup
 # Read the previous tsv file and run the formulations
-TODO
+See `nwm-rte` script `bin_mounted/parse_test_results.py` and its example call in ./run_tests.sh
 ```
