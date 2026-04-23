@@ -160,3 +160,19 @@ Terminal=false
 Type=Application
 Categories=Education;Science;Geography;
 DESKTOP
+
+# Install QGIS 3.44 via conda if not already installed
+if [ ! -f "/ngen-test/envs/qgis-344/bin/qgis" ]; then
+    if [ ! -f "/ngen-test/miniconda3/bin/conda" ]; then
+        curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+            -o /tmp/miniconda.sh
+        bash /tmp/miniconda.sh -b -p /ngen-test/miniconda3
+        rm -f /tmp/miniconda.sh
+    fi
+    source /ngen-test/miniconda3/etc/profile.d/conda.sh
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    conda create -p /ngen-test/envs/qgis-344 \
+        -c conda-forge \
+        "qgis=3.44.7" python=3.12 -y
+fi
