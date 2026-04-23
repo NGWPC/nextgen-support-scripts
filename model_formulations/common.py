@@ -28,9 +28,9 @@ MODEL_NAMES__TSV_VS_MSWM = {
     # TODO no t-route?
     "casam": "lasam",
     "cfe-s": "cfe-s",
-    "cfe-s_rootzone": "cfe-s",  # TODO account for rootzone
+    "cfe-s_rootzone": "cfe-s",
     "cfe-x": "cfe-x",
-    "cfe-x_rootzone": "cfe-x",  # TODO account for rootzone
+    "cfe-x_rootzone": "cfe-x",
     "lstm": "lstm",
     "noah-om": "noah-owp-modular",
     "pet": "pet",
