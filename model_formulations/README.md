@@ -12,6 +12,7 @@ Run these from the repo root.
 ```shell
 aws s3 cp "model_formulations/formulations_orig.tsv" "s3://ngwpc-dev/msw/"
 aws s3 cp "model_formulations/formulations_munged.tsv" "s3://ngwpc-dev/msw/"
+aws s3 cp "model_formulations/formulations_munged_setup_results.tsv" "s3://ngwpc-dev/msw/"
 ```
 
 ### For user downloading:
@@ -19,6 +20,7 @@ aws s3 cp "model_formulations/formulations_munged.tsv" "s3://ngwpc-dev/msw/"
 ```shell
 aws s3 cp "s3://ngwpc-dev/msw/formulations_orig.tsv" "./model_formulations/"
 aws s3 cp "s3://ngwpc-dev/msw/formulations_munged.tsv" "./model_formulations/"
+aws s3 cp "s3://ngwpc-dev/msw/formulations_munged_setup_results.tsv" "./model_formulations/"
 ```
 
 ## Files
