@@ -27,22 +27,7 @@ def main():
     all_formulation_descr_lists = []
 
     df = pd.read_csv(c.INPUT_TSV_PATH, sep="\t")
-    # recs = df.to_dict(orient="records")
     for i, row in df.iterrows():
-        # ### For parsing original table (before transposing)
-        # for form_group in FORMULATION_GROUPS:
-        #     formulation_descr_raw = row[form_group]
-        #     if not isinstance(formulation_descr_raw, str):
-        #         if not math.isnan(formulation_descr_raw):
-        #             raise ValueError(
-        #                 f"formulation_descr_raw has type {type(formulation_descr_raw)}"
-        #             )
-        #         continue
-        #
-        #     all_formulation_descr_lists.append(
-        #         get_models_list_from_formulation_description(formulation_descr_raw)
-        #     )
-
         ### For parsing transposed table
         formulation_descr_raw = row["formulation_description"]
         formulation_descr_list = get_models_list_from_formulation_description(
