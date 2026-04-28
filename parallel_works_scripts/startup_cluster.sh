@@ -134,27 +134,13 @@ fi
 
 echo "cluster startup complete"
 
-# Set up QGIS nwm_coastal plugin and startup script for all users
-for user_home in /home/*/; do
-    if [ -d "${user_home}" ]; then
-        plugin_dir="${user_home}.local/share/QGIS/QGIS3/profiles/default/python/plugins"
-        python_dir="${user_home}.local/share/QGIS/QGIS3/profiles/default/python"
-        username="$(stat -c '%U' "${user_home}")"
-        sudo mkdir -p "${plugin_dir}"
-        sudo ln -sf /ngen-test/nwm-coastal/qgis_plugin/nwm_coastal \
-            "${plugin_dir}/nwm_coastal" 2>/dev/null || true
-        sudo ln -sf /ngen-test/qgis_startup.py \
-            "${python_dir}/startup.py" 2>/dev/null || true
-        sudo chown -R "${username}" "${user_home}.local" 2>/dev/null || true
-    fi
-done
 
 # Create QGIS desktop entry for GNOME app launcher
 sudo tee /usr/share/applications/qgis.desktop > /dev/null << 'DESKTOP'
 [Desktop Entry]
 Name=QGIS
 Comment=QGIS Geographic Information System
-Exec=bash -c "source /ngen-test/miniconda3/etc/profile.d/conda.sh && conda activate /ngen-test/envs/qgis-344 && qgis"
+Exec=bash -c "source /ngen-test/miniconda3/etc/profile.d/conda.sh && conda activate /ngen-test/envs/qgis-344 && QGIS_PLUGINPATH=/ngen-test/nwm-coastal/qgis_plugin qgis"
 Icon=/ngen-test/envs/qgis-344/share/icons/hicolor/128x128/apps/qgis.png
 Terminal=false
 Type=Application
