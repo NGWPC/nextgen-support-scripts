@@ -149,7 +149,7 @@ DESKTOP
 
 # Install QGIS 3.44 via conda if not already installed
 sudo mkdir -p /ngen-test
-sudo chown "$USER:$USER" /ngen-test
+sudo chown "$(id -un):$(id -gn)" /ngen-test
 if [ ! -f "/ngen-test/envs/qgis-344/bin/qgis" ]; then
     if [ ! -f "/ngen-test/miniconda3/bin/conda" ]; then
         curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
