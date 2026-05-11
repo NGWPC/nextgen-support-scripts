@@ -74,7 +74,7 @@ if [ "$CURRENT_DUCKDB_VERSION" != "$DUCKDB_VERSION" ]; then
 fi
 
 # verify DuckDB installation
-duckdb --version
+/usr/local/bin/duckdb --version
 
 # install python packages
 if [ -n "${PY_PIP_PKGS:-}" ]; then
