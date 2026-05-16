@@ -28,14 +28,6 @@ if ! command -v mount-s3 >/dev/null 2>&1; then
     sudo dnf -y install https://s3.amazonaws.com/mountpoint-s3-release/latest/x86_64/mount-s3.rpm
 fi
 
-# # call mount_s3_buckets.sh to mount S3 buckets
-# SRC_MOUNT_SCRIPT="$(dirname "$0")/mount_s3_buckets.sh"
-# if [ -r "$SRC_MOUNT_SCRIPT" ]; then
-#     sudo "$SRC_MOUNT_SCRIPT"
-# else
-#     echo "warn: $SRC_MOUNT_SCRIPT not found or unreadable; skipping S3 bucket mounting" >&2
-# fi
-
 # install openmpi
 sudo dnf -y install openmpi \
  && sudo dnf clean all \
@@ -134,33 +126,49 @@ fi
 
 echo "cluster startup complete"
 
+# Create miniconda3 and qgis directories
+sudo mkdir -p /opt/miniconda3 /opt/qgis-344
+sudo chown $(id -un):$(id -gn) /opt/miniconda3 /opt/qgis-344
+sudo chmod 755 /opt/miniconda3 /opt/qgis-344
 
-# Create QGIS desktop entry for GNOME app launcher
+# Paths
+CONDA_ROOT=/opt/miniconda3
+QGIS_ENV=/opt/qgis-344
+QGIS_VERSION=3.44.7
+
+# Install Miniconda if missing
+if [ ! -f "$CONDA_ROOT/bin/conda" ]; then
+    curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+        -o /tmp/miniconda.sh
+    bash /tmp/miniconda.sh -b -u -p "$CONDA_ROOT"
+    rm -f /tmp/miniconda.sh
+fi
+
+# Install QGIS env if missing
+if [ ! -f "$QGIS_ENV/bin/qgis" ]; then
+    source "$CONDA_ROOT/etc/profile.d/conda.sh"
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+    conda create -p "$QGIS_ENV" \
+        -c conda-forge \
+        "qgis=$QGIS_VERSION" python=3.12 -y
+fi
+
+# Create symlink to libhdf5.so.310
+cd /opt/qgis-344/lib
+ln -s libhdf5.so.320 libhdf5.so.310
+
+# Create QGIS Desktop Launcher
 sudo tee /usr/share/applications/qgis.desktop > /dev/null << 'DESKTOP'
 [Desktop Entry]
 Name=QGIS
 Comment=QGIS Geographic Information System
-Exec=bash -c "source /ngen-test/miniconda3/etc/profile.d/conda.sh && conda activate /ngen-test/envs/qgis-344 && QGIS_PLUGINPATH=/ngen-test/nwm-coastal/qgis_plugin qgis"
-Icon=/ngen-test/envs/qgis-344/share/icons/hicolor/128x128/apps/qgis.png
+Exec=bash -c "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate /opt/qgis-344 && QGIS_PLUGINPATH=/ngencerf-app/coastal-calibration/qgis_plugin qgis"
+Icon=/opt/qgis-344/share/icons/hicolor/128x128/apps/qgis.png
 Terminal=false
 Type=Application
 Categories=Education;Science;Geography;
 DESKTOP
 
-# Install QGIS 3.44 via conda if not already installed
-sudo mkdir -p /ngen-test
-sudo chown "$(id -un):$(id -gn)" /ngen-test
-if [ ! -f "/ngen-test/envs/qgis-344/bin/qgis" ]; then
-    if [ ! -f "/ngen-test/miniconda3/bin/conda" ]; then
-        curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
-            -o /tmp/miniconda.sh
-        bash /tmp/miniconda.sh -b -p /ngen-test/miniconda3
-        rm -f /tmp/miniconda.sh
-    fi
-    source /ngen-test/miniconda3/etc/profile.d/conda.sh
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-    conda create -p /ngen-test/envs/qgis-344 \
-        -c conda-forge \
-        "qgis=3.44.7" python=3.12 -y
-fi
+sudo update-desktop-database /usr/share/applications
+sudo restorecon -Rv /opt/miniconda3 /opt/qgis-344
