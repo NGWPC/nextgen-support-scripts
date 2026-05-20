@@ -128,7 +128,6 @@ echo "cluster startup complete"
 
 # Create miniconda3 and qgis directories
 sudo mkdir -p /opt/miniconda3 /opt/qgis-344
-sudo chown $(id -un):$(id -gn) /opt/miniconda3 /opt/qgis-344
 sudo chmod 755 /opt/miniconda3 /opt/qgis-344
 
 # Paths
@@ -140,23 +139,20 @@ QGIS_VERSION=3.44.7
 if [ ! -f "$CONDA_ROOT/bin/conda" ]; then
     curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
         -o /tmp/miniconda.sh
-    bash /tmp/miniconda.sh -b -u -p "$CONDA_ROOT"
+    sudo bash /tmp/miniconda.sh -b -u -p "$CONDA_ROOT"
     rm -f /tmp/miniconda.sh
 fi
 
 # Install QGIS env if missing
 if [ ! -f "$QGIS_ENV/bin/qgis" ]; then
-    source "$CONDA_ROOT/etc/profile.d/conda.sh"
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-    conda create -p "$QGIS_ENV" \
-        -c conda-forge \
-        "qgis=$QGIS_VERSION" python=3.12 -y
+    sudo bash -c "source $CONDA_ROOT/etc/profile.d/conda.sh && \
+        conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+        conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r && \
+        conda create -p $QGIS_ENV -c conda-forge qgis=$QGIS_VERSION python=3.12 -y"
 fi
 
 # Create symlink to libhdf5.so.310
-cd /opt/qgis-344/lib
-ln -s libhdf5.so.320 libhdf5.so.310
+sudo ln -sf libhdf5.so.320 /opt/qgis-344/lib/libhdf5.so.310
 
 # Create QGIS Desktop Launcher
 sudo tee /usr/share/applications/qgis.desktop > /dev/null << 'DESKTOP'
