@@ -126,7 +126,7 @@ fi
 
 echo "cluster startup complete"
 
-# Create miniconda3 and qgis directories (root-owned system install; world-readable so any user can activate)
+# Create miniconda3 and qgis directories
 sudo mkdir -p /opt/miniconda3 /opt/qgis-344
 sudo chmod 755 /opt/miniconda3 /opt/qgis-344
 
