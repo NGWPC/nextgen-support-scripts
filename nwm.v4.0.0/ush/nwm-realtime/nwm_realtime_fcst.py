@@ -1,0 +1,198 @@
+import argparse
+import os
+import re
+import shutil
+import subprocess
+from datetime import datetime, timedelta
+
+
+class NWMRealtimeFcst:
+
+    # Configuration names
+    CONFIG_ANA = "AnA"
+    CONFIG_SHORT_RANGE = "Short_Range"
+    CONFIG_MEDIUM_RANGE = "Medium_Range"
+    CONFIG_EXT_ANA = "Extended_AnA"
+
+    # Domain names
+    DOMAIN_CONUS = "CONUS"
+    DOMAIN_HAWAII = "Hawaii"
+    DOMAIN_ALASKA = "Alaska"
+    DOMAIN_PUERTO_RICO = "Puerto_Rico"
+
+    # Forecast lengths in hours; negative means backward analysis (end=T0, start=T0+length)
+    _FORECAST_LENGTHS = {
+        "AnA": -3,
+        "Short_Range": 18,
+        "Medium_Range": 240,  # 10 days
+        "Extended_AnA": -28,
+    }
+
+    # CASETYPE identifiers derived from (config, domain)
+    _CASE_TYPES = {
+        ("AnA", "CONUS"): "CONUS_ANALYSIS_ASSIM",
+        ("Short_Range", "CONUS"): "CONUS_SHORT_RANGE",
+        ("Extended_AnA", "CONUS"): "CONUS_EXT_ANALYSIS_ASSIM",
+    }
+
+    def __init__(self, config_name: str, domain: str, t0: datetime,
+                 package_dir: str, working_dir: str):
+        if config_name not in self._FORECAST_LENGTHS:
+            raise ValueError(f"Unknown config_name: {config_name}")
+        if domain not in (self.DOMAIN_CONUS, self.DOMAIN_HAWAII,
+                          self.DOMAIN_ALASKA, self.DOMAIN_PUERTO_RICO):
+            raise ValueError(f"Unknown domain: {domain}")
+
+        self.config_name = config_name
+        self.domain = domain
+        self.t0 = t0
+        self.package_dir = package_dir
+        self.working_dir = working_dir
+        self.forecast_length = self._FORECAST_LENGTHS[config_name]
+
+    # ------------------------------------------------------------------ #
+    # Derived paths (mirrors $USHnwm and $PARMnwm from the ex-script)
+    # ------------------------------------------------------------------ #
+
+    @property
+    def ush_dir(self) -> str:
+        return os.path.join(self.package_dir, "ush")
+
+    @property
+    def parm_dir(self) -> str:
+        return os.path.join(self.package_dir, "parm")
+
+    # ------------------------------------------------------------------ #
+    # Forecast window helpers
+    # ------------------------------------------------------------------ #
+
+    @property
+    def start_time(self) -> datetime:
+        if self.forecast_length < 0:
+            return self.t0 + timedelta(hours=self.forecast_length)
+        return self.t0
+
+    @property
+    def end_time(self) -> datetime:
+        if self.forecast_length < 0:
+            return self.t0
+        return self.t0 + timedelta(hours=self.forecast_length)
+
+    # ------------------------------------------------------------------ #
+    # configureRTE  (mirrors exnwm.sh lines 39-48)
+    # ------------------------------------------------------------------ #
+
+    def configureRTE(self) -> None:
+        rte_dir = os.path.join(self.ush_dir, "nwm-rte")
+
+        shutil.copy(os.path.join(rte_dir, "config.bashrc"), self.working_dir)
+        shutil.copy(os.path.join(rte_dir, "run.sh"), self.working_dir)
+
+        config_bashrc = os.path.join(self.working_dir, "config.bashrc")
+        with open(config_bashrc) as f:
+            content = f.read()
+        content = re.sub(
+            r"^MNT__RUN_NGEN__HOST=.*$",
+            f"MNT__RUN_NGEN__HOST={self.working_dir}",
+            content, flags=re.MULTILINE,
+        )
+        content = re.sub(
+            r"^MNT__MODULE_PARAM_FILES_DIR__HOST=.*$",
+            f"MNT__MODULE_PARAM_FILES_DIR__HOST={self.parm_dir}",
+            content, flags=re.MULTILINE,
+        )
+        with open(config_bashrc, "w") as f:
+            f.write(content)
+
+        run_sh = os.path.join(self.working_dir, "run.sh")
+        with open(run_sh) as f:
+            content = f.read()
+        bin_mounted = os.path.join(rte_dir, "bin_mounted")
+        content = content.replace("$(pwd)/bin_mounted", bin_mounted)
+        with open(run_sh, "w") as f:
+            f.write(content)
+
+    # ------------------------------------------------------------------ #
+    # runRTE  (mirrors exnwm.sh lines 50-68)
+    # ------------------------------------------------------------------ #
+
+    def runRTE(self) -> subprocess.CompletedProcess:
+        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
+        if case_type is None:
+            raise NotImplementedError(
+                f"runRTE not implemented for config='{self.config_name}', domain='{self.domain}'"
+            )
+
+        if case_type == "CONUS_ANALYSIS_ASSIM":
+            rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
+            csdt = (self.start_time - timedelta( hours = 7 )).strftime( "%Y-%m-%d %H:%M:%S" )
+            docker_args = (
+                #f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" --use_cold_start -csdt "{csdt}" --save_state -rname "default_ana"'
+                f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" --save_state -rname "default_ana"'
+            )
+        elif case_type == "CONUS_SHORT_RANGE":
+            rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
+            docker_args = (
+                f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
+            )
+        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
+            t0_rte = self.t0 + timedelta(hours=abs(self.forecast_length))
+            ext_start = t0_rte.strftime("%Y-%m-%d") + " 16:00:00"
+            docker_args = (
+                f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" -rname "default_extended_ana" -nwmout'
+            )
+
+        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_default" {docker_args}'
+        return subprocess.run(
+            ["bash", "-c", cmd],
+            cwd=self.working_dir,
+            check=True,
+        )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run NWM realtime forecast")
+    parser.add_argument(
+        "--t0",
+        required=True,
+        metavar="YYYY-MM-DD HH:MM:SS",
+        help="Forecast start time (T0) in UTC, e.g. '2026-05-20 12:00:00'",
+    )
+    parser.add_argument(
+        "--package-dir",
+        required=True,
+        help="Path to the NWM package directory",
+    )
+    parser.add_argument(
+        "--working-dir",
+        required=True,
+        help="Path to the temporary working directory",
+    )
+    args = parser.parse_args()
+    t0 = datetime.strptime(args.t0, "%Y-%m-%d %H:%M:%S")
+    package_dir = args.package_dir
+    working_dir = args.working_dir
+    os.makedirs(working_dir, exist_ok=True)
+
+    fcst = NWMRealtimeFcst(
+        config_name=NWMRealtimeFcst.CONFIG_ANA,
+        domain=NWMRealtimeFcst.DOMAIN_CONUS,
+        t0=t0,
+        package_dir=package_dir,
+        working_dir=working_dir,
+    )
+
+    print(f"Config   : {fcst.config_name}")
+    print(f"Domain   : {fcst.domain}")
+    print(f"T0       : {fcst.t0}")
+    print(f"Start    : {fcst.start_time}")
+    print(f"End      : {fcst.end_time}")
+    print(f"Package  : {fcst.package_dir}")
+    print(f"Work dir : {fcst.working_dir}")
+
+    fcst.configureRTE()
+    fcst.runRTE()
+
+
+if __name__ == "__main__":
+    main()

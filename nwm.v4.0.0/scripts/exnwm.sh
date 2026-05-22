@@ -1,0 +1,106 @@
+#!/usr/bin/env bash 
+
+#################################################################################
+#  Program Name: nwm
+#                                                                               #
+#  Author(s)/Contact(s): RTX & OWP                                             #
+#                                                                               #
+#  This script will execute the analysis assim using RTE.                      #
+#  The CONUS short range will regrid the RAP, HRRR, STAGE IV and MRMS data.    #
+#                                                                               #
+#  Input: compath.py -o {rap,hrrr,mrms}/v#.#/                                   #
+#                                                                               #
+#  Output: $COMOUT/analysis_assim/                                             #
+#          nwm.$cycle.analysis_assim.conus.tm00.conus.nc                       #
+#                                                                               #
+# For non-fatal errors output is witten to $DATA                                #
+# History:                                                                      #
+#################################################################################
+# ----------------------------------------------------------------------------- #
+# Main script ----------------------------------------------
+
+seton='-xa'
+setoff='+xa'
+
+set $setoff
+echo ' '
+echo '********************************************************'
+echo '** National Water Model (NWM) ANALYSIS ASSIM FORCING  **'
+echo '********************************************************'
+echo -e "\n=====> Starting $0 at : `date`\n"
+set $seton
+
+cd $DATA
+
+msg="Starting $USHnwm/rte-nwm at `date`"
+
+# configure and run RTE
+python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
+    --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
+    --package-dir ${HOMEnwm} \
+    --working-dir ${DATA}
+
+##Copy RTE config and run.sh script
+#cp $USHnwm/nwm-rte/config.bashrc ./
+#cp $USHnwm/nwm-rte/run.sh  ./
+#
+##Update RTE config for the working directory
+#sed -i -e "/^MNT__RUN_NGEN__HOST=/s|.*|MNT__RUN_NGEN__HOST=${DATA}|" \
+#       -e "/^MNT__MODULE_PARAM_FILES_DIR__HOST=/s|.*|MNT__MODULE_PARAM_FILES_DIR__HOST=${PARMnwm}|" \
+#	./config.bashrc
+##Update RTE path
+#sed -i -e "s|\$(pwd)/bin_mounted|${USHnwm}/nwm-rte/bin_mounted|" ./run.sh
+#
+#source run.sh
+#
+#rte_start_time="${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00"
+#outcyc=${cyc}
+#
+##Run RTE default configuration
+#if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
+#   docker_run python -um "ngen_rte.run_default" -n 2 \
+#	   -fconfig "standard_ana" -dt "$rte_start_time" -rname "default_ana"
+#elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
+#   docker_run python -um "ngen_rte.run_default"  -n 2 \
+#	   -fconfig "short_range" -dt "$rte_start_time" -rname "default_short"  -nwmout
+#elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
+#   #Extended AnA cycle is 16z
+#   rte_extana_start_time="${PDY:0:4}-${PDY:4:2}-${PDY:6:2} 16:00:00"
+#   outcyc='16'
+#   docker_run python -um "ngen_rte.run_default" -n 2 \
+#   -fconfig "extended_ana" -dt "$rte_extana_start_time" -rname "default_extended_ana" -nwmout
+##fi
+
+export err=$?; err_chk
+
+if [ ! -d ${COMOUT}/${cyc}/${CASETYPE} ]; then
+	mkdir -p ${COMOUT}/${cyc}/${CASETYPE}
+fi
+
+if [ ! -d ${COMOUT}/logs/${cyc}/${CASETYPE} ]; then
+	mkdir -p ${COMOUT}/logs/${cyc}/${CASETYPE}
+fi
+
+#cat-*.csv and nex-*.csv files
+cp ${DATA}/default/test_bmi/*/Output/Default_Run/*/*.csv ${COMOUT}/${cyc}/${CASETYPE}/
+
+#T-route output files
+cp ${DATA}/default/test_bmi/*/Output/Default_Run/*/*.nc ${COMOUT}/${cyc}/${CASETYPE}/
+
+#NGen EWTS logs
+cp ${DATA}/default/test_bmi/*/Output/Default_Run/*/*.log ${COMOUT}/logs/${cyc}/${CASETYPE}/
+
+#NGen logs
+cp ${DATA}/default/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${CASETYPE}/
+
+#log messages from MSWM
+cp ${DATA}/default/test_bmi/*/logs/* ${COMOUT}/logs/${cyc}/${CASETYPE}/
+
+export err=$?; err_chk
+
+msg="Ending $USHnwm/rte-nwm at `date`"
+
+set $setoff
+echo ' '
+echo -e "\n=====> Ending $0 at : `date`\n"
+echo '***********************************'
