@@ -38,7 +38,9 @@ msg="Starting $USHnwm/rte-nwm at `date`"
 python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
     --package-dir ${HOMEnwm} \
-    --working-dir ${DATA}
+    --working-dir ${DATA}  \
+    --comout ${COMOUT}     \
+    --previous-day-comout ${COMOUTm1}
 
 ##Copy RTE config and run.sh script
 #cp $USHnwm/nwm-rte/config.bashrc ./
@@ -95,6 +97,9 @@ cp ${DATA}/default/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${CASETYPE}/
 
 #log messages from MSWM
 cp ${DATA}/default/test_bmi/*/logs/* ${COMOUT}/logs/${cyc}/${CASETYPE}/
+
+#copy warm states
+cp -r ${DATA}/default/test_bmi/*/state_save ${COMOUT}/${cyc}/${CASETYPE}/
 
 export err=$?; err_chk
 

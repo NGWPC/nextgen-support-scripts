@@ -36,7 +36,8 @@ class NWMRealtimeFcst:
     }
 
     def __init__(self, config_name: str, domain: str, t0: datetime,
-                 package_dir: str, working_dir: str):
+                 package_dir: str, working_dir: str, comout: str,
+                 previous_day_comout: str):
         if config_name not in self._FORECAST_LENGTHS:
             raise ValueError(f"Unknown config_name: {config_name}")
         if domain not in (self.DOMAIN_CONUS, self.DOMAIN_HAWAII,
@@ -48,6 +49,8 @@ class NWMRealtimeFcst:
         self.t0 = t0
         self.package_dir = package_dir
         self.working_dir = working_dir
+        self.comout = comout
+        self.previous_day_comout = previous_day_comout
         self.forecast_length = self._FORECAST_LENGTHS[config_name]
 
     # ------------------------------------------------------------------ #
@@ -77,6 +80,15 @@ class NWMRealtimeFcst:
         if self.forecast_length < 0:
             return self.t0
         return self.t0 + timedelta(hours=self.forecast_length)
+
+    def _ana_state_save_src(self) -> str:
+        """Return the source state_save path for CONUS_ANALYSIS_ASSIM.
+        Uses previous_day_comout when T0 - 3h rolls back to the previous day."""
+        t_prev = self.t0 - timedelta(hours=3)
+        cyc = t_prev.strftime("%H")
+        base_comout = self.previous_day_comout if t_prev.date() < self.t0.date() else self.comout
+        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
+        return os.path.join(base_comout, cyc, case_type, "state_save")
 
     # ------------------------------------------------------------------ #
     # configureRTE  (mirrors exnwm.sh lines 39-48)
@@ -112,6 +124,13 @@ class NWMRealtimeFcst:
         with open(run_sh, "w") as f:
             f.write(content)
 
+        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
+        if case_type == "CONUS_ANALYSIS_ASSIM":
+            src_state_save = self._ana_state_save_src()
+            dst_state_save = os.path.join(self.working_dir, "state_save")
+            if os.path.isdir(src_state_save):
+                shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
+
     # ------------------------------------------------------------------ #
     # runRTE  (mirrors exnwm.sh lines 50-68)
     # ------------------------------------------------------------------ #
@@ -125,10 +144,27 @@ class NWMRealtimeFcst:
 
         if case_type == "CONUS_ANALYSIS_ASSIM":
             rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
-            csdt = (self.start_time - timedelta( hours = 7 )).strftime( "%Y-%m-%d %H:%M:%S" )
+            csdt = (self.start_time - timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
+            src_state_save = self._ana_state_save_src()
+            # Hardcoded to the container path: working_dir is mounted as /ngwpc/tmp inside the container where RTE runs
+            state_save_dir = "/ngwpc/tmp/state_save"
+            if os.path.isdir(src_state_save):
+                print(
+                    f"INFO: Warm states found: {src_state_save}; "
+                    f"T0={self.t0}; CONUS_ANALYSIS_ASSIM job will use warm states.",
+                    flush = True
+                )
+                load_state_arg = f' --load_state_from "{state_save_dir}"'
+            else:
+                print(
+                    f"WARNING: state_save directory not found: {src_state_save}; "
+                    f"T0={self.t0}; CONUS_ANALYSIS_ASSIM job will use cold start.",
+                    flush = True
+                )
+                load_state_arg = ""
             docker_args = (
-                #f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" --use_cold_start -csdt "{csdt}" --save_state -rname "default_ana"'
                 f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" --save_state -rname "default_ana"'
+                f'{load_state_arg}'
             )
         elif case_type == "CONUS_SHORT_RANGE":
             rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
@@ -168,6 +204,16 @@ def main():
         required=True,
         help="Path to the temporary working directory",
     )
+    parser.add_argument(
+        "--comout",
+        required=True,
+        help="Path to the COMOUT directory for reading/writing NWM output",
+    )
+    parser.add_argument(
+        "--previous-day-comout",
+        required=True,
+        help="Path to the previous day's COMOUT directory, used when T0 - 3h rolls back to the prior day",
+    )
     args = parser.parse_args()
     t0 = datetime.strptime(args.t0, "%Y-%m-%d %H:%M:%S")
     package_dir = args.package_dir
@@ -180,6 +226,8 @@ def main():
         t0=t0,
         package_dir=package_dir,
         working_dir=working_dir,
+        comout=args.comout,
+        previous_day_comout=args.previous_day_comout,
     )
 
     print(f"Config   : {fcst.config_name}")

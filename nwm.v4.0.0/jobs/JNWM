@@ -2,7 +2,7 @@
 
 #### UNIX Script Documentation Block
 #
-# Script Name:  JNWM_CONUS_ANALYSIS_ASSIM
+# Script Name:  JNWM
 ####
 
 date
@@ -39,6 +39,7 @@ setpdy.sh
 ####################################
 # Determine Job Output Name on System
 ####################################
+export job=${CASETYPE}
 export pgmout="OUTPUT.${job}_${PDY}${cyc}.$$"
 
 ####################################
@@ -66,6 +67,7 @@ export DCOMINmrms=${DCOMINmrms:-${DCOMROOT}/ldmdata/obs/upperair/mrms/conus}
 # Output data directory
 ###################################
 export COMOUT=${COMOUT:-$(compath.py -o $NET/${nwm_ver})/$RUN.${PDY}}
+export COMOUTm1=${COMOUTm1:-$(compath.py -o $NET/${nwm_ver})/$RUN.${PDYm1}}
 
 if [ "$SENDCOM" = YES ]; then
    mkdir -p $COMOUT

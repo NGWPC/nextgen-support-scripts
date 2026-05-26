@@ -6,7 +6,7 @@
 export envir="test"
 export model="nwm"
 export nwm_ver=v4.0.0
-#export maillist1="Zhengtao.Cui@noaa.gov,Cham.Pham@noaa.gov,Donald.W.Johnson@noaa.gov,Brian.Cosgrove@noaa.gov"
+#export maillist1="Cham.Pham@noaa.gov,Donald.W.Johnson@noaa.gov,Brian.Cosgrove@noaa.gov"
 #export maillist2=$maillist1
 #export maillist3=$maillist1
 
