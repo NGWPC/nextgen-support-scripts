@@ -83,12 +83,51 @@ class NWMRealtimeFcst:
 
     def _ana_state_save_src(self) -> str:
         """Return the source state_save path for CONUS_ANALYSIS_ASSIM.
-        Uses previous_day_comout when T0 - 3h rolls back to the previous day."""
+        Uses previous_day_comout when T0 - 3h rolls back to the previous day.
+        When the look-back cycle is 16z, prefers the state_save from
+        CONUS_EXT_ANALYSIS_ASSIM; falls back to CONUS_ANALYSIS_ASSIM with a
+        warning if that directory is not found."""
         t_prev = self.t0 - timedelta(hours=3)
         cyc = t_prev.strftime("%H")
         base_comout = self.previous_day_comout if t_prev.date() < self.t0.date() else self.comout
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        return os.path.join(base_comout, cyc, case_type, "state_save")
+        default_path = os.path.join(base_comout, cyc, case_type, "state_save")
+
+        if cyc == "16":
+            ext_path = os.path.join(base_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", "state_save")
+            if os.path.isdir(ext_path):
+                return ext_path
+            print(
+                f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing "
+                f"(cyc={cyc}, T0={self.t0:%Y-%m-%d %H:%M:%S}); "
+                f"using warm states from {case_type} case type instead.",
+                flush=True,
+            )
+
+        return default_path
+
+    def _ext_ana_state_save_src(self) -> str:
+        """Return the source state_save path for CONUS_EXT_ANALYSIS_ASSIM.
+        Checks the previous day's 12z folder from CONUS_EXT_ANALYSIS_ASSIM first.
+        Falls back to the previous day's 12z folder from CONUS_ANALYSIS_ASSIM
+        with a warning if the preferred directory is not found.
+        The caller is responsible for checking whether the returned path exists;
+        if it does not, a cold start should be used."""
+        cyc = "12"
+        primary_path = os.path.join(
+            self.previous_day_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", "state_save"
+        )
+        if os.path.isdir(primary_path):
+            return primary_path
+        print(
+            f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing at "
+            f"{self.start_time:%Y-%m-%d %H:%M:%S} (T0={self.t0:%Y-%m-%d %H:%M:%S}); "
+            f"using warm states from CONUS_ANALYSIS_ASSIM case type instead.",
+            flush=True,
+        )
+        return os.path.join(
+            self.previous_day_comout, cyc, "CONUS_ANALYSIS_ASSIM", "state_save"
+        )
 
     # ------------------------------------------------------------------ #
     # configureRTE  (mirrors exnwm.sh lines 39-48)
@@ -127,6 +166,11 @@ class NWMRealtimeFcst:
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
         if case_type == "CONUS_ANALYSIS_ASSIM":
             src_state_save = self._ana_state_save_src()
+            dst_state_save = os.path.join(self.working_dir, "state_save")
+            if os.path.isdir(src_state_save):
+                shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
+        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
+            src_state_save = self._ext_ana_state_save_src()
             dst_state_save = os.path.join(self.working_dir, "state_save")
             if os.path.isdir(src_state_save):
                 shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
@@ -172,10 +216,27 @@ class NWMRealtimeFcst:
                 f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
             )
         elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
-            t0_rte = self.t0 + timedelta(hours=abs(self.forecast_length))
-            ext_start = t0_rte.strftime("%Y-%m-%d") + " 16:00:00"
+            ext_start = self.t0.strftime("%Y-%m-%d %H:%M:%S")
+            src_state_save = self._ext_ana_state_save_src()
+            # Hardcoded to the container path: working_dir is mounted as /ngwpc/tmp inside the container where RTE runs
+            state_save_dir = "/ngwpc/tmp/state_save"
+            if os.path.isdir(src_state_save):
+                print(
+                    f"INFO: Warm states found: {src_state_save}; "
+                    f"T0={self.t0}; CONUS_EXT_ANALYSIS_ASSIM job will use warm states.",
+                    flush=True,
+                )
+                load_state_arg = f' --load_state_from "{state_save_dir}"'
+            else:
+                print(
+                    f"WARNING: state_save directory not found: {src_state_save}; "
+                    f"T0={self.t0}; CONUS_EXT_ANALYSIS_ASSIM job will use cold start.",
+                    flush=True,
+                )
+                load_state_arg = ""
             docker_args = (
-                f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" -rname "default_extended_ana" -nwmout'
+                f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" --save_state -rname "default_extended_ana" -nwmout'
+                f'{load_state_arg}'
             )
 
         cmd = f'source run.sh && docker_run python -um "ngen_rte.run_default" {docker_args}'
@@ -193,6 +254,34 @@ def main():
         required=True,
         metavar="YYYY-MM-DD HH:MM:SS",
         help="Forecast start time (T0) in UTC, e.g. '2026-05-20 12:00:00'",
+    )
+    parser.add_argument(
+        "--config-name",
+        default=NWMRealtimeFcst.CONFIG_ANA,
+        choices=[
+            NWMRealtimeFcst.CONFIG_ANA,
+            NWMRealtimeFcst.CONFIG_SHORT_RANGE,
+            NWMRealtimeFcst.CONFIG_MEDIUM_RANGE,
+            NWMRealtimeFcst.CONFIG_EXT_ANA,
+        ],
+        help=(
+            "NWM configuration to run "
+            f"(default: {NWMRealtimeFcst.CONFIG_ANA})"
+        ),
+    )
+    parser.add_argument(
+        "--domain",
+        default=NWMRealtimeFcst.DOMAIN_CONUS,
+        choices=[
+            NWMRealtimeFcst.DOMAIN_CONUS,
+            NWMRealtimeFcst.DOMAIN_HAWAII,
+            NWMRealtimeFcst.DOMAIN_ALASKA,
+            NWMRealtimeFcst.DOMAIN_PUERTO_RICO,
+        ],
+        help=(
+            "NWM domain to run "
+            f"(default: {NWMRealtimeFcst.DOMAIN_CONUS})"
+        ),
     )
     parser.add_argument(
         "--package-dir",
@@ -221,8 +310,8 @@ def main():
     os.makedirs(working_dir, exist_ok=True)
 
     fcst = NWMRealtimeFcst(
-        config_name=NWMRealtimeFcst.CONFIG_ANA,
-        domain=NWMRealtimeFcst.DOMAIN_CONUS,
+        config_name=args.config_name,
+        domain=args.domain,
         t0=t0,
         package_dir=package_dir,
         working_dir=working_dir,

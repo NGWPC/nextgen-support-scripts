@@ -35,12 +35,36 @@ cd $DATA
 msg="Starting $USHnwm/rte-nwm at `date`"
 
 # configure and run RTE
-python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
+if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
+  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+    --config-name "AnA"                                  \
+    --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
     --package-dir ${HOMEnwm} \
     --working-dir ${DATA}  \
     --comout ${COMOUT}     \
     --previous-day-comout ${COMOUTm1}
+elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
+  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
+    --config-name "Short_Range"                          \
+    --domain "CONUS"                                     \
+    --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
+    --package-dir ${HOMEnwm} \
+    --working-dir ${DATA}  \
+    --comout ${COMOUT}     \
+    --previous-day-comout ${COMOUTm1}
+elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
+  export cyc=16
+  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
+    --config-name "Extended_AnA"                      \
+    --domain "CONUS"                                  \
+    --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
+    --package-dir ${HOMEnwm} \
+    --working-dir ${DATA}  \
+    --comout ${COMOUT}     \
+    --previous-day-comout ${COMOUTm1}
+fi
+
 
 ##Copy RTE config and run.sh script
 #cp $USHnwm/nwm-rte/config.bashrc ./
@@ -98,8 +122,10 @@ cp ${DATA}/default/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${CASETYPE}/
 #log messages from MSWM
 cp ${DATA}/default/test_bmi/*/logs/* ${COMOUT}/logs/${cyc}/${CASETYPE}/
 
-#copy warm states
-cp -r ${DATA}/default/test_bmi/*/state_save ${COMOUT}/${cyc}/${CASETYPE}/
+if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
+  #copy warm states
+  cp -r ${DATA}/default/test_bmi/*/state_save ${COMOUT}/${cyc}/${CASETYPE}/
+fi 
 
 export err=$?; err_chk
 
