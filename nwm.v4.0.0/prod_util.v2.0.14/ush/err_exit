@@ -58,9 +58,9 @@ if [ "$SENDECF" = "YES" ]; then
 fi
 
 # KILL THE JOB:
-if [ -z $PBS_JOBID ]; then
+#if [ -z $PBS_JOBID ]; then
 ecflow_client --kill=${ECF_NAME:?}
-else
+#else
 #qdel $PBS_JOBID
 #scancel $PBS_JOBID
-fi
+#fi

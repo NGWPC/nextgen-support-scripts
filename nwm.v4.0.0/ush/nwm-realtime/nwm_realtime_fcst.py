@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timedelta
 
 
@@ -129,6 +130,15 @@ class NWMRealtimeFcst:
             self.previous_day_comout, cyc, "CONUS_ANALYSIS_ASSIM", "state_save"
         )
 
+    def _short_range_state_save_src(self) -> str:
+        """Return the source state_save path for CONUS_SHORT_RANGE.
+        Uses the CONUS_ANALYSIS_ASSIM state_save produced at the same T0 cycle
+        on the current day (comout/{cyc}/CONUS_ANALYSIS_ASSIM/state_save).
+        The caller is responsible for checking whether the returned path exists;
+        if it does not, a cold start should be used."""
+        cyc = self.t0.strftime("%H")
+        return os.path.join(self.comout, cyc, "CONUS_ANALYSIS_ASSIM", "state_save")
+
     # ------------------------------------------------------------------ #
     # configureRTE  (mirrors exnwm.sh lines 39-48)
     # ------------------------------------------------------------------ #
@@ -174,12 +184,17 @@ class NWMRealtimeFcst:
             dst_state_save = os.path.join(self.working_dir, "state_save")
             if os.path.isdir(src_state_save):
                 shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
+        elif case_type == "CONUS_SHORT_RANGE":
+            src_state_save = self._short_range_state_save_src()
+            dst_state_save = os.path.join(self.working_dir, "state_save")
+            if os.path.isdir(src_state_save):
+                shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
 
     # ------------------------------------------------------------------ #
     # runRTE  (mirrors exnwm.sh lines 50-68)
     # ------------------------------------------------------------------ #
 
-    def runRTE(self) -> subprocess.CompletedProcess:
+    def runRTE(self) -> int:
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
         if case_type is None:
             raise NotImplementedError(
@@ -212,8 +227,26 @@ class NWMRealtimeFcst:
             )
         elif case_type == "CONUS_SHORT_RANGE":
             rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
+            src_state_save = self._short_range_state_save_src()
+            # Hardcoded to the container path: working_dir is mounted as /ngwpc/tmp inside the container where RTE runs
+            state_save_dir = "/ngwpc/tmp/state_save"
+            if os.path.isdir(src_state_save):
+                print(
+                    f"INFO: Warm states found at {src_state_save}; "
+                    f"T0={self.t0:%Y-%m-%d %H:%M:%S}; CONUS_SHORT_RANGE job will use warm states.",
+                    flush=True,
+                )
+                load_state_arg = f' --load_state_from "{state_save_dir}"'
+            else:
+                print(
+                    f"WARNING: Warm states could not be found at {src_state_save}; "
+                    f"T0={self.t0:%Y-%m-%d %H:%M:%S}; CONUS_SHORT_RANGE job cold started.",
+                    flush=True,
+                )
+                load_state_arg = ""
             docker_args = (
                 f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
+                f'{load_state_arg}'
             )
         elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
             ext_start = self.t0.strftime("%Y-%m-%d %H:%M:%S")
@@ -240,11 +273,11 @@ class NWMRealtimeFcst:
             )
 
         cmd = f'source run.sh && docker_run python -um "ngen_rte.run_default" {docker_args}'
-        return subprocess.run(
+        result = subprocess.run(
             ["bash", "-c", cmd],
             cwd=self.working_dir,
-            check=True,
         )
+        return result.returncode
 
 
 def main():
@@ -327,8 +360,16 @@ def main():
     print(f"Package  : {fcst.package_dir}")
     print(f"Work dir : {fcst.working_dir}")
 
-    fcst.configureRTE()
-    fcst.runRTE()
+    try:
+        fcst.configureRTE()
+    except Exception as e:
+        print(f"ERROR: configureRTE failed: {e}", flush=True)
+        sys.exit(1)
+
+    rc = fcst.runRTE()
+    if rc != 0:
+        print(f"ERROR: runRTE exited with return code {rc}", flush=True)
+        sys.exit(rc)
 
 
 if __name__ == "__main__":

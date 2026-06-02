@@ -97,7 +97,11 @@ fi
 #   -fconfig "extended_ana" -dt "$rte_extana_start_time" -rname "default_extended_ana" -nwmout
 ##fi
 
-export err=$?; err_chk
+export err=$?
+if [ "$err" -ne 0 ]; then
+     errMsg="${jobid} failed because RTE failed."
+     err_exit "$errMsg"
+fi
 
 if [ ! -d ${COMOUT}/${cyc}/${CASETYPE} ]; then
 	mkdir -p ${COMOUT}/${cyc}/${CASETYPE}
@@ -122,12 +126,13 @@ cp ${DATA}/default/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${CASETYPE}/
 #log messages from MSWM
 cp ${DATA}/default/test_bmi/*/logs/* ${COMOUT}/logs/${cyc}/${CASETYPE}/
 
+export err=$?; err_chk
+
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
   #copy warm states
   cp -r ${DATA}/default/test_bmi/*/state_save ${COMOUT}/${cyc}/${CASETYPE}/
+  export err=$?; err_chk
 fi 
-
-export err=$?; err_chk
 
 msg="Ending $USHnwm/rte-nwm at `date`"
 

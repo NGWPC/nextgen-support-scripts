@@ -9,6 +9,8 @@ date
 export PS4=' $SECONDS + '
 set -xa
 
+set -euo pipefail
+
 
 ##########################
 # Specify NET and RUN Name 
@@ -84,16 +86,15 @@ fi
 
 env   
 
-
 ########################################################
 # Execute the script.
 ########################################################
-${SCRIPTnwm}/exnwm.sh
+source ${SCRIPTnwm}/exnwm.sh
 
 echo "JOB $job HAS COMPLETED NORMALLY."
 
 if [ "$KEEPDATA" != YES ]; then
-  sudo rm -rf $DATA
+    sudo rm -rf $DATA
 fi
 
 date
