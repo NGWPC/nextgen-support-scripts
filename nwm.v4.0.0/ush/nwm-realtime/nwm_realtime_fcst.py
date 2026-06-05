@@ -6,6 +6,30 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 
+from pathlib import Path
+
+def touch_file_if_not_exists(file_path: str) -> None:
+    """
+    Create a file if it does not already exist.
+
+    Args:
+        file_path (str): Path to the file to create.
+    """
+    try:
+        path = Path(file_path)
+        if not path.exists():
+            # Create the file without overwriting existing ones
+            path.touch(exist_ok=False)
+            print(f"File '{file_path}' created successfully.")
+        else:
+            print(f"File '{file_path}' already exists.")
+    except PermissionError:
+        print(f"Permission denied: Cannot create '{file_path}'.")
+    except FileNotFoundError:
+        print(f"Invalid path: Directory for '{file_path}' does not exist.")
+    except OSError as e:
+        print(f"OS error while creating '{file_path}': {e}")
+
 
 class NWMRealtimeFcst:
 
@@ -54,6 +78,7 @@ class NWMRealtimeFcst:
         self.previous_day_comout = previous_day_comout
         self.forecast_length = self._FORECAST_LENGTHS[config_name]
 
+        self.gageid = "01123000"
     # ------------------------------------------------------------------ #
     # Derived paths (mirrors $USHnwm and $PARMnwm from the ex-script)
     # ------------------------------------------------------------------ #
@@ -149,6 +174,10 @@ class NWMRealtimeFcst:
         shutil.copy(os.path.join(rte_dir, "config.bashrc"), self.working_dir)
         shutil.copy(os.path.join(rte_dir, "run.sh"), self.working_dir)
 
+        shutil.copytree(os.path.join(rte_dir, "logs"), os.path.join(self.working_dir, "logs"), dirs_exist_ok=True)
+        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.gageid}/logs", exist_ok=True)
+        touch_file_if_not_exists( f"{self.working_dir}/default/test_bmi/{self.gageid}/logs/msw_mgr_default.log")
+
         config_bashrc = os.path.join(self.working_dir, "config.bashrc")
         with open(config_bashrc) as f:
             content = f.read()
@@ -222,7 +251,8 @@ class NWMRealtimeFcst:
                 )
                 load_state_arg = ""
             docker_args = (
-                f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" --save_state -rname "default_ana"'
+                #f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" --save_state -rname "default_ana"'
+                f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" -rname "default_ana"'
                 f'{load_state_arg}'
             )
         elif case_type == "CONUS_SHORT_RANGE":
@@ -268,7 +298,8 @@ class NWMRealtimeFcst:
                 )
                 load_state_arg = ""
             docker_args = (
-                f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" --save_state -rname "default_extended_ana" -nwmout'
+                #f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" --save_state -rname "default_extended_ana" -nwmout'
+                f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" -rname "default_extended_ana" -nwmout'
                 f'{load_state_arg}'
             )
 

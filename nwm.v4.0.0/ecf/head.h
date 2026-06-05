@@ -17,7 +17,6 @@ export ECF_RID=$$             # record the process id. Also used for zombie dete
 # make sure client and server use the *same* version.
 # Important when there are multiple versions of ecFlow
 export PATH=/contrib/software/ecflow/%ECF_VERSION%/bin:$PATH
-export PATH=/contrib/lfs/h1/owp/nwm/noscrub/Zhengtao.Cui/test/packages/nwm-automation-scripts/nwm.v4.0.0/prod_util.v2.0.14/ush:/contrib/lfs/h1/owp/nwm/noscrub/Zhengtao.Cui/test/packages/nwm-automation-scripts/nwm.v4.0.0/prod_util.v2.0.14/exec:$PATH
 
 # Tell ecFlow we have started
 ecflow_client --init=$$

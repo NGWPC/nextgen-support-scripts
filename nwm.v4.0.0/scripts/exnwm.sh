@@ -112,27 +112,24 @@ if [ ! -d ${COMOUT}/logs/${cyc}/${CASETYPE} ]; then
 fi
 
 #cat-*.csv and nex-*.csv files
-cp ${DATA}/default/test_bmi/*/Output/Default_Run/*/*.csv ${COMOUT}/${cyc}/${CASETYPE}/
+cp ${DATA}/default/test_bmi/*/Output/*.csv ${COMOUT}/${cyc}/${CASETYPE}/
 
 #T-route output files
-cp ${DATA}/default/test_bmi/*/Output/Default_Run/*/*.nc ${COMOUT}/${cyc}/${CASETYPE}/
-
-#NGen EWTS logs
-cp ${DATA}/default/test_bmi/*/Output/Default_Run/*/*.log ${COMOUT}/logs/${cyc}/${CASETYPE}/
+cp ${DATA}/default/test_bmi/*/Output/*.nc ${COMOUT}/${cyc}/${CASETYPE}/
 
 #NGen logs
 cp ${DATA}/default/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${CASETYPE}/
 
 #log messages from MSWM
-cp ${DATA}/default/test_bmi/*/logs/* ${COMOUT}/logs/${cyc}/${CASETYPE}/
+cp -r ${DATA}/logs/* ${COMOUT}/logs/${cyc}/${CASETYPE}/
 
 export err=$?; err_chk
 
-if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
-  #copy warm states
-  cp -r ${DATA}/default/test_bmi/*/state_save ${COMOUT}/${cyc}/${CASETYPE}/
-  export err=$?; err_chk
-fi 
+#if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
+#  #copy warm states
+#  cp -r ${DATA}/default/test_bmi/*/state_save ${COMOUT}/${cyc}/${CASETYPE}/
+#  export err=$?; err_chk
+#fi 
 
 msg="Ending $USHnwm/rte-nwm at `date`"
 
