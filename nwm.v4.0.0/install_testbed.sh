@@ -3,6 +3,14 @@
 set -xa
 set -euo pipefail
 
+if [ $# -eq 0 ]; then
+  echo "Use default port."
+  export ECF_PORT=3141
+else
+  echo "Use port $1"
+  export ECF_PORT=$1
+fi 
+
 export PATH=/contrib/software/ecflow/5.6.0/bin:$PATH
 
 PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
@@ -49,7 +57,17 @@ echo "Installing NWM suit on server ..."
 
 cd ${PACKAGEDIR}/ecf
 
-ecflow_client --delete yes /nwm || true
+#terminate the server
+#ecflow_client --group="halt=yes; check_pt; terminate=yes"
+# check if the server is running
+if ecflow_client --ping > /dev/null 2>&1; then
+    echo "Server is already running."
+else
+    echo "Start server on port $ECF_PORT"
+    nohup ecflow_server --port=$ECF_PORT &
+fi
+
+ecflow_client --delete yes /nwm > /dev/null 2>&1 || true
 ecflow_client --load=nwm.def
 ecflow_client --begin=nwm
 ecflow_client --stats
