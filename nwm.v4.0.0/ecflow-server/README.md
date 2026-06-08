@@ -17,7 +17,7 @@ See notes in `ecflow-server-docker-build.sh` and in `Dockerfile.ecflow-server` f
 cd nwm.v4.0.0/ecflow-server
 
 # Build the server image and run its `ctest` unit tests.
-# Note that the tests take significant time. Edit the bottom of the Dockerfile to omit running those.
+# Note that the tests take significant time. Edit the bottom of `ecflow-server-docker-build.sh` to omit running those.
 ./ecflow-server-docker-build.sh
 
 # (Optional) install ecFlow client on the host, and test the connection.
