@@ -14,6 +14,10 @@ suite nwm
        task jnwm_conus_analysis_assim
          edit CASETYPE CONUS_ANALYSIS_ASSIM
          edit PRE_WORKDIR NONE
+       # CONUS VPU 03S Ana
+       task jnwm_conus_analysis_assim_vpu_03s
+         edit CASETYPE CONUS_ANALYSIS_ASSIM_VPU_03S
+         edit PRE_WORKDIR NONE
      endfamily
      # The short range forecast family
      family nwm_short_range
@@ -25,7 +29,7 @@ suite nwm
        # CONUS VPU 03S short range forecast
        task jnwm_conus_short_range_vpu_03s
          edit CASETYPE CONUS_SHORT_RANGE_VPU_03S
-         trigger ../nwm_analysis_assim/jnwm_conus_analysis_assim eq complete
+         trigger ../nwm_analysis_assim/jnwm_conus_analysis_assim_vpu_03s eq complete
      endfamily
    endfamily
    family daily
@@ -34,6 +38,10 @@ suite nwm
        # CONUS inland extended AnA
        task jnwm_conus_extended_analysis_assim
          edit CASETYPE CONUS_EXT_ANALYSIS_ASSIM
+         edit PRE_WORKDIR NONE
+       # CONUS VPU 03S extended AnA
+       task jnwm_conus_extended_analysis_assim_vpu_03s
+         edit CASETYPE CONUS_EXT_ANALYSIS_ASSIM_VPU_03S
          edit PRE_WORKDIR NONE
      endfamily
    endfamily
