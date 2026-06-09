@@ -102,6 +102,16 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
     --working-dir ${DATA}  \
     --comout ${COMOUT}     \
     --previous-day-comout ${COMOUTm1}
+elif [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM_VPU_03S" ]]; then
+  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+    --config-name "AnA"                                  \
+    --domain "CONUS"                                     \
+    --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
+    --package-dir ${HOMEnwm} \
+    --working-dir ${DATA}  \
+    --comout ${COMOUT}     \
+    --previous-day-comout ${COMOUTm1} \
+    --vpu "03S"
 elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
   python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
     --config-name "Short_Range"                          \
@@ -111,6 +121,16 @@ elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
     --working-dir ${DATA}  \
     --comout ${COMOUT}     \
     --previous-day-comout ${COMOUTm1}
+elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE_VPU_03S" ]]; then
+  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
+    --config-name "Short_Range"                          \
+    --domain "CONUS"                                     \
+    --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
+    --package-dir ${HOMEnwm} \
+    --working-dir ${DATA}  \
+    --comout ${COMOUT}     \
+    --previous-day-comout ${COMOUTm1} \
+    --vpu "03S"
 elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
   export cyc=16
   python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
@@ -121,6 +141,17 @@ elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
     --working-dir ${DATA}  \
     --comout ${COMOUT}     \
     --previous-day-comout ${COMOUTm1}
+elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM_VPU_03S" ]]; then
+  export cyc=16
+  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py \
+    --config-name "Extended_AnA"                      \
+    --domain "CONUS"                                  \
+    --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
+    --package-dir ${HOMEnwm} \
+    --working-dir ${DATA}  \
+    --comout ${COMOUT}     \
+    --previous-day-comout ${COMOUTm1} \
+    --vpu "03S"
 fi
 
 
