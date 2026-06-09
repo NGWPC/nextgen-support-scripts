@@ -22,6 +22,10 @@ suite nwm
          edit CASETYPE CONUS_SHORT_RANGE
          edit PRE_WORKDIR NONE
          trigger ../nwm_analysis_assim/jnwm_conus_analysis_assim eq complete
+       # CONUS VPU 03S short range forecast
+       task jnwm_conus_short_range_vpu_03s
+         edit CASETYPE CONUS_SHORT_RANGE_VPU_03S
+         trigger ../nwm_analysis_assim/jnwm_conus_analysis_assim eq complete
      endfamily
    endfamily
    family daily
