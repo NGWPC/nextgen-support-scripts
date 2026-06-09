@@ -58,7 +58,6 @@ class NWMRealtimeFcst:
         ("AnA", "CONUS"): "CONUS_ANALYSIS_ASSIM",
         ("Short_Range", "CONUS"): "CONUS_SHORT_RANGE",
         ("Extended_AnA", "CONUS"): "CONUS_EXT_ANALYSIS_ASSIM",
-        ("Short_Range", "CONUS"): "CONUS_SHORT_RANGE",
     }
 
     def __init__(self, config_name: str, domain: str, t0: datetime,
@@ -153,10 +152,10 @@ class NWMRealtimeFcst:
                 f"T0={self.t0}; {case_type} job will use warm states.",
                 flush=True,
             )
-            return f' --load_state_from "{self.state_save_container_dir}'
+            return f' --load_state_from "{self.state_save_container_dir}"'
         print(
             f"WARNING: Warm states not found at: {src_state_save}; "
-            f"T0={self.t0:}; {case_type} job will use cold start.",
+            f"T0={self.t0}; {case_type} job will use cold start.",
             flush=True,
         )
         return ""
@@ -538,7 +537,7 @@ def main():
     parser.add_argument(
         "--vpu",
         default=None,
-        help="VPU identifir for CONUS runs, e.g. '03S",
+        help="VPU identifier for CONUS runs, e.g. '03S'",
     )
     args = parser.parse_args()
     t0 = datetime.strptime(args.t0, "%Y-%m-%d %H:%M:%S")
