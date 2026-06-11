@@ -45,3 +45,4 @@ export SENDCOM=${SENDCOM:-YES}
 export KEEPDATA=${KEEPDATA:-NO}
 
 export PATH=${PACKAGEROOT}/prod_util.v2.0.14/ush:${PACKAGEROOT}/prod_util.v2.0.14/exec:$PATH
+export NDATE=${PACKAGEROOT}/prod_util.v2.0.14/exec/ndate

@@ -91,6 +91,16 @@ class NWMRealtimeFcst:
     def parm_dir(self) -> str:
         return os.path.join(self.package_dir, "parm")
 
+    @property
+    def hydrofab_arg(self) -> str:
+        """`--hydrofab_file` option (with leading space) pointing at the gage's
+        hydrofabric gpkg."""
+        return (
+            " --hydrofab_file "
+            f"/s3/ngwpc-hydrofabric/2.2/CONUS/{self.gageid}/GEOPACKAGE/USGS/"
+            f"2025_Mar_14_21_14_37/gauge_{self.gageid}.gpkg"
+        )
+
     # ------------------------------------------------------------------ #
     # Forecast window helpers
     # ------------------------------------------------------------------ #
@@ -108,19 +118,23 @@ class NWMRealtimeFcst:
         return self.t0 + timedelta(hours=self.forecast_length)
 
     def _ana_state_save_src(self) -> str:
-        """Return the source state_save path for CONUS_ANALYSIS_ASSIM.
+        """Return the source state_save path for CONUS_ANALYSIS_ASSIM warm start.
+        The AnA cycle runs hourly; the current cycle's analysis window starts at
+        T0 - 3h, so the warm state is the timestamped state_save valid at that
+        start time (state_save_<(T0-3h) %Y%m%d%H>) from the look-back cycle.
         Uses previous_day_comout when T0 - 3h rolls back to the previous day.
-        When the look-back cycle is 16z, prefers the state_save from
-        CONUS_EXT_ANALYSIS_ASSIM; falls back to CONUS_ANALYSIS_ASSIM with a
-        warning if that directory is not found."""
+        When the look-back cycle is 16z, prefers the Extended AnA state_save at
+        that time (the 16z Extended AnA run); falls back to the AnA state_save
+        with a warning if that directory is not found."""
         t_prev = self.t0 - timedelta(hours=3)
         cyc = t_prev.strftime("%H")
+        ts = t_prev.strftime("%Y%m%d%H")
         base_comout = self.previous_day_comout if t_prev.date() < self.t0.date() else self.comout
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        default_path = os.path.join(base_comout, cyc, case_type, "state_save")
+        default_path = os.path.join(base_comout, cyc, case_type, f"state_save_{ts}")
 
         if cyc == "16":
-            ext_path = os.path.join(base_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", "state_save")
+            ext_path = os.path.join(base_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", f"state_save_{ts}")
             if os.path.isdir(ext_path):
                 return ext_path
             print(
@@ -133,15 +147,18 @@ class NWMRealtimeFcst:
         return default_path
 
     def _ext_ana_state_save_src(self) -> str:
-        """Return the source state_save path for CONUS_EXT_ANALYSIS_ASSIM.
-        Checks the previous day's 12z folder from CONUS_EXT_ANALYSIS_ASSIM first.
-        Falls back to the previous day's 12z folder from CONUS_ANALYSIS_ASSIM
-        with a warning if the preferred directory is not found.
-        The caller is responsible for checking whether the returned path exists;
-        if it does not, a cold start should be used."""
+        """Return the source state_save path for CONUS_EXT_ANALYSIS_ASSIM warm start.
+        The Extended AnA window starts at T0 - 28h (previous day 12z), so the warm
+        state is the timestamped state_save valid at that start time
+        (state_save_<start %Y%m%d%H>) from the previous day's 12z folder. Prefers
+        CONUS_EXT_ANALYSIS_ASSIM; falls back to CONUS_ANALYSIS_ASSIM with a warning
+        if the preferred directory is not found. The caller is responsible for
+        checking whether the returned path exists; if it does not, a cold start
+        should be used."""
         cyc = "12"
+        ts = self.start_time.strftime("%Y%m%d%H")
         primary_path = os.path.join(
-            self.previous_day_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", "state_save"
+            self.previous_day_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", f"state_save_{ts}"
         )
         if os.path.isdir(primary_path):
             return primary_path
@@ -152,17 +169,18 @@ class NWMRealtimeFcst:
             flush=True,
         )
         return os.path.join(
-            self.previous_day_comout, cyc, "CONUS_ANALYSIS_ASSIM", "state_save"
+            self.previous_day_comout, cyc, "CONUS_ANALYSIS_ASSIM", f"state_save_{ts}"
         )
 
     def _short_range_state_save_src(self) -> str:
-        """Return the source state_save path for CONUS_SHORT_RANGE.
-        Uses the CONUS_ANALYSIS_ASSIM state_save produced at the same T0 cycle
-        on the current day (comout/{cyc}/CONUS_ANALYSIS_ASSIM/state_save).
+        """Return the source state_save path for CONUS_SHORT_RANGE warm start.
+        Uses the AnA state_save valid at T0 (the second AnA run of the same cycle)
+        on the current day (comout/{cyc}/CONUS_ANALYSIS_ASSIM/state_save_<T0 %Y%m%d%H>).
         The caller is responsible for checking whether the returned path exists;
         if it does not, a cold start should be used."""
         cyc = self.t0.strftime("%H")
-        return os.path.join(self.comout, cyc, "CONUS_ANALYSIS_ASSIM", "state_save")
+        ts = self.t0.strftime("%Y%m%d%H")
+        return os.path.join(self.comout, cyc, "CONUS_ANALYSIS_ASSIM", f"state_save_{ts}")
 
     # ------------------------------------------------------------------ #
     # configureRTE  (mirrors exnwm.sh lines 39-48)
@@ -205,23 +223,124 @@ class NWMRealtimeFcst:
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
         if case_type == "CONUS_ANALYSIS_ASSIM":
             src_state_save = self._ana_state_save_src()
-            dst_state_save = os.path.join(self.working_dir, "state_save")
+            dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.gageid, "state_save")
             if os.path.isdir(src_state_save):
                 shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
         elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
             src_state_save = self._ext_ana_state_save_src()
-            dst_state_save = os.path.join(self.working_dir, "state_save")
+            dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.gageid, "state_save")
             if os.path.isdir(src_state_save):
                 shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
         elif case_type == "CONUS_SHORT_RANGE":
             src_state_save = self._short_range_state_save_src()
-            dst_state_save = os.path.join(self.working_dir, "state_save")
+            dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.gageid, "state_save")
             if os.path.isdir(src_state_save):
                 shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
 
     # ------------------------------------------------------------------ #
     # runRTE  (mirrors exnwm.sh lines 50-68)
     # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _lookback_minutes(window_hours: int) -> int:
+        """Convert a desired simulated AnA window length (hours) into the forcing
+        template `LookBack` value (minutes) expected by RTE's `--lookback` option.
+        msw-mgr computes the simulated window as `LookBack/60 - 1` hours, so
+        `LookBack = (window_hours + 1) * 60`."""
+        return (window_hours + 1) * 60
+
+    def _docker_run(self, docker_args: str) -> int:
+        """Run a single RTE invocation inside the container; return its exit code."""
+        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_default" {docker_args}'
+        result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir)
+        return result.returncode
+
+    def _archive_run_outputs(self, run_dir: str, end_time: datetime) -> None:
+        """Copy the run's Output and state_save directories to timestamped
+        siblings (Output_<ts> / state_save_<ts>), where <ts> is the simulation
+        end time in %Y%m%d%H format. Preserves each pass's results before the
+        next pass overwrites them."""
+        ts = end_time.strftime("%Y%m%d%H")
+        for name in ("Output", "state_save"):
+            src = os.path.join(run_dir, name)
+            dst = os.path.join(run_dir, f"{name}_{ts}")
+            if os.path.isdir(src):
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+                print(f"INFO: Archived {src} -> {dst}", flush=True)
+            else:
+                print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
+
+    def _run_two_pass_ana(self, case_type: str, fconfig: str, rname: str,
+                          src_state_save: str, window_hours: tuple,
+                          extra_args: str = "") -> int:
+        """Run a two-pass AnA-type analysis, splitting the analysis window into
+        two consecutive chunks with a state handoff.
+
+        window_hours = (l1, l2): simulated window length (hours) of run 1 (the
+        earlier chunk) and run 2 (the later chunk, ending at T0). Run 1 covers
+        [T0-(l1+l2), T0-l2] and saves its end state; run 2 covers [T0-l2, T0],
+        loading run 1's saved state. The window length is controlled per run via
+        the RTE `--lookback` option (minutes). Returns the exit code of the first
+        failing run, or of run 2 if both ran."""
+        l1, l2 = window_hours
+        # Host run directory; working_dir is mounted at /ngwpc/run_ngen in the container.
+        run_dir = os.path.join(self.working_dir, "default", "test_bmi", self.gageid)
+        # Hardcoded container path where RTE writes/reads the saved model state
+        # (the run directory inside the /ngwpc/run_ngen mount).
+        state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.gageid}/state_save"
+
+        # Run 1 initial states: load previous-cycle warm states if present, else cold start.
+        if os.path.isdir(src_state_save):
+            print(
+                f"INFO: Warm states found: {src_state_save}; "
+                f"T0={self.t0}; {case_type} job will use warm states.",
+                flush=True,
+            )
+            load_state_arg = f' --load_state_from "{state_save_dir}"'
+        else:
+            print(
+                f"WARNING: state_save directory not found: {src_state_save}; "
+                f"T0={self.t0}; {case_type} job will use cold start.",
+                flush=True,
+            )
+            load_state_arg = ""
+
+        # Run 1: earlier chunk, ends at T0 - l2, window l1 hours; saves its end state.
+        dt1 = (self.t0 - timedelta(hours=l2)).strftime("%Y-%m-%d %H:%M:%S")
+        docker_args = (
+            f'-n 2 -fconfig "{fconfig}" -dt "{dt1}" --lookback {self._lookback_minutes(l1)} '
+            f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{self.hydrofab_arg}'
+        )
+        rc = self._docker_run(docker_args)
+        if rc != 0:
+            print(
+                f"ERROR: {case_type} run 1 (T0={dt1}, lookback={l1}h) "
+                f"exited with return code {rc}",
+                flush=True,
+            )
+            return rc
+
+        # Preserve run 1's outputs before run 2 overwrites them (end time = T0 - l2).
+        self._archive_run_outputs(run_dir, self.t0 - timedelta(hours=l2))
+
+        # Run 2: later chunk, ends at T0, window l2 hours; loads run 1's saved state.
+        dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
+        docker_args = (
+            f'-n 2 -fconfig "{fconfig}" -dt "{dt2}" --lookback {self._lookback_minutes(l2)} '
+            f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"{self.hydrofab_arg}'
+        )
+        rc = self._docker_run(docker_args)
+        if rc != 0:
+            print(
+                f"ERROR: {case_type} run 2 (T0={dt2}, lookback={l2}h) "
+                f"exited with return code {rc}",
+                flush=True,
+            )
+            return rc
+
+        # Preserve run 2's outputs (end time = T0).
+        self._archive_run_outputs(run_dir, self.t0)
+        return rc
 
     def runRTE(self) -> int:
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
@@ -231,35 +350,30 @@ class NWMRealtimeFcst:
             )
 
         if case_type == "CONUS_ANALYSIS_ASSIM":
-            rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
-            csdt = (self.start_time - timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S")
-            src_state_save = self._ana_state_save_src()
-            # Hardcoded to the container path: working_dir is mounted as /ngwpc/tmp inside the container where RTE runs
-            state_save_dir = "/ngwpc/tmp/state_save"
-            if os.path.isdir(src_state_save):
-                print(
-                    f"INFO: Warm states found: {src_state_save}; "
-                    f"T0={self.t0}; CONUS_ANALYSIS_ASSIM job will use warm states.",
-                    flush = True
-                )
-                load_state_arg = f' --load_state_from "{state_save_dir}"'
-            else:
-                print(
-                    f"WARNING: state_save directory not found: {src_state_save}; "
-                    f"T0={self.t0}; CONUS_ANALYSIS_ASSIM job will use cold start.",
-                    flush = True
-                )
-                load_state_arg = ""
-            docker_args = (
-                #f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" --save_state -rname "default_ana"'
-                f'-n 2 -fconfig "standard_ana" -dt "{rte_start_time}" -rname "default_ana"'
-                f'{load_state_arg}'
+            # AnA 3h window split into 1h (run 1) + 2h (run 2).
+            return self._run_two_pass_ana(
+                case_type=case_type,
+                fconfig="standard_ana",
+                rname="default_ana",
+                src_state_save=self._ana_state_save_src(),
+                window_hours=(1, 2),
+            )
+        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
+            # Extended AnA 28h window split into 24h (run 1) + 4h (run 2).
+            return self._run_two_pass_ana(
+                case_type=case_type,
+                fconfig="extended_ana",
+                rname="default_extended_ana",
+                src_state_save=self._ext_ana_state_save_src(),
+                window_hours=(24, 4),
+                extra_args=" -nwmout",
             )
         elif case_type == "CONUS_SHORT_RANGE":
             rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
             src_state_save = self._short_range_state_save_src()
-            # Hardcoded to the container path: working_dir is mounted as /ngwpc/tmp inside the container where RTE runs
-            state_save_dir = "/ngwpc/tmp/state_save"
+            # Hardcoded container path where RTE writes/reads the saved model state
+            # (the run directory inside the /ngwpc/run_ngen mount).
+            state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.gageid}/state_save"
             if os.path.isdir(src_state_save):
                 print(
                     f"INFO: Warm states found at {src_state_save}; "
@@ -276,39 +390,9 @@ class NWMRealtimeFcst:
                 load_state_arg = ""
             docker_args = (
                 f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
-                f'{load_state_arg}'
+                f'{load_state_arg}{self.hydrofab_arg}'
             )
-        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
-            ext_start = self.t0.strftime("%Y-%m-%d %H:%M:%S")
-            src_state_save = self._ext_ana_state_save_src()
-            # Hardcoded to the container path: working_dir is mounted as /ngwpc/tmp inside the container where RTE runs
-            state_save_dir = "/ngwpc/tmp/state_save"
-            if os.path.isdir(src_state_save):
-                print(
-                    f"INFO: Warm states found: {src_state_save}; "
-                    f"T0={self.t0}; CONUS_EXT_ANALYSIS_ASSIM job will use warm states.",
-                    flush=True,
-                )
-                load_state_arg = f' --load_state_from "{state_save_dir}"'
-            else:
-                print(
-                    f"WARNING: state_save directory not found: {src_state_save}; "
-                    f"T0={self.t0}; CONUS_EXT_ANALYSIS_ASSIM job will use cold start.",
-                    flush=True,
-                )
-                load_state_arg = ""
-            docker_args = (
-                #f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" --save_state -rname "default_extended_ana" -nwmout'
-                f'-n 2 -fconfig "extended_ana" -dt "{ext_start}" -rname "default_extended_ana" -nwmout'
-                f'{load_state_arg}'
-            )
-
-        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_default" {docker_args}'
-        result = subprocess.run(
-            ["bash", "-c", cmd],
-            cwd=self.working_dir,
-        )
-        return result.returncode
+            return self._docker_run(docker_args)
 
 
 def main():
