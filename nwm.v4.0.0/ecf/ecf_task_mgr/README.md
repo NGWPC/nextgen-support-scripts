@@ -9,7 +9,7 @@ Manages ecflow tasks and subtasks. ecflow tracks status at the Task level only â
 ```bash
 # With cwd as "nwm-automation-scripts/nwm.v4.0.0/ecflow-server"
 bash ecflow-server-docker-build.sh no
-bash ecflow-server-test-from-local-client.sh
+bash ./ecflow-server-start.sh "test-only"
 ```
 
 ### 2. Build and install the ecflow Python client
