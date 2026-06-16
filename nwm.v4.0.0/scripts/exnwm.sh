@@ -34,6 +34,64 @@ cd $DATA
 
 msg="Starting $USHnwm/rte-nwm at `date`"
 
+# Scan RTE log files in ${DATA}/logs/rte/ for warnings and errors.
+# Prints all WARNING/ERROR/FATAL/CRITICAL/SEVERE lines and calls err_chk
+# if any error-level lines are found, or if the log dir/files are missing.
+check_rte_logs() {
+    set $setoff
+    local log_dir="${DATA}/logs/rte"
+
+    if [[ ! -d "${log_dir}" ]]; then
+        echo "ERROR: RTE log directory not found: ${log_dir}" >&2
+        export err=1; err_chk
+        return
+    fi
+
+    local -a log_files=( "${log_dir}"/rte_*.log )
+    if [[ ! -e "${log_files[0]}" ]]; then
+        echo "ERROR: No RTE log files found in ${log_dir}" >&2
+        export err=1; err_chk
+        return
+    fi
+
+    local error_count=0 warning_count=0 info_count=0
+    local log_file file_warnings file_errors n
+
+    for log_file in "${log_files[@]}"; do
+        n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+INFO[[:space:]]' \
+            "${log_file}" 2>/dev/null) || true
+        info_count=$(( info_count + ${n:-0} ))
+
+        file_warnings=$(grep -E '^\S+[[:space:]]+RTE[[:space:]]+WARNING[[:space:]]' \
+                        "${log_file}" 2>/dev/null) || true
+        if [[ -n "${file_warnings}" ]]; then
+            echo "${file_warnings}"
+            n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+WARNING[[:space:]]' \
+                "${log_file}" 2>/dev/null) || true
+            warning_count=$(( warning_count + ${n:-0} ))
+        fi
+
+        file_errors=$(grep -E '^\S+[[:space:]]+RTE[[:space:]]+(ERROR|FATAL|CRITICAL|SEVERE)[[:space:]]' \
+                      "${log_file}" 2>/dev/null) || true
+        if [[ -n "${file_errors}" ]]; then
+            echo "${file_errors}"
+            n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+(ERROR|FATAL|CRITICAL|SEVERE)[[:space:]]' \
+                "${log_file}" 2>/dev/null) || true
+            error_count=$(( error_count + ${n:-0} ))
+        fi
+    done
+
+    echo "RTE log scan: ${info_count} INFO message(s) found in ${log_dir}."
+    if [[ ${warning_count} -gt 0 ]]; then
+        echo "RTE log scan: ${warning_count} WARNING(s) found in ${log_dir}."
+    fi
+    if [[ ${error_count} -gt 0 ]]; then
+        echo "RTE log scan: ${error_count} ERROR/FATAL/CRITICAL/SEVERE line(s) found in ${log_dir}." >&2
+        export err=1; err_chk
+    fi
+    set $seton
+}
+
 # configure and run RTE
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
   python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
@@ -97,11 +155,13 @@ fi
 #   -fconfig "extended_ana" -dt "$rte_extana_start_time" -rname "default_extended_ana" -nwmout
 ##fi
 
-export err=$?
-if [ "$err" -ne 0 ]; then
-     errMsg="${jobid} failed because RTE failed."
-     err_exit "$errMsg"
-fi
+#export err=$?
+#if [ "$err" -ne 0 ]; then
+#     errMsg="${jobid} failed because RTE failed."
+#     err_exit "$errMsg"
+#fi
+
+check_rte_logs
 
 if [ ! -d ${COMOUT}/${cyc}/${CASETYPE} ]; then
 	mkdir -p ${COMOUT}/${cyc}/${CASETYPE}

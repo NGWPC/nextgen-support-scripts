@@ -22,7 +22,7 @@ export PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
 export PACKAGEHOME=${PACKAGEHOME:-$PACKAGEROOT}/$model.${nwm_ver}
 modelhome=$PACKAGEHOME
 export HOME${model}=$modelhome
-export KEEPDATA=NO
+export KEEPDATA=YES
 
 modelhome=$PACKAGEHOME
 export HOME${model}=$modelhome

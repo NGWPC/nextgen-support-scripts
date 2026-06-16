@@ -96,7 +96,7 @@ class NWMRealtimeFcst:
         """`--hydrofab_file` option (with leading space) pointing at the gage's
         hydrofabric gpkg."""
         return (
-            " --hydrofab_file "
+            f" -g {self.gageid} --hydrofab_file "
             f"/s3/ngwpc-hydrofabric/2.2/CONUS/{self.gageid}/GEOPACKAGE/USGS/"
             f"2025_Mar_14_21_14_37/gauge_{self.gageid}.gpkg"
         )
@@ -192,7 +192,11 @@ class NWMRealtimeFcst:
         shutil.copy(os.path.join(rte_dir, "config.bashrc"), self.working_dir)
         shutil.copy(os.path.join(rte_dir, "run.sh"), self.working_dir)
 
-        shutil.copytree(os.path.join(rte_dir, "logs"), os.path.join(self.working_dir, "logs"), dirs_exist_ok=True)
+        #shutil.copytree(os.path.join(rte_dir, "logs"), os.path.join(self.working_dir, "logs"), dirs_exist_ok=True)
+        os.makedirs(f"{self.working_dir}/logs", exist_ok=True)
+        os.makedirs(f"{self.working_dir}/logs/rte", exist_ok=True)
+        os.makedirs(f"{self.working_dir}/logs/docker", exist_ok=True)
+        os.makedirs(f"{self.working_dir}/logs/ngen", exist_ok=True)
         os.makedirs(f"{self.working_dir}/default/test_bmi/{self.gageid}/logs", exist_ok=True)
         touch_file_if_not_exists( f"{self.working_dir}/default/test_bmi/{self.gageid}/logs/msw_mgr_default.log")
 
@@ -207,6 +211,11 @@ class NWMRealtimeFcst:
         content = re.sub(
             r"^MNT__MODULE_PARAM_FILES_DIR__HOST=.*$",
             f"MNT__MODULE_PARAM_FILES_DIR__HOST={self.parm_dir}",
+            content, flags=re.MULTILINE,
+        )
+        content = re.sub(
+            r"^REPOS_COMMON_ROOT__HOST=.*$",
+            f"REPOS_COMMON_ROOT__HOST={self.package_dir}/ush",
             content, flags=re.MULTILINE,
         )
         with open(config_bashrc, "w") as f:
