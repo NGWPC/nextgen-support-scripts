@@ -14,7 +14,7 @@ import ecflow
 
 from ecf_task_mgr.constants import AoiType, ECFLabelSuffix, SubtaskType
 from ecf_task_mgr.ecf_interface import EcflowInterface
-from ecf_task_mgr.metadata import RunLogEntry, SubtaskInfoLabelEntry
+from ecf_task_mgr.metadata import RunLogEntry, SubtaskInfoLabelEntry, TaskPath
 from ecf_task_mgr.utils import datetime_to_str_safe
 
 logger = logging.getLogger("ecf_task_mgr.tasks")
@@ -26,12 +26,12 @@ class Task:
     def __init__(
         self,
         connection: Any,  # TODO add EcflowConnection type hint after resolving circular imports
-        ecf_name: str,
+        ecf_task_path: TaskPath,
         ecf_tryno: int,
         ecf_pass: str,
         ecf_rid: str,
     ) -> None:
-        self._ecf_name = ecf_name
+        self._ecf_task_path = ecf_task_path
         self._ecf_tryno = ecf_tryno
         self._ecf_pass = ecf_pass
         self._ecf_rid = ecf_rid
@@ -159,7 +159,7 @@ class Subtask:
     @property
     def identity_string(self) -> str:
         """String that uniquely identifies this subtask instance, used for defining ecflow labels for storing status and other information about this subtask."""
-        return f"{self._task._ecf_name}__{self._subtask_type}__{datetime_to_str_safe(self._cycle_dt)}__{self._aoi_type}__{self._aoi_id}"
+        return f"{self._task._ecf_task_path}__{self._subtask_type}__{datetime_to_str_safe(self._cycle_dt)}__{self._aoi_type}__{self._aoi_id}"
 
     @property
     def _hashed_identity_string(self) -> str:
@@ -191,14 +191,16 @@ class Subtask:
         self._status = status
         interface = self._task._interface
         # if interface is not None:
-        interface.subtask_label_status_set(self._task._ecf_name, self._base_key, status)
+        interface.subtask_label_status_set(
+            str(self._task._ecf_task_path), self._base_key, status
+        )
         entry = SubtaskInfoLabelEntry(
             status=status,
             reason=reason,
             metadata=metadata,
         )
         interface.subtask_label_info_append(
-            self._task._ecf_name,
+            str(self._task._ecf_task_path),
             self._base_key,
             entry,
         )
