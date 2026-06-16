@@ -63,7 +63,8 @@ class NWMRealtimeFcst:
 
     def __init__(self, config_name: str, domain: str, t0: datetime,
                  package_dir: str, working_dir: str, comout: str,
-                 previous_day_comout: str, vpu: str | None = None):
+                 previous_day_comout: str, vpu: str | None = None,
+                 hydrofab_file: str | None = None):
         if config_name not in self._FORECAST_LENGTHS:
             raise ValueError(f"Unknown config_name: {config_name}")
         if domain not in (self.DOMAIN_CONUS, self.DOMAIN_HAWAII,
@@ -79,6 +80,7 @@ class NWMRealtimeFcst:
         self.previous_day_comout = previous_day_comout
         self.forecast_length = self._FORECAST_LENGTHS[config_name]
         self.vpu = vpu
+        self.hydrofab_file = hydrofab_file
         self.gageid = "01123000"
     # ------------------------------------------------------------------ #
     # Derived paths (mirrors $USHnwm and $PARMnwm from the ex-script)
@@ -96,11 +98,9 @@ class NWMRealtimeFcst:
     def hydrofab_arg(self) -> str:
         """`--hydrofab_file` option (with leading space) pointing at the gage's
         hydrofabric gpkg."""
-        return (
-            f" -g {self.gageid} --hydrofab_file "
-            f"/s3/ngwpc-hydrofabric/2.2/CONUS/{self.gageid}/GEOPACKAGE/USGS/"
-            f"2025_Mar_14_21_14_37/gauge_{self.gageid}.gpkg"
-        )
+        if not self.hydrofab_file:
+            return ""
+        return f' --hydrofab_file "{self.hydrofab_file}'
 
     # ------------------------------------------------------------------ #
     # Forecast window helpers
@@ -479,6 +479,11 @@ def main():
         default=None,
         help="VPU identifier for CONUS runs, e.g. '03S'",
     )
+    parser.add_argument(
+        "--hydrofab_file",
+        default=None,
+        help="Path to the local hydrofabric geopackage file"
+    )
     args = parser.parse_args()
     t0 = datetime.strptime(args.t0, "%Y-%m-%d %H:%M:%S")
     package_dir = args.package_dir
@@ -494,6 +499,7 @@ def main():
         comout=args.comout,
         previous_day_comout=args.previous_day_comout,
         vpu=args.vpu,
+        hydrofab_file=args.hydrofab_file,
     )
 
     print(f"Config   : {fcst.config_name}")
