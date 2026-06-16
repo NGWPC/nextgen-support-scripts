@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 
+
 def touch_file_if_not_exists(file_path: str) -> None:
     """
     Create a file if it does not already exist.
@@ -118,57 +119,17 @@ class NWMRealtimeFcst:
         return self.t0 + timedelta(hours=self.forecast_length)
 
     # ------------------------------------------------------------------ #
-    # VPU region helper
+    # VPU region/run_id helper
     # ------------------------------------------------------------------ #
 
     @property
     def vpu_arg(self) -> str:
         return f' --vpu {self.vpu}' if self.vpu else ""
 
-    # ------------------------------------------------------------------ #
-    # State saving handling
-    # ------------------------------------------------------------------ #
-
     @property
     def run_id(self) -> str:
         """Unique identifier for run - VPU or gage ID"""
         return self.vpu if self.vpu else self.gageid
-
-    @property
-    def state_save_host_dir(self) -> str:
-        return os.path.join(self.working_dir, f"state_save_{self.run_id}")
-
-    @property
-    def state_save_container_dir(self) -> str:
-        return f"/ngwpc/tmp/state_save_{self.run_id}"
-
-    @property
-    def load_state_arg(self) -> str:
-        src_state_save = self._state_save_src()
-        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        if src_state_save and os.path.isdir(src_state_save):
-            print(
-                f"INFO: Warm states found: {src_state_save}; "
-                f"T0={self.t0}; {case_type} job will use warm states.",
-                flush=True,
-            )
-            return f' --load_state_from "{self.state_save_container_dir}"'
-        print(
-            f"WARNING: Warm states not found at: {src_state_save}; "
-            f"T0={self.t0}; {case_type} job will use cold start.",
-            flush=True,
-        )
-        return ""
-
-    def _state_save_src(self) -> str | None:
-        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        if case_type == "CONUS_ANALYSIS_ASSIM":
-            return self._ana_state_save_src()
-        elif case_type == "CONUS_SHORT_RANGE":
-            return self._short_range_state_save_src()
-        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
-            return self._ext_ana_state_save_src()
-        return None
 
     def _ana_state_save_src(self) -> str:
         """Return the source state_save path for CONUS_ANALYSIS_ASSIM warm start.
@@ -183,17 +144,18 @@ class NWMRealtimeFcst:
         cyc = t_prev.strftime("%H")
         ts = t_prev.strftime("%Y%m%d%H")
         base_comout = self.previous_day_comout if t_prev.date() < self.t0.date() else self.comout
-        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        default_path = os.path.join(base_comout, cyc, case_type, f"state_save_{ts}")
+        ana_dir = f"CONUS_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_ANALYSIS_ASSIM"
+        ext_ana_dir = f"CONUS_EXT_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_EXT_ANALYSIS_ASSIM"
+        default_path = os.path.join(base_comout, cyc, ana_dir, f"state_save_{ts}")
 
         if cyc == "16":
-            ext_path = os.path.join(base_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", f"state_save_{ts}")
+            ext_path = os.path.join(base_comout, cyc, ext_ana_dir, f"state_save_{ts}")
             if os.path.isdir(ext_path):
                 return ext_path
             print(
                 f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing "
                 f"(cyc={cyc}, T0={self.t0:%Y-%m-%d %H:%M:%S}); "
-                f"using warm states from {case_type} case type instead.",
+                f"using warm states from {ana_dir} case type instead.",
                 flush=True,
             )
 
@@ -210,19 +172,21 @@ class NWMRealtimeFcst:
         should be used."""
         cyc = "12"
         ts = self.start_time.strftime("%Y%m%d%H")
+        ana_dir = f"CONUS_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_ANALYSIS_ASSIM"
+        ext_ana_dir = f"CONUS_EXT_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_EXT_ANALYSIS_ASSIM"
         primary_path = os.path.join(
-            self.previous_day_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", f"state_save_{ts}"
+            self.previous_day_comout, cyc, ext_ana_dir, f"state_save_{ts}"
         )
         if os.path.isdir(primary_path):
             return primary_path
         print(
-            f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing at "
+            f"WARNING: {ext_ana_dir} warm states are missing at "
             f"{self.start_time:%Y-%m-%d %H:%M:%S} (T0={self.t0:%Y-%m-%d %H:%M:%S}); "
-            f"using warm states from CONUS_ANALYSIS_ASSIM case type instead.",
+            f"using warm states from {ana_dir} case type instead.",
             flush=True,
         )
         return os.path.join(
-            self.previous_day_comout, cyc, "CONUS_ANALYSIS_ASSIM", f"state_save_{ts}"
+            self.previous_day_comout, cyc, ana_dir, f"state_save_{ts}"
         )
 
     def _short_range_state_save_src(self) -> str:
@@ -292,8 +256,7 @@ class NWMRealtimeFcst:
 
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
         dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.run_id, "state_save")
-        src_fn = state_save_src_fns.get(case_type)
-        src_state_save = src_fn()
+        src_state_save = state_save_src_fns[case_type]()
         if os.path.isdir(src_state_save):
             shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
 
