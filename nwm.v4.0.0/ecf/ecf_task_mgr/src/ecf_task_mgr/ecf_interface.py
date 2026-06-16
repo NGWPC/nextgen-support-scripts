@@ -150,7 +150,7 @@ class EcflowInterface:
         """Send a child command to the ecflow server.
 
         Reads ``task._status`` to determine which child command to issue.
-        Uses ``task._ecf_name``, ``task._ecf_pass``, ``task._ecf_rid``, and
+        Uses ``task._ecf_task_path``, ``task._ecf_pass``, ``task._ecf_rid``, and
         ``task._ecf_tryno`` to authenticate.
 
         ``reason`` is only used when aborting.
