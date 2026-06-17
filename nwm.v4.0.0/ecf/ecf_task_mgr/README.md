@@ -1,6 +1,6 @@
 # ecf_task_mgr
 
-Manages ecflow tasks and subtasks. ecflow tracks status at the Task level only — this package adds a Subtask abstraction using ecflow labels.
+Manages ecflow tasks and subtasks. ecflow tracks status at the Task level only — this package adds a Subtask abstraction using ecflow variables.
 
 ## Setup
 

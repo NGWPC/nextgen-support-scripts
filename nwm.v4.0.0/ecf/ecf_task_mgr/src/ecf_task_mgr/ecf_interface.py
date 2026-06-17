@@ -8,7 +8,7 @@ from typing import Any, TypeAlias
 
 import ecflow
 
-from ecf_task_mgr.metadata import SubtaskInfoLabelEntry
+from ecf_task_mgr.metadata import SubtaskInfoVariableEntry
 
 # TODO: Replace this alias with the concrete Task type once circular imports are resolved.
 Task: TypeAlias = Any
@@ -81,7 +81,7 @@ class EcflowConnection:
 
 
 class EcflowInterface:
-    """Label and child-command operations delegated from Task/Subtask.
+    """Variable and child-command operations delegated from Task/Subtask.
 
     Both classes delegate all ecflow server interactions here rather than
     calling ecflow.Client directly.
@@ -89,11 +89,11 @@ class EcflowInterface:
     ecflow has no native subtask concept — status is officially tracked only at the Task level.
 
     To represent state per subtask and track metadata per subtask, each ``Subtask`` instance
-    is represented by a pair of ecflow labels attached to its parent task node:
+    is represented by a pair of ecflow variables attached to its parent task node:
 
-    "status label", with key built like ``{base_key}_status`` —
+    "status" variable, with key built like ``{base_key}_status`` —
         a single string value reflecting the current ``ecflow.State`` of the subtask.
-    "info label", with key built like ``{base_key}_info`` —
+    "info" variable, with key built like ``{base_key}_info`` —
         a JSON-encoded list of dicts, one entry appended per lifecycle event
 
     Common parameters
@@ -101,10 +101,10 @@ class EcflowInterface:
     task_path : str
         Full ecflow task path,
         e.g. ``"/nwm/hourly/jnwm_conus_analysis_assim"``.
-    label_name : str
-        Name of an ecflow Task label, e.g. ``"subtask_01_status"``.
-    label_subtask_base : str
-        Shared base key to be used to construct a Subtask status label and a Subtask info label.
+    ecf_var_name : str
+        Name of an ecflow Task variable, e.g. ``"subtask_01_status"``.
+    ecf_var_subtask_base : str
+        Shared base key to be used to construct a Subtask status variable and a Subtask info variable.
     ecf_pass : str
         See ecflow docs. Job password.
     ecf_rid : str
@@ -118,26 +118,32 @@ class EcflowInterface:
     def connection(self) -> EcflowConnection:
         return self._connection
 
-    def label_exists(self, task_path: str, label_name: str) -> bool:
-        """Return ``True`` if ``label_name`` exists on the task node."""
+    def ecf_var_exists(self, task_path: str, ecf_var_name: str) -> bool:
+        """Return ``True`` if ``ecf_var_name`` exists on the task node."""
         raise NotImplementedError
 
-    def label_create(self, task_path: str, label_name: str, value: str = "") -> None:
-        """Add a new label to a task node on the server."""
+    def ecf_var_create(
+        self, task_path: str, ecf_var_name: str, value: str = ""
+    ) -> None:
+        """Add a new variable to a task node on the server."""
         raise NotImplementedError
-        if not self.label_exists(task_path, label_name):
+        if not self.ecf_var_exists(task_path, ecf_var_name):
             raise RuntimeError(
-                f"Label '{label_name}' was not found on '{task_path}' after creation."
+                f"Variable '{ecf_var_name}' was not found on '{task_path}' after creation."
             )
 
-    def label_set(self, task_path: str, label_name: str, value: str) -> None:
-        """Set (or overwrite) the value of an existing label on the server."""
+    def ecf_var_set(
+        self, task_path: str, ecf_var_name: str, value: str
+    ) -> None:
+        """Set (or overwrite) the value of an existing variable on the server."""
         raise NotImplementedError
-        if not self.label_exists(task_path, label_name):
-            raise RuntimeError(f"Label '{label_name}' does not exist on '{task_path}'.")
+        if not self.ecf_var_exists(task_path, ecf_var_name):
+            raise RuntimeError(
+                f"Variable '{ecf_var_name}' does not exist on '{task_path}'."
+            )
 
-    def label_fetch(self, task_path: str, label_name: str) -> str:
-        """Get the current value of a label from the server (return empty string if unset)."""
+    def ecf_var_fetch(self, task_path: str, ecf_var_name: str) -> str:
+        """Get the current value of a variable from the server (return empty string if unset)."""
         raise NotImplementedError
 
     ### Child commands (used by Task)
@@ -157,28 +163,31 @@ class EcflowInterface:
         """
         raise NotImplementedError
 
-    ### Subtask label operations (e.g. for setting "status" label and appending to "info" label)
+    ### Subtask variable operations (e.g. for setting "status" variable and appending to "info" variable)
 
-    def subtask_label_pair_create(
-        self, task_path: str, label_subtask_base: str
+    def subtask_ecf_var_pair_create(
+        self, task_path: str, ecf_var_subtask_base: str
     ) -> None:
-        """Create the info and status labels on the server for a subtask."""
+        """Create the info and status ecf_vars on the server for a subtask."""
         raise NotImplementedError
 
-    def subtask_label_status_set(
-        self, task_path: str, label_subtask_base: str, status: ecflow.State
+    def subtask_ecf_var_status_set(
+        self, task_path: str, ecf_var_subtask_base: str, status: ecflow.State
     ) -> None:
-        """Overwrite the status label for a subtask.  Uses ``status.name`` as the label value."""
+        """Overwrite the status ecf_var for a subtask. Uses ``status.name`` as the ecf_var value."""
         raise NotImplementedError
 
-    def subtask_label_info_append(
-        self, task_path: str, label_subtask_base: str, entry: SubtaskInfoLabelEntry
+    def subtask_ecf_var_info_append(
+        self,
+        task_path: str,
+        ecf_var_subtask_base: str,
+        entry: SubtaskInfoVariableEntry,
     ) -> None:
-        """Append ``entry`` to the info label's JSON list of dicts."""
+        """Append ``entry`` to the info ecf_var's JSON list of dicts."""
         raise NotImplementedError
 
-    def subtask_label_info_fetch(
-        self, task_path: str, label_subtask_base: str
+    def subtask_ecf_var_info_fetch(
+        self, task_path: str, ecf_var_subtask_base: str
     ) -> list[dict[str, Any]]:
-        """Return the parsed info label as a list of dicts (empty list if unset)."""
+        """Return the parsed info ecf_var as a list of dicts (empty list if unset)."""
         raise NotImplementedError

@@ -52,8 +52,8 @@ class RunLogEntry:
 
 
 @dataclass
-class SubtaskInfoLabelEntry:
-    """For sending a new entry (json dict) to the server for a Subtask's "info" label"""
+class SubtaskInfoVariableEntry:
+    """For sending a new entry (json dict) to the server for a Subtask's "info" variable"""
 
     status: ecflow.State
     reason: str | None = None

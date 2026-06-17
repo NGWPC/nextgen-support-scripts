@@ -13,7 +13,7 @@ def datetime_to_str_nco(dt: datetime) -> str:
 
 
 def datetime_to_str_safe(dt: datetime) -> str:
-    """Convert a UTC datetime to a filesystem/label-safe string 'YYYYMMDD-HHMMSS-ffffff'."""
+    """Convert a UTC datetime to a system-safe string of format 'YYYYMMDD_HHMMSS_ffffff'."""
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) != timezone.utc.utcoffset(None):
         raise ValueError("dt must have UTC timezone")
-    return dt.strftime("%Y%m%d-%H%M%S-%f")
+    return dt.strftime("%Y%m%d_%H%M%S_%f")
