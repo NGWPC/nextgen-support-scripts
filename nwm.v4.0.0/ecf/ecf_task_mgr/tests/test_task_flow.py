@@ -13,6 +13,13 @@ from ecf_task_mgr.ecf_interface import EcflowConnection, EcflowInterface
 from ecf_task_mgr.metadata import TaskPath
 from ecf_task_mgr.tasks import Task
 
+TEST_TASK_PATH = TaskPath(
+    suite="nwm",
+    family_outer="hourly",
+    family_inner="nwm_analysis_assim",
+    task="jnwm_conus_analysis_assim",
+)
+
 
 def sample_run_callback(arg1: str, arg2: str, *, kwarg1: str, kwarg2: str) -> str:
     """A sample / mock callback for testing Subtask behavior."""
@@ -46,12 +53,7 @@ def interface(connection):
 def task(connection):
     return Task(
         connection=connection,
-        ecf_task_path=TaskPath(
-            suite="nwm",
-            family_outer="hourly",
-            family_inner="nwm_analysis_assim",
-            task="jnwm_conus_analysis_assim",
-        ),
+        ecf_task_path=TEST_TASK_PATH,
         ecf_tryno=1,
         ecf_pass="abc123",
         ecf_rid="12345",
@@ -61,7 +63,7 @@ def task(connection):
 @pytest.fixture()
 def subtask(task):
     return task.create_subtask(
-        subtask_type=SubtaskType.COLD_START,
+        subtask_type=SubtaskType.NONE,
         cycle_dt=datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc),
         aoi_type=AoiType.VPU,
         aoi_id="03S",
@@ -113,7 +115,7 @@ class TestTaskFlow:
 
     def test_subtask_run_noop_with_return_value(self, task):
         st = task.create_subtask(
-            subtask_type=SubtaskType.WARM_START,
+            subtask_type=SubtaskType.NONE,
             cycle_dt=datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc),
             aoi_type=AoiType.GAGE,
             aoi_id="01123000",
