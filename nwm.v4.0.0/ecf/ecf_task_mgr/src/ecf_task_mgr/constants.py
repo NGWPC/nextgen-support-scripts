@@ -33,6 +33,7 @@ class SubtaskType(StrEnum):
 
     COLD_START = "cold_start"
     WARM_START = "warm_start"
+    NONE = "no_subtask_type"
 
 
 class Domain(StrEnum):
