@@ -3,7 +3,7 @@
 from ecf_task_mgr.constants import (
     AoiType,
     Domain,
-    ECFLabelSuffix,
+    ECFVariableSuffix,
     ForcingConfigName,
     SubtaskType,
 )
@@ -22,7 +22,7 @@ __all__ = [
     "Task",
     "Subtask",
     "SubtaskType",
-    "ECFLabelSuffix",
+    "ECFVariableSuffix",
     "ForcingConfigName",
     "Domain",
 ]

@@ -3,8 +3,8 @@
 from enum import StrEnum
 
 
-class ECFLabelSuffix(StrEnum):
-    """Suffix appended to a subtask's base key to complete the full name of the 2 labels storing "status" and "info"."""
+class ECFVariableSuffix(StrEnum):
+    """Suffix appended to a subtask's base key to complete the full name of the 2 variables storing "status" and "info"."""
 
     INFO = "_info"
     STATUS = "_status"

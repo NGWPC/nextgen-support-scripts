@@ -12,9 +12,9 @@ from typing import Any, Callable
 
 import ecflow
 
-from ecf_task_mgr.constants import AoiType, ECFLabelSuffix, SubtaskType
+from ecf_task_mgr.constants import AoiType, ECFVariableSuffix, SubtaskType
 from ecf_task_mgr.ecf_interface import EcflowInterface
-from ecf_task_mgr.metadata import RunLogEntry, SubtaskInfoLabelEntry, TaskPath
+from ecf_task_mgr.metadata import RunLogEntry, SubtaskInfoVariableEntry, TaskPath
 from ecf_task_mgr.utils import datetime_to_str_safe
 
 logger = logging.getLogger("ecf_task_mgr.tasks")
@@ -125,13 +125,13 @@ class Subtask:
         A generic callable (and associated args and kwargs for the callable) to be executed.
 
     Can make calls to the ecflow server via its parent Task's EcflowInterface attribute,
-    for reporting status and appending other info to a label.
+    for reporting status and appending other info to a ECF variable.
     """
 
     def __init__(
         self,
         task: Task,
-        ### Attributes of the subtask used for identity and server label management
+        ### Attributes of the subtask used for identity and server variable management
         subtask_type: SubtaskType,  # Not built-in to ecflow; defined by this package.
         cycle_dt: datetime,  # Not built-in to ecflow; defined by NOAA NCO (see NCO prod_utils).
         aoi_type: AoiType,  # Not built-in to ecflow; defined by this package.
@@ -158,7 +158,7 @@ class Subtask:
 
     @property
     def identity_string(self) -> str:
-        """String that uniquely identifies this subtask instance, used for defining ecflow labels for storing status and other information about this subtask."""
+        """String that uniquely identifies this subtask instance, used for defining ecflow variable for storing status and other information about this subtask."""
         return f"{self._task._ecf_task_path}__{self._subtask_type}__{datetime_to_str_safe(self._cycle_dt)}__{self._aoi_type}__{self._aoi_id}"
 
     @property
@@ -171,14 +171,14 @@ class Subtask:
         return self._status
 
     @property
-    def label_status(self) -> str:
-        """Full name of ecflow label name for this subtask's "status" label."""
-        return f"{self._base_key}{ECFLabelSuffix.STATUS}"
+    def ecf_var_status(self) -> str:
+        """Full name of this subtask's "status" variable."""
+        return f"{self._base_key}{ECFVariableSuffix.STATUS}"
 
     @property
-    def label_info(self) -> str:
-        """Full name of ecflow label name for this subtask's "info" label."""
-        return f"{self._base_key}{ECFLabelSuffix.INFO}"
+    def ecf_var_info(self) -> str:
+        """Full name of this subtask's "info" variable."""
+        return f"{self._base_key}{ECFVariableSuffix.INFO}"
 
     def server_set_status(
         self,
@@ -191,15 +191,15 @@ class Subtask:
         self._status = status
         interface = self._task._interface
         # if interface is not None:
-        interface.subtask_label_status_set(
+        interface.subtask_ecf_var_status_set(
             str(self._task._ecf_task_path), self._base_key, status
         )
-        entry = SubtaskInfoLabelEntry(
+        entry = SubtaskInfoVariableEntry(
             status=status,
             reason=reason,
             metadata=metadata,
         )
-        interface.subtask_label_info_append(
+        interface.subtask_ecf_var_info_append(
             str(self._task._ecf_task_path),
             self._base_key,
             entry,
