@@ -249,8 +249,8 @@ class NWMRealtimeFcst:
 
         state_save_src_fns = {
             "CONUS_ANALYSIS_ASSIM": self._ana_state_save_src,
-            "CONUS_EXT_ANALYSIS_ASSIM": self._ext_ana_state_save_src(),
-            "CONUS_SHORT_RANGE": self._short_range_state_save_src(),
+            "CONUS_EXT_ANALYSIS_ASSIM": self._ext_ana_state_save_src,
+            "CONUS_SHORT_RANGE": self._short_range_state_save_src,
         }
 
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
