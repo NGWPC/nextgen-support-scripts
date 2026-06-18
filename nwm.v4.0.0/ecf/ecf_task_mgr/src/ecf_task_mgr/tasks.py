@@ -25,7 +25,7 @@ class Task:
 
     def __init__(
         self,
-        connection: Any,  # TODO add EcflowConnection type hint after resolving circular imports
+        conn: Any,  # TODO add EcflowConnection type hint after resolving circular imports
         ecf_task_path: TaskPath,
         ecf_tryno: int,
         ecf_pass: str,
@@ -36,7 +36,7 @@ class Task:
         self._ecf_pass = ecf_pass
         self._ecf_rid = ecf_rid
         self._status: ecflow.State = ecflow.State.queued
-        self._interface = EcflowInterface(connection)
+        self._interface = EcflowInterface(conn)
         self._subtasks: list[Subtask] = []
 
     def init_task(self) -> None:
@@ -86,7 +86,7 @@ class Task:
             subtask.run_callback, "__name__", repr(subtask.run_callback)
         )
         run_log_entry = RunLogEntry(
-            subtask=subtask.identity_string,
+            subtask=subtask.full_identity_string,
             action="running",
             run_callback_name=callable_name,
             args=subtask.run_callback_args,
@@ -146,7 +146,6 @@ class Subtask:
         self._cycle_dt = cycle_dt
         self._aoi_type = aoi_type
         self._aoi_id = aoi_id
-        self._base_key = self.identity_string
         self._status: ecflow.State = ecflow.State.queued
         self.run_callback = run_callback
         self.run_callback_args = (
@@ -157,13 +156,18 @@ class Subtask:
         )
 
     @property
-    def identity_string(self) -> str:
+    def subtask_var_base(self) -> str:
         """String that uniquely identifies this subtask instance, used for defining ecflow variable for storing status and other information about this subtask."""
-        return f"{self._task._ecf_task_path}__{self._subtask_type}__{datetime_to_str_safe(self._cycle_dt)}__{self._aoi_type}__{self._aoi_id}"
+        return f"{self._subtask_type}__{datetime_to_str_safe(self._cycle_dt)}__{self._aoi_type}__{self._aoi_id}"
+
+    @property
+    def full_identity_string(self) -> str:
+        """String that uniquely identifies this subtask instance, used for defining ecflow variable for storing status and other information about this subtask."""
+        return f"{self._task._ecf_task_path}__{self.subtask_var_base}"
 
     @property
     def _hashed_identity_string(self) -> str:
-        digest = hashlib.md5(self.identity_string.encode()).hexdigest()[:12]
+        digest = hashlib.md5(self.full_identity_string.encode()).hexdigest()[:12]
         return f"{digest}"
 
     @property
@@ -171,14 +175,14 @@ class Subtask:
         return self._status
 
     @property
-    def ecf_var_status(self) -> str:
+    def var_status(self) -> str:
         """Full name of this subtask's "status" variable."""
-        return f"{self._base_key}{ECFVariableSuffix.STATUS}"
+        return f"{self.subtask_var_base}{ECFVariableSuffix.STATUS}"
 
     @property
-    def ecf_var_info(self) -> str:
+    def var_info(self) -> str:
         """Full name of this subtask's "info" variable."""
-        return f"{self._base_key}{ECFVariableSuffix.INFO}"
+        return f"{self.subtask_var_base}{ECFVariableSuffix.INFO}"
 
     def server_set_status(
         self,
@@ -191,16 +195,16 @@ class Subtask:
         self._status = status
         interface = self._task._interface
         # if interface is not None:
-        interface.subtask_ecf_var_status_set(
-            str(self._task._ecf_task_path), self._base_key, status
+        interface.subtask_var_status_set(
+            str(self._task._ecf_task_path), self.subtask_var_base, status
         )
         entry = SubtaskInfoVariableEntry(
             status=status,
             reason=reason,
             metadata=metadata,
         )
-        interface.subtask_ecf_var_info_append(
+        interface.subtask_var_info_append(
             str(self._task._ecf_task_path),
-            self._base_key,
+            self.subtask_var_base,
             entry,
         )

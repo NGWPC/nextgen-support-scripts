@@ -4,6 +4,7 @@ import logging
 import socket
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import ecflow
 import pytest
@@ -19,6 +20,8 @@ TEST_TASK_PATH = TaskPath(
     family_inner="nwm_analysis_assim",
     task="jnwm_conus_analysis_assim",
 )
+
+NWM_DEF_PATH = Path(__file__).resolve().parents[2] / "nwm.def"
 
 
 def sample_run_callback(arg1: str, arg2: str, *, kwarg1: str, kwarg2: str) -> str:
@@ -40,19 +43,26 @@ def stub_settings(tmp_path):
 
 
 @pytest.fixture()
-def connection(stub_settings):
-    return EcflowConnection(settings_path=stub_settings)
+def conn(stub_settings):
+    connection = EcflowConnection(settings_path=stub_settings)
+    with connection:
+        yield connection
+
+
+@pytest.fixture(autouse=True)
+def load_nwm_suite(conn):
+    conn.load_suite(NWM_DEF_PATH, force=True)
 
 
 @pytest.fixture()
-def interface(connection):
-    return EcflowInterface(connection=connection)
+def interface(conn):
+    return EcflowInterface(conn=conn)
 
 
 @pytest.fixture()
-def task(connection):
+def task(conn):
     return Task(
-        connection=connection,
+        conn=conn,
         ecf_task_path=TEST_TASK_PATH,
         ecf_tryno=1,
         ecf_pass="abc123",
@@ -96,9 +106,9 @@ class TestEcflowConnection:
 
 
 class TestTaskFlow:
-    def test_connection_constructed(self, connection):
-        assert connection.host == "localhost"
-        assert connection.port == 3141
+    def test_connection_constructed(self, conn):
+        assert conn.host == "localhost"
+        assert conn.port == 3141
 
     def test_task_constructed(self, task):
         assert (
@@ -107,7 +117,7 @@ class TestTaskFlow:
         )
 
     def test_subtask_constructed(self, subtask):
-        assert subtask.identity_string.endswith("__03S")
+        assert subtask.subtask_var_base.endswith("__03S")
 
     def test_subtask_run_noop(self, task, subtask):
         result = task.run_subtask(subtask, verbosity=1)
@@ -124,3 +134,10 @@ class TestTaskFlow:
             run_callback_kwargs={"kwarg1": "baz", "kwarg2": "qux"},
         )
         assert task.run_subtask(st, verbosity=1) == "foo_bar_baz_qux"
+
+    def test_subtask_vars(self, interface, subtask):
+        task_path = str(subtask._task._ecf_task_path)
+        interface.subtask_var_pair_create(task_path, subtask.subtask_var_base)
+
+        assert interface.var_exists(task_path, subtask.var_info)
+        assert interface.var_exists(task_path, subtask.var_status)
