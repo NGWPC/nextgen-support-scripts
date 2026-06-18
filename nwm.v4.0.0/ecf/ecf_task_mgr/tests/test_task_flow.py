@@ -11,7 +11,7 @@ import pytest
 
 from ecf_task_mgr.constants import AoiType, SubtaskType
 from ecf_task_mgr.ecf_interface import EcflowConnection, EcflowInterface
-from ecf_task_mgr.metadata import TaskPath
+from ecf_task_mgr.metadata import SubtaskInfoVarEntry, TaskPath
 from ecf_task_mgr.tasks import Task
 
 TEST_TASK_PATH = TaskPath(
@@ -55,7 +55,7 @@ def load_nwm_suite(conn):
 
 
 @pytest.fixture()
-def interface(conn):
+def iface(conn):
     return EcflowInterface(conn=conn)
 
 
@@ -87,22 +87,14 @@ class TestEcflowConnection:
     def test_connection(self):
         """Confirm a local ecflow server is reachable at localhost:3141."""
         logging.info("Testing raw socket connection to ecflow server")
-        try:
-            with socket.create_connection(("localhost", 3141), timeout=2):
-                pass
-        except OSError as exc:
-            pytest.fail(f"Could not reach ecflow server at localhost:3141: {exc}")
+        with socket.create_connection(("localhost", 3141), timeout=2):
+            pass
 
     def test_connection_ecflow_client(self):
         """Confirm a local ecflow server responds to a Python ecflow client ping."""
         logging.info("Testing ecflow.Client connection and ping to ecflow server")
-        try:
-            client = ecflow.Client("localhost", 3141)
-            client.ping()
-        except Exception as exc:
-            pytest.fail(
-                f"ecflow.Client could not ping localhost:3141: {type(exc).__name__}: {exc}"
-            )
+        client = ecflow.Client("localhost", 3141)
+        client.ping()
 
 
 class TestTaskFlow:
@@ -112,7 +104,7 @@ class TestTaskFlow:
 
     def test_task_constructed(self, task):
         assert (
-            str(task._ecf_task_path)
+            str(task.ecf_path)
             == "/nwm/hourly/nwm_analysis_assim/jnwm_conus_analysis_assim"
         )
 
@@ -135,9 +127,30 @@ class TestTaskFlow:
         )
         assert task.run_subtask(st, verbosity=1) == "foo_bar_baz_qux"
 
-    def test_subtask_vars(self, interface, subtask):
-        task_path = str(subtask._task._ecf_task_path)
-        interface.subtask_var_pair_create(task_path, subtask.subtask_var_base)
+    def test_subtask_vars(self, iface, subtask):
+        """Verify that status and info variables were created automatically on subtask init."""
+        task_path = str(subtask.task.ecf_path)
 
-        assert interface.var_exists(task_path, subtask.var_info)
-        assert interface.var_exists(task_path, subtask.var_status)
+        subtask_status = iface.var_fetch(task_path, subtask.var_status)
+        subtask_info = iface.var_fetch(task_path, subtask.var_info)
+        logging.info(f"Subtask status: {repr(subtask_status)}")
+        logging.info(f"Subtask info: {repr(subtask_info)}")
+
+        logging.info("Setting new values for subtask vars...")
+        iface.subtask_var_status_set(subtask, ecflow.State.active)
+        iface.subtask_var_info_append(
+            subtask,
+            SubtaskInfoVarEntry(
+                status=ecflow.State.active, data={"message": "First entry from pytest"}
+            ),
+        )
+        iface.subtask_var_info_append(
+            subtask,
+            SubtaskInfoVarEntry(
+                status=ecflow.State.active, data={"message": "Second entry from pytest"}
+            ),
+        )
+        subtask_status = iface.var_fetch(task_path, subtask.var_status)
+        subtask_info = iface.var_fetch(task_path, subtask.var_info)
+        logging.info(f"Subtask status: {repr(subtask_status)}")
+        logging.info(f"Subtask info: {repr(subtask_info)}")

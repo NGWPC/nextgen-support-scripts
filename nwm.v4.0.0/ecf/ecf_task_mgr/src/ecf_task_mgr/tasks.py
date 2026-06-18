@@ -14,14 +14,19 @@ import ecflow
 
 from ecf_task_mgr.constants import AoiType, ECFVariableSuffix, SubtaskType
 from ecf_task_mgr.ecf_interface import EcflowInterface
-from ecf_task_mgr.metadata import RunLogEntry, SubtaskInfoVariableEntry, TaskPath
+from ecf_task_mgr.metadata import RunLogEntry, SubtaskInfoVarEntry, TaskPath
 from ecf_task_mgr.utils import datetime_to_str_safe
 
 logger = logging.getLogger("ecf_task_mgr.tasks")
 
 
 class Task:
-    """Owns task-level ecflow child commands (init/complete/abort) and orchestrates subtask execution."""
+    """Represents ecFlow task.
+    Contains reference to low-level client connection and high-level interface object.
+    Contains Subtask factory.
+
+    The dunders for str and repr are defined to return the task's full ecFlow path string,
+    for convenience when passing instances of this class into client/interface methods."""
 
     def __init__(
         self,
@@ -31,25 +36,32 @@ class Task:
         ecf_pass: str,
         ecf_rid: str,
     ) -> None:
-        self._ecf_task_path = ecf_task_path
         self._ecf_tryno = ecf_tryno
         self._ecf_pass = ecf_pass
         self._ecf_rid = ecf_rid
-        self._status: ecflow.State = ecflow.State.queued
-        self._interface = EcflowInterface(conn)
         self._subtasks: list[Subtask] = []
 
+        self.ecf_path = ecf_task_path
+        self.status: ecflow.State = ecflow.State.queued
+        self.iface = EcflowInterface(conn)
+
+    def __str__(self) -> str:
+        return str(self.ecf_path)
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
     def init_task(self) -> None:
-        self._status = ecflow.State.active
-        self._interface.update_task_status(self)
+        self.status = ecflow.State.active
+        self.iface.update_task_status(self)
 
     def complete_task(self) -> None:
-        self._status = ecflow.State.complete
-        self._interface.update_task_status(self)
+        self.status = ecflow.State.complete
+        self.iface.update_task_status(self)
 
     def abort_task(self, reason: str = "") -> None:
-        self._status = ecflow.State.aborted
-        self._interface.update_task_status(self, reason)
+        self.status = ecflow.State.aborted
+        self.iface.update_task_status(self, reason)
 
     def create_subtask(
         self,
@@ -141,19 +153,21 @@ class Subtask:
         run_callback_args: list | None = None,
         run_callback_kwargs: dict | None = None,
     ) -> None:
-        self._task = task
+        self.task = task
         self._subtask_type = subtask_type
         self._cycle_dt = cycle_dt
         self._aoi_type = aoi_type
         self._aoi_id = aoi_id
-        self._status: ecflow.State = ecflow.State.queued
+
+        self.status: ecflow.State = ecflow.State.queued
         self.run_callback = run_callback
-        self.run_callback_args = (
-            run_callback_args if run_callback_args is not None else []
-        )
-        self.run_callback_kwargs = (
-            run_callback_kwargs if run_callback_kwargs is not None else {}
-        )
+        self.run_callback_args = run_callback_args if run_callback_args else []
+        self.run_callback_kwargs = run_callback_kwargs if run_callback_kwargs else {}
+        self.create_subtask_var_pair()
+
+    def create_subtask_var_pair(self) -> None:
+        """Create the info and status variables on the server for this subtask."""
+        self.task.iface.subtask_var_pair_create(self)
 
     @property
     def subtask_var_base(self) -> str:
@@ -163,16 +177,12 @@ class Subtask:
     @property
     def full_identity_string(self) -> str:
         """String that uniquely identifies this subtask instance, used for defining ecflow variable for storing status and other information about this subtask."""
-        return f"{self._task._ecf_task_path}__{self.subtask_var_base}"
+        return f"{self.task.ecf_path}__{self.subtask_var_base}"
 
     @property
     def _hashed_identity_string(self) -> str:
         digest = hashlib.md5(self.full_identity_string.encode()).hexdigest()[:12]
         return f"{digest}"
-
-    @property
-    def status(self) -> ecflow.State:
-        return self._status
 
     @property
     def var_status(self) -> str:
@@ -185,26 +195,12 @@ class Subtask:
         return f"{self.subtask_var_base}{ECFVariableSuffix.INFO}"
 
     def server_set_status(
-        self,
-        status: ecflow.State,
-        reason: str = "",
-        metadata: dict[str, Any] | None = None,
+        self, status: ecflow.State, reason: str = "", metadata: dict | None = None
     ) -> None:
         """Update subtask status and append a status/info lifecycle entry on the ecflow server.
         ``reason`` is an ecflow convention intended to be used when a task is being aborted."""
-        self._status = status
-        interface = self._task._interface
-        # if interface is not None:
-        interface.subtask_var_status_set(
-            str(self._task._ecf_task_path), self.subtask_var_base, status
-        )
-        entry = SubtaskInfoVariableEntry(
-            status=status,
-            reason=reason,
-            metadata=metadata,
-        )
-        interface.subtask_var_info_append(
-            str(self._task._ecf_task_path),
-            self.subtask_var_base,
-            entry,
-        )
+        self.status = status
+        iface = self.task.iface
+        iface.subtask_var_status_set(self, status)
+        entry = SubtaskInfoVarEntry(status=status, reason=reason, data=metadata)
+        iface.subtask_var_info_append(self, entry)
