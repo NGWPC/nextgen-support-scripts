@@ -1,4 +1,4 @@
-"""ecf_task_mgr — Python OOP interface for ecflow task/subtask management."""
+"""ecf_task_mgr — Python OOP iface for ecflow task/subtask management."""
 
 from ecf_task_mgr.constants import (
     AoiType,

@@ -52,12 +52,12 @@ class RunLogEntry:
 
 
 @dataclass
-class SubtaskInfoVariableEntry:
+class SubtaskInfoVarEntry:
     """For sending a new entry (json dict) to the server for a Subtask's "info" variable"""
 
     status: ecflow.State
     reason: str | None = None
-    metadata: dict[str, Any] | None = None
+    data: dict[str, Any] | None = None
     ts: str = field(
         init=False,
         default_factory=lambda: utils.datetime_to_str_safe(
