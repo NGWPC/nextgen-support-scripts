@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from typing import Any, Callable
 
@@ -128,6 +128,22 @@ class Task:
         return result
 
 
+@dataclass
+class SubtaskCallbackContext:
+    """Minimal callback context to pass to callback functions so that they have
+    the info they need to communicate with the ecFlow server about themselves."""
+
+    task_path: str
+    var_info: str
+    var_status: str
+    subtask_var_base: str
+
+    @property
+    def task(self) -> str:
+        """Alias for ``subtask_var_info_append`` since it expects the provided object to have a ``task`` attribute."""
+        return self.task_path
+
+
 class Subtask:
     """Subtask with generic callable and reporting abilities. Not defined by ecflow framework itself.
 
@@ -193,6 +209,17 @@ class Subtask:
     def var_info(self) -> str:
         """Full name of this subtask's "info" variable."""
         return f"{self.subtask_var_base}{ECFVariableSuffix.INFO}"
+
+    @property
+    def callback_context(self) -> SubtaskCallbackContext:
+        """Minimal callback context to pass to callback functions so that they have
+        the info they need to communicate with the ecFlow server about themselves."""
+        return SubtaskCallbackContext(
+            task_path=str(self.task.ecf_path),
+            var_info=self.var_info,
+            var_status=self.var_status,
+            subtask_var_base=self.subtask_var_base,
+        )
 
     def server_set_status(
         self, status: ecflow.State, reason: str = "", metadata: dict | None = None

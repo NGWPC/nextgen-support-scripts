@@ -216,7 +216,8 @@ class EcflowInterface:
         self.var_set(subtask.task, subtask.var_status, status.name)
 
     def subtask_var_info_append(self, subtask: Any, entry: SubtaskInfoVarEntry) -> None:
-        """Append to a subtask's info variable on the server (this holds a JSON list of dicts)"""
+        """Append to a subtask's info variable on the server (this holds a JSON list of dicts).
+        Parameter subtask can be type Subtask or SubtaskCallbackContext."""
         data = self.subtask_var_info_fetch(subtask)
         logging.info(
             f"Appending {asdict(entry)} to subtask info variable {subtask.var_info} for task {subtask.task} on server"
