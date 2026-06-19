@@ -10,6 +10,7 @@ from typing import Any
 import ecflow
 
 from ecf_task_mgr import utils
+from ecf_task_mgr.constants import LogFileType, SavedStateType
 
 
 @dataclass
@@ -64,3 +65,35 @@ class SubtaskInfoVarEntry:
             datetime.now(tz=timezone.utc)
         ),
     )
+
+
+@dataclass
+class NWMLogFile:
+    """Log file associated with NWM (ngen or component)."""
+
+    log_type: LogFileType
+    log_path: str
+    # Integer for ngen MPI logs. None for other logs (MSW mgr, Fcst mgr, ngen stdout+stderr).
+    log_rank: int | None
+
+
+@dataclass
+class NgenSavedState:
+    """Saved state associated with ngen."""
+
+    state_type: SavedStateType
+    # Path to directory of saved state files
+    state_path: str
+
+
+@dataclass
+class NgenResult:
+    """High-level result info associated with a ngen run.
+
+    Sent by nwm-rte to the ecFlow server, read by ex-script from the ecFlow server.
+
+    For storing high-level information about the result of a ngen workflow,
+    such as paths to saved states, paths to log files, etc."""
+
+    log_files: list[NWMLogFile]
+    ngen_saved_states: list[NgenSavedState]

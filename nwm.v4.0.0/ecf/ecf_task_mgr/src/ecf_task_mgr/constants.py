@@ -46,3 +46,23 @@ class Domain(StrEnum):
     ALASKA = "Alaska"
     HAWAII = "Hawaii"
     PRVI = "PRVI"
+
+
+class LogFileType(StrEnum):
+    """Types of log files supported by NWM / ngen.
+    See nwm-rte ``ngen_logs.py`` and ``ngen_async.py``."""
+
+    MSW_MGR: str = "msw"
+    FCST_MGR: str = "fcst"
+    CAL_MGR: str = "cal"
+    NGEN_RANK: str = "ngen_rank"
+    NGEN_STDOUT_STDERR: str = "ngen_stdout_stderr"
+
+
+class SavedStateType(StrEnum):
+    """Types of saved states supported by NWM / ngen"""
+
+    # Intended for restarts. Created at regular intervals throughout a forecast, e.g. when using nwm-rte CLI arg --checkpoint_interval.
+    CHECKPOINT: str = "state_checkpoint"
+    # Intended for Warmstarts informed by a completed Coldstart or AnA run. Created when using nwm-rte CLI arg --save_state.
+    COMPLETED: str = "state_completed"
