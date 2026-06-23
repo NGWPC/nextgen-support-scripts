@@ -18,11 +18,15 @@ system = [
     "ecflow>=5.15.2",
 ]
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 ecf_task_mgr = ["ecflow-client-settings.json"]
+"ecf_task_mgr.tests" = ["data/*.def"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
