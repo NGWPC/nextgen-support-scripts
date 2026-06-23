@@ -64,12 +64,18 @@ class NWMRealtimeFcst:
     def __init__(self, config_name: str, domain: str, t0: datetime,
                  package_dir: str, working_dir: str, comout: str,
                  previous_day_comout: str, vpu: str | None = None,
-                 hydrofab_file: str | None = None):
+                 hydrofab_file: str | None = None,
+                 form_assign_file: str | None = None,
+                 cat_grp_file: str | None = None):
         if config_name not in self._FORECAST_LENGTHS:
             raise ValueError(f"Unknown config_name: {config_name}")
         if domain not in (self.DOMAIN_CONUS, self.DOMAIN_HAWAII,
                           self.DOMAIN_ALASKA, self.DOMAIN_PUERTO_RICO):
             raise ValueError(f"Unknown domain: {domain}")
+        if form_assign_file is None:
+            raise ValueError("form_assign_file is required for regionalization runs.")
+        if cat_grp_file is None:
+            raise ValueError("cat_grp_file is required for regionalization runs.")
 
         self.config_name = config_name
         self.domain = domain
@@ -81,6 +87,8 @@ class NWMRealtimeFcst:
         self.forecast_length = self._FORECAST_LENGTHS[config_name]
         self.vpu = vpu
         self.hydrofab_file = hydrofab_file
+        self.form_assign_file = form_assign_file
+        self.cat_grp_file = cat_grp_file
         self.gageid = "01123000"
     # ------------------------------------------------------------------ #
     # Derived paths (mirrors $USHnwm and $PARMnwm from the ex-script)
@@ -105,6 +113,12 @@ class NWMRealtimeFcst:
     @property
     def output_format_arg(self) -> str:
         return ' --output_format NetCDF'
+    def form_assign_arg(self) -> str:
+        return f' -faf "{self.form_assign_file}"'
+
+    @property
+    def cat_grp_arg(self) -> str:
+        return f' -cgf "{self.cat_grp_file}"'
 
     # ------------------------------------------------------------------ #
     # Forecast window helpers
@@ -219,8 +233,8 @@ class NWMRealtimeFcst:
         os.makedirs(f"{self.working_dir}/logs/rte", exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs/docker", exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs/ngen", exist_ok=True)
-        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs", exist_ok=True)
-        touch_file_if_not_exists(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs/msw_mgr_default.log")
+        os.makedirs(f"{self.working_dir}/regionalization/test_bmi/{self.run_id}/logs", exist_ok=True)
+        touch_file_if_not_exists(f"{self.working_dir}/regionalization/test_bmi/{self.run_id}/logs/msw_mgr_regionalization.log")
 
         config_bashrc = os.path.join(self.working_dir, "config.bashrc")
         with open(config_bashrc) as f:
@@ -258,7 +272,7 @@ class NWMRealtimeFcst:
         }
 
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.run_id, "state_save")
+        dst_state_save = os.path.join(self.working_dir, "regionalization", "test_bmi", self.run_id, "state_save")
         src_state_save = state_save_src_fns[case_type]()
         if os.path.isdir(src_state_save):
             shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
@@ -277,7 +291,7 @@ class NWMRealtimeFcst:
 
     def _docker_run(self, docker_args: str) -> int:
         """Run a single RTE invocation inside the container; return its exit code."""
-        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_default" {docker_args}'
+        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" {docker_args}'
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir)
         return result.returncode
 
@@ -319,10 +333,10 @@ class NWMRealtimeFcst:
         failing run, or of run 2 if both ran."""
         l1, l2 = window_hours
         # Host run directory; working_dir is mounted at /ngwpc/run_ngen in the container.
-        run_dir = os.path.join(self.working_dir, "default", "test_bmi", self.run_id)
+        run_dir = os.path.join(self.working_dir, "regionalization", "test_bmi", self.run_id)
         # Hardcoded container path where RTE writes/reads the saved model state
         # (the run directory inside the /ngwpc/run_ngen mount).
-        state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.run_id}/state_save"
+        state_save_dir = f"/ngwpc/run_ngen/regionalization/test_bmi/{self.run_id}/state_save"
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
         if os.path.isdir(src_state_save):
@@ -345,7 +359,7 @@ class NWMRealtimeFcst:
         checkpoint_arg = f" --checkpoint_interval {run1_checkpoint_interval}" if run1_checkpoint_interval is not None else ""
         docker_args = (
             f'-n 2 -fconfig "{fconfig}" -dt "{dt1}" --lookback {self._lookback_minutes(l1)} '
-            f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{checkpoint_arg}{self.vpu_arg}{self.hydrofab_arg}'
+            f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{checkpoint_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
             f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
@@ -376,7 +390,7 @@ class NWMRealtimeFcst:
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
         docker_args = (
             f'-n 2 -fconfig "{fconfig}" -dt "{dt2}" --lookback {self._lookback_minutes(l2)} '
-            f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"{self.vpu_arg}{self.hydrofab_arg}'
+            f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
             f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
@@ -404,7 +418,7 @@ class NWMRealtimeFcst:
             return self._run_two_pass_ana(
                 case_type=case_type,
                 fconfig="standard_ana",
-                rname="default_ana",
+                rname="region_ana",
                 src_state_save=self._ana_state_save_src(),
                 window_hours=(1, 2),
                 extra_args=" -nwmout",
@@ -414,7 +428,7 @@ class NWMRealtimeFcst:
             return self._run_two_pass_ana(
                 case_type=case_type,
                 fconfig="extended_ana",
-                rname="default_extended_ana",
+                rname="region_extended_ana",
                 src_state_save=self._ext_ana_state_save_src(),
                 window_hours=(24, 4),
                 extra_args=" -nwmout",
@@ -425,7 +439,7 @@ class NWMRealtimeFcst:
             src_state_save = self._short_range_state_save_src()
             # Hardcoded container path where RTE writes/reads the saved model state
             # (the run directory inside the /ngwpc/run_ngen mount).
-            state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.run_id}/state_save"
+            state_save_dir = f"/ngwpc/run_ngen/regionalization/test_bmi/{self.run_id}/state_save"
             if os.path.isdir(src_state_save):
                 print(
                     f"INFO: Warm states found at {src_state_save}; "
@@ -442,7 +456,8 @@ class NWMRealtimeFcst:
                 load_state_arg = ""
             docker_args = (
                 f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
-                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.output_format_arg} --checkpoint_interval 1'
+                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}{self.output_format_arg} --checkpoint_interval 1'
+                f'{self.output_format_arg}'
             )
             return self._docker_run(docker_args)
 
@@ -513,6 +528,16 @@ def main():
         default=None,
         help="Path to the local hydrofabric geopackage file"
     )
+    parser.add_argument(
+        "--form_assign_file",
+        required=True,
+        help="Path to the regionalization formulation assignment file"
+    )
+    parser.add_argument(
+        "--cat_grp_file",
+        default=None,
+        help="Path to the regionalization catchment grouping file"
+    )
     args = parser.parse_args()
     t0 = datetime.strptime(args.t0, "%Y-%m-%d %H:%M:%S")
     package_dir = args.package_dir
@@ -529,6 +554,8 @@ def main():
         previous_day_comout=args.previous_day_comout,
         vpu=args.vpu,
         hydrofab_file=args.hydrofab_file,
+        form_assign_file=args.form_assign_file,
+        cat_grp_file=args.cat_grp_file,
     )
 
     print(f"Config   : {fcst.config_name}")
