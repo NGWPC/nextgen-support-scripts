@@ -34,5 +34,8 @@ pip install -e nwm.v4.0.0/ecf/ecf_task_mgr
 ### 5. Run tests on Python package ecf_task_mgr
 
 ```bash
+# From the source code dir
 ( cd nwm.v4.0.0/ecf/ecf_task_mgr && pytest )
+# More idiomatic alternative
+pytest --pyargs ecf_task_mgr.tests
 ```

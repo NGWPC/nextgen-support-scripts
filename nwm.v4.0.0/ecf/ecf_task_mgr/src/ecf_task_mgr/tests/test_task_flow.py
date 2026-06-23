@@ -29,7 +29,7 @@ TEST_TASK_PATH = TaskPath(
     task="jnwm_conus_analysis_assim",
 )
 
-NWM_DEF_PATH = Path(__file__).resolve().parents[2] / "nwm.def"
+NWM_DEF_PATH = Path(__file__).resolve().parent / "data" / "nwm.def"
 
 _TEST_IFACE: EcflowInterface | None = None
 
