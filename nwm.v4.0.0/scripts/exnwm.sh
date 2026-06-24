@@ -98,7 +98,15 @@ if [[ "${CASETYPE}" == *"_VPU" ]]; then
   export VPU=$(ecflow_client --query variable ${ECF_NAME}:VPU)
   RUN_CASETYPE="${CASETYPE}_${VPU}"
   VPU_ARG="--vpu ${VPU}"
+  REGION_SUBDIR="vpu_${VPU}"
+else
+  REGION_SUBDIR="01123000"
 fi
+
+# Set paths to static regionalization input files
+REGION_DATA_ROOT="${HOME}/rte-test-data/regionalization/${REGION_SUBDIR}"
+FORM_ASSIGN_FILE="${REGION_DATA_ROOT}/formulation_assignment.csv"
+CAT_GRP_FILE="${REGION_DATA_ROOT}/catchment_groups.csv"
 
 # configure and run RTE
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ||  ${CASETYPE} == "CONUS_ANALYSIS_ASSIM_VPU" ]]; then
@@ -110,6 +118,8 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ||  ${CASETYPE} == "CONUS_ANALYSIS_A
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
+    --form-assign-file "${FORM_ASSIGN_FILE}"             \
+    --cat-grp-file "${CAT_GRP_FILE}"                     \
     ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" || ${CASETYPE} == "CONUS_SHORT_RANGE_VPU" ]]; then
   python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
@@ -120,6 +130,8 @@ elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" || ${CASETYPE} == "CONUS_SHORT_RANGE_
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
+    --form-assign-file "${FORM_ASSIGN_FILE}"             \
+    --cat-grp-file "${CAT_GRP_FILE}"                     \
     ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM_VPU" ]]; then
   export cyc=16
@@ -131,6 +143,8 @@ elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_A
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
+    --form-assign-file "${FORM_ASSIGN_FILE}"             \
+    --cat-grp-file "${CAT_GRP_FILE}"                     \
     ${VPU_ARG}
 fi
 
@@ -152,7 +166,7 @@ if [ ! -d ${COMOUT}/logs/${cyc}/${RUN_CASETYPE} ]; then
 fi
 
 #NGen logs
-cp ${DATA}/default/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
+cp ${DATA}/regionalization/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
 
 #log messages from MSWM
 cp -r ${DATA}/logs/* ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
@@ -171,15 +185,15 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSI
   fi
 
   #copy warm states
-  cp -r ${DATA}/default/test_bmi/*/state_save_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-  cp -r ${DATA}/default/test_bmi/*/state_save_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp -r ${DATA}/regionalization/test_bmi/*/state_save_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp -r ${DATA}/regionalization/test_bmi/*/state_save_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 
   #cat-*.csv and nex-*.csv files
-  cp -r ${DATA}/default/test_bmi/*/Output_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-  cp -r ${DATA}/default/test_bmi/*/Output_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp -r ${DATA}/regionalization/test_bmi/*/Output_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp -r ${DATA}/regionalization/test_bmi/*/Output_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 else
   #catchment and T-route output files
-  cp ${DATA}/default/test_bmi/*/Output/*.nc ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp ${DATA}/regionalization/test_bmi/*/Output/*.nc ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 fi 
 export err=$?; err_chk
 

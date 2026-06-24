@@ -529,12 +529,12 @@ def main():
         help="Path to the local hydrofabric geopackage file"
     )
     parser.add_argument(
-        "--form_assign_file",
+        "--form-assign-file",
         required=True,
         help="Path to the regionalization formulation assignment file"
     )
     parser.add_argument(
-        "--cat_grp_file",
+        "--cat-grp-file",
         default=None,
         help="Path to the regionalization catchment grouping file"
     )
