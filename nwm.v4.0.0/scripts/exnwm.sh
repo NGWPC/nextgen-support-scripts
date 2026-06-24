@@ -104,7 +104,7 @@ else
 fi
 
 # Set paths to static regionalization input files
-REGION_DATA_ROOT="${HOME}/rte-test-data/regionalization/${REGION_SUBDIR}"
+REGION_DATA_ROOT="${HOMEnwm}/ush/nwm-msw-mgr/src/mswm/example_inputs/regionalization/${REGION_SUBDIR}"
 FORM_ASSIGN_FILE="${REGION_DATA_ROOT}/formulation_assignment.csv"
 CAT_GRP_FILE="${REGION_DATA_ROOT}/catchment_groups.csv"
 
