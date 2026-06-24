@@ -34,6 +34,7 @@ sed -i -e "s/repeat date YMD 20260430/repeat date YMD ${PDY}/" ${PACKAGEDIR}/ecf
 cp -r ./jobs ${PACKAGEDIR}
 cp -r ./scripts ${PACKAGEDIR}
 cp -r ./ush ${PACKAGEDIR}
+cp -r ./versions ${PACKAGEDIR}
 cp -r ./prod_envir.2.0.6 ${PACKAGEROOT}
 cp -r ./prod_util.v2.0.14 ${PACKAGEROOT}
 
