@@ -94,13 +94,16 @@ check_rte_logs() {
 
 # Append VPU region to case type if provided (to support multiple VPU runs in parallel)
 RUN_CASETYPE="${CASETYPE}"
+VPU_ARG=""
 if [[ "${CASETYPE}" == *"_VPU" ]]; then
+  export VPU=$(ecflow_client --query variable ${ECF_NAME}:VPU)
   RUN_CASETYPE="${CASETYPE}_${VPU}"
+  VPU_ARG="--vpu ${VPU}"
 fi
 
 # configure and run RTE
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ||  ${CASETYPE} == "CONUS_ANALYSIS_ASSIM_VPU" ]]; then
-  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "AnA"                                  \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -108,9 +111,9 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ||  ${CASETYPE} == "CONUS_ANALYSIS_A
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
-    --vpu "${VPU}"
+    ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" || ${CASETYPE} == "CONUS_SHORT_RANGE_VPU" ]]; then
-  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "Short_Range"                          \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -118,10 +121,10 @@ elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" || ${CASETYPE} == "CONUS_SHORT_RANGE_
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
-    --vpu "${VPU}"
+    ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM_VPU" ]]; then
   export cyc=16
-  python  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "Extended_AnA"                         \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -129,7 +132,7 @@ elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_A
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
-    --vpu "${VPU}"
+    ${VPU_ARG}
 fi
 
 
