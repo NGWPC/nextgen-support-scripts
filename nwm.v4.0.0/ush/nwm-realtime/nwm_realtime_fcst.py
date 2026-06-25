@@ -279,18 +279,26 @@ class NWMRealtimeFcst:
         return result.returncode
 
     def _archive_run_outputs(self, run_dir: str, end_time: datetime) -> None:
-        """Copy the run's Output and state_save directories to timestamped
-        siblings (Output_<ts> / state_save_<ts>), where <ts> is the simulation
-        end time in %Y%m%d%H format. Preserves each pass's results before the
-        next pass overwrites them."""
+        """Rename the run's Output, state_save, and logs directories to timestamped
+        names (<name>_<ts>), where <ts> is the simulation end time in %Y%m%d%H format.
+        Preserves each pass's results before the next pass overwrites them."""
         ts = end_time.strftime("%Y%m%d%H")
-        for name in ("Output", "state_save"):
+        for name in ("Output", "logs", "Input"):
             src = os.path.join(run_dir, name)
             dst = os.path.join(run_dir, f"{name}_{ts}")
             if os.path.isdir(src):
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-                print(f"INFO: Archived {src} -> {dst}", flush=True)
+                os.rename(src, dst)
+                print(f"INFO: Renamed {src} -> {dst}", flush=True)
             else:
+                print(f"WARNING: Cannot rename missing directory: {src}", flush=True)
+
+        name = "state_save"
+        src = os.path.join(run_dir, name)
+        dst = os.path.join(run_dir, f"{name}_{ts}")
+        if os.path.isdir(src):
+                shutil.copytree( src, dst, dirs_exist_ok=True)
+                print(f"INFO: Archived {src} -> {dst}", flush=True)
+        else:
                 print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
 
     def _run_two_pass_ana(self, case_type: str, fconfig: str, rname: str,
@@ -345,6 +353,18 @@ class NWMRealtimeFcst:
 
         # Preserve run 1's outputs before run 2 overwrites them (end time = T0 - l2).
         self._archive_run_outputs(run_dir, self.t0 - timedelta(hours=l2))
+
+        # Clean up run 1 artifacts so run 2 starts with a fresh working directory.
+        for f in Path(run_dir).glob("*.log"):
+            f.unlink()
+        for f in Path(run_dir).glob("*.json"):
+            f.unlink()
+        #input_dir = os.path.join(run_dir, "Input")
+        #if os.path.isdir(input_dir):
+        #    shutil.rmtree(input_dir)
+
+        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs", exist_ok=True)
+        touch_file_if_not_exists(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs/msw_mgr_default.log")
 
         # Run 2: later chunk, ends at T0, window l2 hours; loads run 1's saved state.
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
