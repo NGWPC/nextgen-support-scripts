@@ -113,6 +113,8 @@ class NWMRealtimeFcst:
     @property
     def output_format_arg(self) -> str:
         return ' --output_format NetCDF'
+
+    @property
     def form_assign_arg(self) -> str:
         return f' -faf "{self.form_assign_file}"'
 
