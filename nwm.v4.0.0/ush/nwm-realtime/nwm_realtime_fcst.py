@@ -102,6 +102,10 @@ class NWMRealtimeFcst:
             return ""
         return f' --hydrofab_file "{self.hydrofab_file}'
 
+    @property
+    def output_format_arg(self) -> str:
+        return ' --output_format NetCDF'
+
     # ------------------------------------------------------------------ #
     # Forecast window helpers
     # ------------------------------------------------------------------ #
@@ -333,6 +337,7 @@ class NWMRealtimeFcst:
         docker_args = (
             f'-n 2 -fconfig "{fconfig}" -dt "{dt1}" --lookback {self._lookback_minutes(l1)} '
             f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}'
+            f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
         if rc != 0:
@@ -351,6 +356,7 @@ class NWMRealtimeFcst:
         docker_args = (
             f'-n 2 -fconfig "{fconfig}" -dt "{dt2}" --lookback {self._lookback_minutes(l2)} '
             f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"{self.vpu_arg}{self.hydrofab_arg}'
+            f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
         if rc != 0:
@@ -413,7 +419,7 @@ class NWMRealtimeFcst:
                 load_state_arg = ""
             docker_args = (
                 f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
-                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}'
+                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.output_format_arg}'
             )
             return self._docker_run(docker_args)
 
