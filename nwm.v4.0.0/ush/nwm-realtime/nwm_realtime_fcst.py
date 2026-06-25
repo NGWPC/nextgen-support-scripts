@@ -364,8 +364,8 @@ class NWMRealtimeFcst:
         #if os.path.isdir(input_dir):
         #    shutil.rmtree(input_dir)
 
-        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.gageid}/logs", exist_ok=True)
-        touch_file_if_not_exists( f"{self.working_dir}/default/test_bmi/{self.gageid}/logs/msw_mgr_default.log")
+        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs", exist_ok=True)
+        touch_file_if_not_exists(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs/msw_mgr_default.log")
 
         # Run 2: later chunk, ends at T0, window l2 hours; loads run 1's saved state.
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
