@@ -106,8 +106,7 @@ def stub_settings(tmp_path):
 @pytest.fixture()
 def conn(stub_settings):
     connection = EcflowConnection(settings_path=stub_settings)
-    with connection:
-        yield connection
+    yield connection
 
 
 @pytest.fixture(autouse=True)
@@ -137,8 +136,8 @@ def subtask(task):
     return task.create_subtask(
         subtask_type=SubtaskType.NONE,
         cycle_dt=datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc),
-        aoi_type=AoiType.VPU,
-        aoi_id="03S",
+        aoi_type=AoiType.GAGE,
+        aoi_id="01123000",
         run_callback=sample_run_callback,
         run_callback_args=["one", "two"],
         run_callback_kwargs={"kwarg1": "three", "kwarg2": "four"},
@@ -171,7 +170,7 @@ class TestTaskFlow:
         )
 
     def test_subtask_constructed(self, subtask):
-        assert subtask.subtask_var_base.endswith("__03S")
+        assert subtask.subtask_var_base.endswith("__01123000")
 
     def test_subtask_run_noop(self, task, subtask):
         result = task.run_subtask(subtask, verbosity=1)
@@ -225,8 +224,8 @@ class TestTaskFlow:
         st = task.create_subtask(
             subtask_type=SubtaskType.NONE,
             cycle_dt=datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc),
-            aoi_type=AoiType.VPU,
-            aoi_id="03S",
+            aoi_type=AoiType.GAGE,
+            aoi_id="01123000",
             run_callback=sample_run_callback_with_ngen_result,
         )
         st.run_callback_args = [st.callback_context]

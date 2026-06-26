@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any, Callable
 
@@ -134,9 +134,13 @@ class SubtaskCallbackContext:
     the info they need to communicate with the ecFlow server about themselves."""
 
     task_path: str
-    var_info: str
-    var_status: str
     subtask_var_base: str
+    var_info: str = field(init=False)
+    var_status: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.var_info = f"{self.subtask_var_base}{ECFVariableSuffix.INFO}"
+        self.var_status = f"{self.subtask_var_base}{ECFVariableSuffix.STATUS}"
 
     @property
     def task(self) -> str:
@@ -216,8 +220,6 @@ class Subtask:
         the info they need to communicate with the ecFlow server about themselves."""
         return SubtaskCallbackContext(
             task_path=str(self.task.ecf_path),
-            var_info=self.var_info,
-            var_status=self.var_status,
             subtask_var_base=self.subtask_var_base,
         )
 
