@@ -21,10 +21,9 @@ _SETTINGS_FILE = (
 
 
 class EcflowConnection:
-    """Wraps ecflow.Client creation, connection, and context management.
+    """Reads host/port from ecflow-settings.json and creates an ``ecflow.Client``.
 
-    Reads host/port from ecflow-settings.json.  Provides a context
-    manager for safe handle cleanup.
+    The client is stored as ``self.client`` and verified with a ``ping()`` on init.
 
     Parameters
     ----------
@@ -36,21 +35,11 @@ class EcflowConnection:
         self,
         settings_path: Path = _SETTINGS_FILE,
     ) -> None:
-        self._settings_path = settings_path
-        self._host: str
-        self._port: int
-        self._client: ecflow.Client | None = None
-
-        settings = self._load_settings()
-        # e.g. "localhost"
-        self._host = settings["host"]
-        # e.g. 3141
-        self._port = settings["port"]
-
-    def _load_settings(self) -> dict[str, Any]:
-        """Read and parse the settings JSON file."""
-        text = self._settings_path.read_text()
-        return json.loads(text)
+        settings = json.loads(Path(settings_path).read_text())
+        self._host: str = settings["host"]
+        self._port: int = settings["port"]
+        self.client: ecflow.Client = ecflow.Client(self._host, self._port)
+        self.client.ping()
 
     @property
     def host(self) -> str:
@@ -62,34 +51,11 @@ class EcflowConnection:
         """Server port."""
         return self._port
 
-    def connect(self) -> ecflow.Client:
-        """Create ecflow.Client, do a test ping, and set as self._client."""
-        self._client = ecflow.Client(self._host, self._port)
-        self._client.ping()
-        return self._client
-
     def load_suite(self, suite_def_path: Path, force: bool = False) -> None:
-        """Load a ECF suite definition file to the server."""
-        if self._client is None:
-            raise RuntimeError("ecflow client is not connected.")
-        if not suite_def_path.exists():
+        """Load an ECF suite definition file to the server."""
+        if not Path(suite_def_path).exists():
             raise FileNotFoundError(f"Suite definition not found: {suite_def_path}")
-        self._client.load(str(suite_def_path), force)
-
-    def disconnect(self) -> None:
-        """Called on context manager exit."""
-        self._client = None
-
-    def __enter__(self) -> EcflowConnection:
-        self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.disconnect()
-
-    @property
-    def client(self) -> ecflow.Client | None:
-        return self._client
+        self.client.load(str(suite_def_path), force)
 
 
 class EcflowInterface:
@@ -97,6 +63,8 @@ class EcflowInterface:
 
     Both classes delegate all ecflow server interactions here rather than
     calling ecflow.Client directly.
+
+    Uses the ``ecflow.Client`` from ``self.conn.client`` for all server operations.
 
     ecflow has no native subtask concept — status is officially tracked only at the Task level.
 
@@ -124,22 +92,20 @@ class EcflowInterface:
     """
 
     def __init__(self, conn: EcflowConnection) -> None:
-        self._conn = conn
+        self.conn: EcflowConnection = conn
 
-    @property
-    def conn(self) -> EcflowConnection:
-        return self._conn
+    def _get_defs(self) -> ecflow.Defs:
+        """Fetch fresh defs from the server."""
+        self.conn.client.sync_local()
+        defs = self.conn.client.get_defs()
+        if defs is None:
+            raise RuntimeError("ecflow client definitions are not available.")
+        return defs
 
     @property
     def _defs(self) -> ecflow.Defs:
         """Fresh defs from the server (sync is called each time this is accessed)."""
-        if self._conn.client is None:
-            raise RuntimeError("ecflow client is not connected.")
-        self._conn.client.sync_local()
-        defs = self._conn.client.get_defs()
-        if defs is None:
-            raise RuntimeError("ecflow client definitions are not available.")
-        return defs
+        return self._get_defs()
 
     ### TODO replace Any with Task after resolving circular imports
 
@@ -154,7 +120,7 @@ class EcflowInterface:
     def var_exists(self, node: TaskPath | str | Any, var_name: str) -> bool:
         """Return ``True`` if ``var_name`` exists on the task node."""
         node_obj = self.get_node(node)
-        return bool(node_obj.find_variable(var_name))
+        return bool(node_obj.find_variable(var_name).name())
 
     def var_create(
         self, node: TaskPath | str | Any, var_name: str, value: str = ""
@@ -164,9 +130,7 @@ class EcflowInterface:
         logging.info(
             f"Creating variable {repr(var_name)} on {repr(node)} with initial value: {repr(value)}"
         )
-        if self._conn.client is None:
-            raise RuntimeError("ecflow client is not connected.")
-        self._conn.client.alter(node, "add", "variable", var_name, value)
+        self.conn.client.alter(node, "add", "variable", var_name, value)
 
     def var_set(self, node: TaskPath | str | Any, var_name: str, value: str) -> None:
         """Set (or overwrite) the value of an existing variable on the server."""
@@ -174,7 +138,7 @@ class EcflowInterface:
             raise RuntimeError(
                 f"Variable {repr(var_name)} does not exist on node: {repr(node)}."
             )
-        self._conn.client.alter(str(node), "change", "variable", var_name, value)
+        self.conn.client.alter(str(node), "change", "variable", var_name, value)
 
     def var_fetch(self, node: TaskPath | str | Any, var_name: str) -> str:
         """Get the current value of a variable from the server (return empty string if unset)."""
@@ -223,15 +187,15 @@ class EcflowInterface:
             f"Appending {asdict(entry)} to subtask info variable {subtask.var_info} for task {subtask.task} on server"
         )
         data.append(asdict(entry))
-        self.var_set(subtask.task, subtask.var_info, json.dumps(data, indent=2))
+        # Use compact JSON (no indent) — ecflow escapes newlines in variable values,
+        # which would corrupt indented JSON and cause json.loads to fail on fetch.
+        self.var_set(subtask.task, subtask.var_info, json.dumps(data))
 
     def subtask_var_info_fetch(self, subtask: Any) -> list[dict[str, Any]]:
         """Fetch the value of the subtask info variable.
         If it is non-empty, return a json-parse of it.
         Otherwise, return an empty list."""
-        raw_value = self.var_fetch(subtask.task, subtask.var_info)
-        if raw_value:
-            data = json.loads(raw_value)
-        else:
-            data = []
-        return data
+        raw_value = self.var_fetch(subtask.task, subtask.var_info).strip()
+        if not raw_value:
+            return []
+        return json.loads(raw_value)
