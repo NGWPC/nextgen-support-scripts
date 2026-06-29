@@ -137,17 +137,16 @@ class NWMRealtimeFcst:
 
     def _ana_state_save_src(self) -> str:
         """Return the source state_save path for CONUS_ANALYSIS_ASSIM warm start.
-        The AnA cycle runs hourly; the current cycle's analysis window starts at
-        T0 - 3h, so the warm state is the timestamped state_save valid at that
-        start time (state_save_<(T0-3h) %Y%m%d%H>) from the look-back cycle.
-        Uses previous_day_comout when T0 - 3h rolls back to the previous day.
-        When the look-back cycle is 16z, prefers the Extended AnA state_save at
-        that time (the 16z Extended AnA run); falls back to the AnA state_save
-        with a warning if that directory is not found."""
-        t_prev = self.t0 - timedelta(hours=3)
-        cyc = t_prev.strftime("%H")
-        ts = t_prev.strftime("%Y%m%d%H")
-        base_comout = self.previous_day_comout if t_prev.date() < self.t0.date() else self.comout
+        The AnA cycle runs hourly; warm states come from the previous cycle (T0-1h).
+        The state_save timestamp is the analysis window start time (self.start_time = T0-3h).
+        Uses previous_day_comout when T0-1h rolls back to the previous day.
+        When the analysis window start time (T0-3h) is 16z, prefers the Extended AnA
+        state_save from that cycle; falls back to the AnA state_save with a warning
+        if that directory is not found."""
+        t_cyc = self.t0 - timedelta(hours=1)
+        cyc = t_cyc.strftime("%H")
+        ts = self.start_time.strftime("%Y%m%d%H")
+        base_comout = self.previous_day_comout if t_cyc.date() < self.t0.date() else self.comout
         ana_dir = f"CONUS_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_ANALYSIS_ASSIM"
         ext_ana_dir = f"CONUS_EXT_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_EXT_ANALYSIS_ASSIM"
         default_path = os.path.join(base_comout, cyc, ana_dir, f"state_save_{ts}")
@@ -300,14 +299,15 @@ class NWMRealtimeFcst:
         src = os.path.join(run_dir, name)
         dst = os.path.join(run_dir, f"{name}_{ts}")
         if os.path.isdir(src):
-                shutil.copytree( src, dst, dirs_exist_ok=True)
-                print(f"INFO: Archived {src} -> {dst}", flush=True)
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+            print(f"INFO: Archived {src} -> {dst}", flush=True)
         else:
-                print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
+            print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
 
     def _run_two_pass_ana(self, case_type: str, fconfig: str, rname: str,
                           src_state_save: str, window_hours: tuple,
-                          extra_args: str = "") -> int:
+                          extra_args: str = "",
+                          run1_checkpoint_interval: int = None) -> int:
         """Run a two-pass AnA-type analysis, splitting the analysis window into
         two consecutive chunks with a state handoff.
 
@@ -342,9 +342,10 @@ class NWMRealtimeFcst:
 
         # Run 1: earlier chunk, ends at T0 - l2, window l1 hours; saves its end state.
         dt1 = (self.t0 - timedelta(hours=l2)).strftime("%Y-%m-%d %H:%M:%S")
+        checkpoint_arg = f" --checkpoint_interval {run1_checkpoint_interval}" if run1_checkpoint_interval is not None else ""
         docker_args = (
             f'-n 2 -fconfig "{fconfig}" -dt "{dt1}" --lookback {self._lookback_minutes(l1)} '
-            f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}'
+            f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{checkpoint_arg}{self.vpu_arg}{self.hydrofab_arg}'
             f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
@@ -406,6 +407,7 @@ class NWMRealtimeFcst:
                 rname="default_ana",
                 src_state_save=self._ana_state_save_src(),
                 window_hours=(1, 2),
+                extra_args=" -nwmout",
             )
         elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
             # Extended AnA 28h window split into 24h (run 1) + 4h (run 2).
@@ -416,6 +418,7 @@ class NWMRealtimeFcst:
                 src_state_save=self._ext_ana_state_save_src(),
                 window_hours=(24, 4),
                 extra_args=" -nwmout",
+                run1_checkpoint_interval=1,
             )
         elif case_type == "CONUS_SHORT_RANGE":
             rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
@@ -439,7 +442,7 @@ class NWMRealtimeFcst:
                 load_state_arg = ""
             docker_args = (
                 f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
-                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.output_format_arg}'
+                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.output_format_arg} --checkpoint_interval 1'
             )
             return self._docker_run(docker_args)
 

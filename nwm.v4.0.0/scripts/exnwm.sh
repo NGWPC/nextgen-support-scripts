@@ -43,15 +43,13 @@ check_rte_logs() {
 
     if [[ ! -d "${log_dir}" ]]; then
         echo "ERROR: RTE log directory not found: ${log_dir}" >&2
-        export err=1; err_chk
-        return
+        return 1
     fi
 
     local -a log_files=( "${log_dir}"/rte_*.log )
     if [[ ! -e "${log_files[0]}" ]]; then
         echo "ERROR: No RTE log files found in ${log_dir}" >&2
-        export err=1; err_chk
-        return
+        return 1
     fi
 
     local error_count=0 warning_count=0 info_count=0
@@ -87,11 +85,12 @@ check_rte_logs() {
     fi
     if [[ ${error_count} -gt 0 ]]; then
         echo "RTE log scan: ${error_count} ERROR/FATAL/CRITICAL/SEVERE line(s) found in ${log_dir}." >&2
-        export err=1; err_chk
+        return 1
     fi
     set $seton
 }
 
+set +e   # Disable exit-on-error
 # Append VPU region to case type if provided (to support multiple VPU runs in parallel)
 RUN_CASETYPE="${CASETYPE}"
 VPU_ARG=""
@@ -135,45 +134,14 @@ elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_A
     ${VPU_ARG}
 fi
 
-
-##Copy RTE config and run.sh script
-#cp $USHnwm/nwm-rte/config.bashrc ./
-#cp $USHnwm/nwm-rte/run.sh  ./
-#
-##Update RTE config for the working directory
-#sed -i -e "/^MNT__RUN_NGEN__HOST=/s|.*|MNT__RUN_NGEN__HOST=${DATA}|" \
-#       -e "/^MNT__MODULE_PARAM_FILES_DIR__HOST=/s|.*|MNT__MODULE_PARAM_FILES_DIR__HOST=${PARMnwm}|" \
-#	./config.bashrc
-##Update RTE path
-#sed -i -e "s|\$(pwd)/bin_mounted|${USHnwm}/nwm-rte/bin_mounted|" ./run.sh
-#
-#source run.sh
-#
-#rte_start_time="${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00"
-#outcyc=${cyc}
-#
-##Run RTE default configuration
-#if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
-#   docker_run python -um "ngen_rte.run_default" -n 2 \
-#	   -fconfig "standard_ana" -dt "$rte_start_time" -rname "default_ana"
-#elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
-#   docker_run python -um "ngen_rte.run_default"  -n 2 \
-#	   -fconfig "short_range" -dt "$rte_start_time" -rname "default_short"  -nwmout
-#elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
-#   #Extended AnA cycle is 16z
-#   rte_extana_start_time="${PDY:0:4}-${PDY:4:2}-${PDY:6:2} 16:00:00"
-#   outcyc='16'
-#   docker_run python -um "ngen_rte.run_default" -n 2 \
-#   -fconfig "extended_ana" -dt "$rte_extana_start_time" -rname "default_extended_ana" -nwmout
-##fi
-
-#export err=$?
-#if [ "$err" -ne 0 ]; then
-#     errMsg="${jobid} failed because RTE failed."
-#     err_exit "$errMsg"
-#fi
-
 check_rte_logs
+export err=$?; err_chk
+if [ "$err" -ne 0 ]; then
+    ecflow_client --alter=change variable PRE_WORKDIR "${DATA}" ${ECF_NAME}
+    exit 1
+fi
+
+set -e   # stop on errors 
 
 if [ ! -d ${COMOUT}/${cyc}/${RUN_CASETYPE} ]; then
 	mkdir -p ${COMOUT}/${cyc}/${RUN_CASETYPE}
@@ -210,10 +178,8 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSI
   cp -r ${DATA}/default/test_bmi/*/Output_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
   cp -r ${DATA}/default/test_bmi/*/Output_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 else
-  #T-route output files
+  #catchment and T-route output files
   cp ${DATA}/default/test_bmi/*/Output/*.nc ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-  #cat-*.csv and nex-*.csv files
-  cp ${DATA}/default/test_bmi/*/Output/*.csv ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 fi 
 export err=$?; err_chk
 
