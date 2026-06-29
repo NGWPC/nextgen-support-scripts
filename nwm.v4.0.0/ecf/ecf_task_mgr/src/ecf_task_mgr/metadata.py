@@ -57,6 +57,8 @@ class SubtaskInfoVarEntry:
     """For sending a new entry (json dict) to the server for a Subtask's "info" variable"""
 
     status: ecflow.State
+    """ecFlow States are unknown, complete, queued, aborted, submitted, active.
+    See: https://ecflow.readthedocs.io/en/5.15.2/python_api/State.html#ecflow.State.values"""
     reason: str | None = None
     data: dict[str, Any] | None = None
     ts: str = field(
