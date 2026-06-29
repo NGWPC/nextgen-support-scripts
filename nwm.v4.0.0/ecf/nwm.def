@@ -1,11 +1,11 @@
 # Definition of the suite 'nwm'
 suite nwm
-   edit ECF_HOME "/contrib/lfs/h1/owp/nwm/noscrub/Zhengtao.Cui/test/packages/nwm.v4.0.0/ecf"  # path to the package ecf directory
-   edit ECF_INCLUDE "/contrib/lfs/h1/owp/nwm/noscrub/Zhengtao.Cui/test/packages/nwm.v4.0.0/ecf"
-   edit ECF_OUT "/contrib/lfs/h1/owp/ptmp/Zhengtao.Cui/test/tmp"
+   edit ECF_HOME "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"  # path to the package ecf directory
+   edit ECF_INCLUDE "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"
+   edit ECF_OUT "/contrib/lfs/h1/owp/ptmp/SOMEBODY/test/tmp"
    edit CYC "$(echo %TIME%|cut -c1-2)"
    clock real    
-   repeat date YMD 20260430 20261231 1                                                                          
+   repeat date YMD 20260623 20261231 1                                                                          
    family hourly
      time 00:30 23:30 01:00
      # The Analysis Assimilation family, including inland, coastal, conus, Hawaii, Alaska, PRVI
@@ -13,6 +13,11 @@ suite nwm
        # CONUS inland Ana
        task jnwm_conus_analysis_assim
          edit CASETYPE CONUS_ANALYSIS_ASSIM
+         edit PRE_WORKDIR NONE
+       # CONUS VPU 03S Ana
+       task jnwm_conus_analysis_assim_vpu_03s
+         edit CASETYPE CONUS_ANALYSIS_ASSIM_VPU
+         edit VPU 03S
          edit PRE_WORKDIR NONE
      endfamily
      # The short range forecast family
@@ -22,6 +27,11 @@ suite nwm
          edit CASETYPE CONUS_SHORT_RANGE
          edit PRE_WORKDIR NONE
          trigger ../nwm_analysis_assim/jnwm_conus_analysis_assim eq complete
+       # CONUS VPU 03S short range forecast
+       task jnwm_conus_short_range_vpu_03s
+         edit CASETYPE CONUS_SHORT_RANGE_VPU
+         edit VPU 03S
+         trigger ../nwm_analysis_assim/jnwm_conus_analysis_assim_vpu_03s eq complete
      endfamily
    endfamily
    family daily
@@ -30,6 +40,11 @@ suite nwm
        # CONUS inland extended AnA
        task jnwm_conus_extended_analysis_assim
          edit CASETYPE CONUS_EXT_ANALYSIS_ASSIM
+         edit PRE_WORKDIR NONE
+       # CONUS VPU 03S extended AnA
+       task jnwm_conus_extended_analysis_assim_vpu_03s
+         edit CASETYPE CONUS_EXT_ANALYSIS_ASSIM_VPU
+         edit VPU 03S
          edit PRE_WORKDIR NONE
      endfamily
    endfamily

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 
+
 def touch_file_if_not_exists(file_path: str) -> None:
     """
     Create a file if it does not already exist.
@@ -62,7 +63,8 @@ class NWMRealtimeFcst:
 
     def __init__(self, config_name: str, domain: str, t0: datetime,
                  package_dir: str, working_dir: str, comout: str,
-                 previous_day_comout: str):
+                 previous_day_comout: str, vpu: str | None = None,
+                 hydrofab_file: str | None = None):
         if config_name not in self._FORECAST_LENGTHS:
             raise ValueError(f"Unknown config_name: {config_name}")
         if domain not in (self.DOMAIN_CONUS, self.DOMAIN_HAWAII,
@@ -77,7 +79,8 @@ class NWMRealtimeFcst:
         self.comout = comout
         self.previous_day_comout = previous_day_comout
         self.forecast_length = self._FORECAST_LENGTHS[config_name]
-
+        self.vpu = vpu
+        self.hydrofab_file = hydrofab_file
         self.gageid = "01123000"
     # ------------------------------------------------------------------ #
     # Derived paths (mirrors $USHnwm and $PARMnwm from the ex-script)
@@ -95,11 +98,13 @@ class NWMRealtimeFcst:
     def hydrofab_arg(self) -> str:
         """`--hydrofab_file` option (with leading space) pointing at the gage's
         hydrofabric gpkg."""
-        return (
-            f" -g {self.gageid} --hydrofab_file "
-            f"/s3/ngwpc-hydrofabric/2.2/CONUS/{self.gageid}/GEOPACKAGE/USGS/"
-            f"2025_Mar_14_21_14_37/gauge_{self.gageid}.gpkg"
-        )
+        if not self.hydrofab_file:
+            return ""
+        return f' --hydrofab_file "{self.hydrofab_file}'
+
+    @property
+    def output_format_arg(self) -> str:
+        return ' --output_format NetCDF'
 
     # ------------------------------------------------------------------ #
     # Forecast window helpers
@@ -117,6 +122,19 @@ class NWMRealtimeFcst:
             return self.t0
         return self.t0 + timedelta(hours=self.forecast_length)
 
+    # ------------------------------------------------------------------ #
+    # VPU region/run_id helper
+    # ------------------------------------------------------------------ #
+
+    @property
+    def vpu_arg(self) -> str:
+        return f' --vpu {self.vpu}' if self.vpu else ""
+
+    @property
+    def run_id(self) -> str:
+        """Unique identifier for run - VPU or gage ID"""
+        return self.vpu if self.vpu else self.gageid
+
     def _ana_state_save_src(self) -> str:
         """Return the source state_save path for CONUS_ANALYSIS_ASSIM warm start.
         The AnA cycle runs hourly; warm states come from the previous cycle (T0-1h).
@@ -129,17 +147,18 @@ class NWMRealtimeFcst:
         cyc = t_cyc.strftime("%H")
         ts = self.start_time.strftime("%Y%m%d%H")
         base_comout = self.previous_day_comout if t_cyc.date() < self.t0.date() else self.comout
-        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        default_path = os.path.join(base_comout, cyc, case_type, f"state_save_{ts}")
+        ana_dir = f"CONUS_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_ANALYSIS_ASSIM"
+        ext_ana_dir = f"CONUS_EXT_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_EXT_ANALYSIS_ASSIM"
+        default_path = os.path.join(base_comout, cyc, ana_dir, f"state_save_{ts}")
 
-        if self.start_time.strftime("%H") == "16":
-            ext_path = os.path.join(base_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", f"state_save_{ts}")
+        if cyc == "16":
+            ext_path = os.path.join(base_comout, cyc, ext_ana_dir, f"state_save_{ts}")
             if os.path.isdir(ext_path):
                 return ext_path
             print(
                 f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing "
                 f"(cyc={cyc}, T0={self.t0:%Y-%m-%d %H:%M:%S}); "
-                f"using warm states from {case_type} case type instead.",
+                f"using warm states from {ana_dir} case type instead.",
                 flush=True,
             )
 
@@ -156,19 +175,21 @@ class NWMRealtimeFcst:
         should be used."""
         cyc = "12"
         ts = self.start_time.strftime("%Y%m%d%H")
+        ana_dir = f"CONUS_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_ANALYSIS_ASSIM"
+        ext_ana_dir = f"CONUS_EXT_ANALYSIS_ASSIM_VPU_{self.vpu}" if self.vpu else "CONUS_EXT_ANALYSIS_ASSIM"
         primary_path = os.path.join(
-            self.previous_day_comout, cyc, "CONUS_EXT_ANALYSIS_ASSIM", f"state_save_{ts}"
+            self.previous_day_comout, cyc, ext_ana_dir, f"state_save_{ts}"
         )
         if os.path.isdir(primary_path):
             return primary_path
         print(
-            f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing at "
+            f"WARNING: {ext_ana_dir} warm states are missing at "
             f"{self.start_time:%Y-%m-%d %H:%M:%S} (T0={self.t0:%Y-%m-%d %H:%M:%S}); "
-            f"using warm states from CONUS_ANALYSIS_ASSIM case type instead.",
+            f"using warm states from {ana_dir} case type instead.",
             flush=True,
         )
         return os.path.join(
-            self.previous_day_comout, cyc, "CONUS_ANALYSIS_ASSIM", f"state_save_{ts}"
+            self.previous_day_comout, cyc, ana_dir, f"state_save_{ts}"
         )
 
     def _short_range_state_save_src(self) -> str:
@@ -179,6 +200,8 @@ class NWMRealtimeFcst:
         if it does not, a cold start should be used."""
         cyc = self.t0.strftime("%H")
         ts = self.t0.strftime("%Y%m%d%H")
+        if self.vpu:
+            return os.path.join(self.comout, cyc, f"CONUS_ANALYSIS_ASSIM_VPU_{self.vpu}", f"state_save_{ts}")
         return os.path.join(self.comout, cyc, "CONUS_ANALYSIS_ASSIM", f"state_save_{ts}")
 
     # ------------------------------------------------------------------ #
@@ -191,13 +214,13 @@ class NWMRealtimeFcst:
         shutil.copy(os.path.join(rte_dir, "config.bashrc"), self.working_dir)
         shutil.copy(os.path.join(rte_dir, "run.sh"), self.working_dir)
 
-        #shutil.copytree(os.path.join(rte_dir, "logs"), os.path.join(self.working_dir, "logs"), dirs_exist_ok=True)
+        # shutil.copytree(os.path.join(rte_dir, "logs"), os.path.join(self.working_dir, "logs"), dirs_exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs", exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs/rte", exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs/docker", exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs/ngen", exist_ok=True)
-        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.gageid}/logs", exist_ok=True)
-        touch_file_if_not_exists( f"{self.working_dir}/default/test_bmi/{self.gageid}/logs/msw_mgr_default.log")
+        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs", exist_ok=True)
+        touch_file_if_not_exists(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs/msw_mgr_default.log")
 
         config_bashrc = os.path.join(self.working_dir, "config.bashrc")
         with open(config_bashrc) as f:
@@ -228,22 +251,17 @@ class NWMRealtimeFcst:
         with open(run_sh, "w") as f:
             f.write(content)
 
+        state_save_src_fns = {
+            "CONUS_ANALYSIS_ASSIM": self._ana_state_save_src,
+            "CONUS_EXT_ANALYSIS_ASSIM": self._ext_ana_state_save_src,
+            "CONUS_SHORT_RANGE": self._short_range_state_save_src,
+        }
+
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        if case_type == "CONUS_ANALYSIS_ASSIM":
-            src_state_save = self._ana_state_save_src()
-            dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.gageid, "state_save")
-            if os.path.isdir(src_state_save):
-                shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
-        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
-            src_state_save = self._ext_ana_state_save_src()
-            dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.gageid, "state_save")
-            if os.path.isdir(src_state_save):
-                shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
-        elif case_type == "CONUS_SHORT_RANGE":
-            src_state_save = self._short_range_state_save_src()
-            dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.gageid, "state_save")
-            if os.path.isdir(src_state_save):
-                shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
+        dst_state_save = os.path.join(self.working_dir, "default", "test_bmi", self.run_id, "state_save")
+        src_state_save = state_save_src_fns[case_type]()
+        if os.path.isdir(src_state_save):
+            shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
 
     # ------------------------------------------------------------------ #
     # runRTE  (mirrors exnwm.sh lines 50-68)
@@ -281,10 +299,10 @@ class NWMRealtimeFcst:
         src = os.path.join(run_dir, name)
         dst = os.path.join(run_dir, f"{name}_{ts}")
         if os.path.isdir(src):
-                shutil.copytree( src, dst, dirs_exist_ok=True)
-                print(f"INFO: Archived {src} -> {dst}", flush=True)
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+            print(f"INFO: Archived {src} -> {dst}", flush=True)
         else:
-                print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
+            print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
 
     def _run_two_pass_ana(self, case_type: str, fconfig: str, rname: str,
                           src_state_save: str, window_hours: tuple,
@@ -301,10 +319,10 @@ class NWMRealtimeFcst:
         failing run, or of run 2 if both ran."""
         l1, l2 = window_hours
         # Host run directory; working_dir is mounted at /ngwpc/run_ngen in the container.
-        run_dir = os.path.join(self.working_dir, "default", "test_bmi", self.gageid)
+        run_dir = os.path.join(self.working_dir, "default", "test_bmi", self.run_id)
         # Hardcoded container path where RTE writes/reads the saved model state
         # (the run directory inside the /ngwpc/run_ngen mount).
-        state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.gageid}/state_save"
+        state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.run_id}/state_save"
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
         if os.path.isdir(src_state_save):
@@ -327,7 +345,8 @@ class NWMRealtimeFcst:
         checkpoint_arg = f" --checkpoint_interval {run1_checkpoint_interval}" if run1_checkpoint_interval is not None else ""
         docker_args = (
             f'-n 2 -fconfig "{fconfig}" -dt "{dt1}" --lookback {self._lookback_minutes(l1)} '
-            f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{checkpoint_arg}'
+            f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{checkpoint_arg}{self.vpu_arg}{self.hydrofab_arg}'
+            f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
         if rc != 0:
@@ -350,14 +369,15 @@ class NWMRealtimeFcst:
         #if os.path.isdir(input_dir):
         #    shutil.rmtree(input_dir)
 
-        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.gageid}/logs", exist_ok=True)
-        touch_file_if_not_exists( f"{self.working_dir}/default/test_bmi/{self.gageid}/logs/msw_mgr_default.log")
+        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs", exist_ok=True)
+        touch_file_if_not_exists(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs/msw_mgr_default.log")
 
         # Run 2: later chunk, ends at T0, window l2 hours; loads run 1's saved state.
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
         docker_args = (
             f'-n 2 -fconfig "{fconfig}" -dt "{dt2}" --lookback {self._lookback_minutes(l2)} '
-            f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"'
+            f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"{self.vpu_arg}{self.hydrofab_arg}'
+            f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
         if rc != 0:
@@ -405,7 +425,7 @@ class NWMRealtimeFcst:
             src_state_save = self._short_range_state_save_src()
             # Hardcoded container path where RTE writes/reads the saved model state
             # (the run directory inside the /ngwpc/run_ngen mount).
-            state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.gageid}/state_save"
+            state_save_dir = f"/ngwpc/run_ngen/default/test_bmi/{self.run_id}/state_save"
             if os.path.isdir(src_state_save):
                 print(
                     f"INFO: Warm states found at {src_state_save}; "
@@ -422,7 +442,7 @@ class NWMRealtimeFcst:
                 load_state_arg = ""
             docker_args = (
                 f'-n 2 -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
-                f'{load_state_arg} --checkpoint_interval 1'
+                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.output_format_arg} --checkpoint_interval 1'
             )
             return self._docker_run(docker_args)
 
@@ -483,6 +503,16 @@ def main():
         required=True,
         help="Path to the previous day's COMOUT directory, used when T0 - 3h rolls back to the prior day",
     )
+    parser.add_argument(
+        "--vpu",
+        default=None,
+        help="VPU identifier for CONUS runs, e.g. '03S'",
+    )
+    parser.add_argument(
+        "--hydrofab_file",
+        default=None,
+        help="Path to the local hydrofabric geopackage file"
+    )
     args = parser.parse_args()
     t0 = datetime.strptime(args.t0, "%Y-%m-%d %H:%M:%S")
     package_dir = args.package_dir
@@ -497,6 +527,8 @@ def main():
         working_dir=working_dir,
         comout=args.comout,
         previous_day_comout=args.previous_day_comout,
+        vpu=args.vpu,
+        hydrofab_file=args.hydrofab_file,
     )
 
     print(f"Config   : {fcst.config_name}")
