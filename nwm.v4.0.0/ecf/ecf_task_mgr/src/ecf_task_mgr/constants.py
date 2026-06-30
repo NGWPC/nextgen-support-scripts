@@ -1,16 +1,30 @@
-"""Module-level constants for the ecf_task_mgr package."""
+"""Module-level constants for the ecf_task_mgr package.
+TODO remove Python 3.10 support and replace CustomStrEnum with built-in StrEnum."""
 
 from enum import Enum
 
 
-class ECFVariableSuffix(str, Enum):
+class CustomStrEnum(str, Enum):
+    """Enum subclass that returns the value for str() and repr().
+
+    This is a backport of the Python 3.11+ StrEnum type.
+    """
+
+    def __str__(self) -> str:
+        return self.value
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+class ECFVariableSuffix(CustomStrEnum):
     """Suffix appended to a subtask's base key to complete the full name of the 2 variables storing "status" and "info"."""
 
     INFO = "_info"
     STATUS = "_status"
 
 
-class ForcingConfigName(str, Enum):
+class ForcingConfigName(CustomStrEnum):
     """NWM forecast configurations.
 
     Values taken from NWMRealtimeFcst in .../ush/nwm-realtime/nwm_realtime_fcst.py.
@@ -21,14 +35,14 @@ class ForcingConfigName(str, Enum):
     EXTENDED_ANA = "Extended_AnA"
 
 
-class AoiType(str, Enum):
+class AoiType(CustomStrEnum):
     """Type of Area of Interest for a forecast (gage or VPU)"""
 
     GAGE = "gage"
     VPU = "vpu"
 
 
-class SubtaskType(str, Enum):
+class SubtaskType(CustomStrEnum):
     """Allowed subtask types within an ecflow Task."""
 
     COLD_START = "cold_start"
@@ -36,7 +50,7 @@ class SubtaskType(str, Enum):
     NONE = "no_subtask_type"
 
 
-class Domain(str, Enum):
+class Domain(CustomStrEnum):
     """Geographic domains supported by NWM.
 
     Values taken from NWMRealtimeFcst in .../ush/nwm-realtime/nwm_realtime_fcst.py.
@@ -48,7 +62,7 @@ class Domain(str, Enum):
     PRVI = "PRVI"
 
 
-class LogFileType(str, Enum):
+class LogFileType(CustomStrEnum):
     """Types of log files supported by NWM / ngen.
     See nwm-rte ``ngen_logs.py`` and ``ngen_async.py``."""
 
@@ -59,7 +73,7 @@ class LogFileType(str, Enum):
     NGEN_STDOUT_STDERR = "ngen_stdout_stderr"
 
 
-class SavedStateType(str, Enum):
+class SavedStateType(CustomStrEnum):
     """Types of saved states supported by NWM / ngen"""
 
     # Intended for restarts. Created at regular intervals throughout a forecast, e.g. when using nwm-rte CLI arg --checkpoint_interval.
