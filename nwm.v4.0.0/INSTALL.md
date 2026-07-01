@@ -4,9 +4,9 @@
 
 # Clone `nwm-automation-scripts`
 
-Open a terminal and clone the `add_NCO_realtime_scripts` branch.
+Open a terminal and clone the `development` branch.
 
-  `git clone -b add_NCO_realtime_scripts  https://github.com/NGWPC/nwm-automation-scripts/tree/add_NCO_realtime_scripts`
+  `git clone -b development https://github.com/NGWPC/nwm-automation-scripts.git`
 
 # Install ecFlow Server
 
