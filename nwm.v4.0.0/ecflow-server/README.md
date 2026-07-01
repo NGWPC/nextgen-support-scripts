@@ -23,5 +23,5 @@ cd nwm.v4.0.0/ecflow-server
 # (Optional) install ecFlow client on the host, and test the connection.
 # Assumes host uses `apt` and has ecflow-client package available (e.g. Ubuntu).
 sudo apt update && sudo apt install -y ecflow-client
-./ecflow-server-test-from-local-client.sh
+./ecflow-server-start.sh "test-only"
 ```
