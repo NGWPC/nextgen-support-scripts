@@ -46,38 +46,38 @@ check_rte_logs() {
         return 1
     fi
 
-    local -a log_files=( "${log_dir}"/rte_*.log )
-    if [[ ! -e "${log_files[0]}" ]]; then
+    local log_file
+    log_file=$(ls -t "${log_dir}"/rte_*.log 2>/dev/null | head -1)
+    if [[ -z "${log_file}" ]]; then
         echo "ERROR: No RTE log files found in ${log_dir}" >&2
         return 1
     fi
+    echo "RTE log scan: scanning ${log_file}"
 
     local error_count=0 warning_count=0 info_count=0
-    local log_file file_warnings file_errors n
+    local file_warnings file_errors n
 
-    for log_file in "${log_files[@]}"; do
-        n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+INFO[[:space:]]' \
+    n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+INFO[[:space:]]' \
+        "${log_file}" 2>/dev/null) || true
+    info_count=${n:-0}
+
+    file_warnings=$(grep -E '^\S+[[:space:]]+RTE[[:space:]]+WARNING[[:space:]]' \
+                    "${log_file}" 2>/dev/null) || true
+    if [[ -n "${file_warnings}" ]]; then
+        echo "${file_warnings}"
+        n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+WARNING[[:space:]]' \
             "${log_file}" 2>/dev/null) || true
-        info_count=$(( info_count + ${n:-0} ))
+        warning_count=${n:-0}
+    fi
 
-        file_warnings=$(grep -E '^\S+[[:space:]]+RTE[[:space:]]+WARNING[[:space:]]' \
-                        "${log_file}" 2>/dev/null) || true
-        if [[ -n "${file_warnings}" ]]; then
-            echo "${file_warnings}"
-            n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+WARNING[[:space:]]' \
-                "${log_file}" 2>/dev/null) || true
-            warning_count=$(( warning_count + ${n:-0} ))
-        fi
-
-        file_errors=$(grep -E '^\S+[[:space:]]+RTE[[:space:]]+(ERROR|FATAL|CRITICAL|SEVERE)[[:space:]]' \
-                      "${log_file}" 2>/dev/null) || true
-        if [[ -n "${file_errors}" ]]; then
-            echo "${file_errors}"
-            n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+(ERROR|FATAL|CRITICAL|SEVERE)[[:space:]]' \
-                "${log_file}" 2>/dev/null) || true
-            error_count=$(( error_count + ${n:-0} ))
-        fi
-    done
+    file_errors=$(grep -E '^\S+[[:space:]]+RTE[[:space:]]+(ERROR|FATAL|CRITICAL|SEVERE)[[:space:]]' \
+                  "${log_file}" 2>/dev/null) || true
+    if [[ -n "${file_errors}" ]]; then
+        echo "${file_errors}"
+        n=$(grep -cE '^\S+[[:space:]]+RTE[[:space:]]+(ERROR|FATAL|CRITICAL|SEVERE)[[:space:]]' \
+            "${log_file}" 2>/dev/null) || true
+        error_count=${n:-0}
+    fi
 
     echo "RTE log scan: ${info_count} INFO message(s) found in ${log_dir}."
     if [[ ${warning_count} -gt 0 ]]; then
@@ -94,22 +94,26 @@ set +e   # Disable exit-on-error
 # Append VPU region to case type if provided (to support multiple VPU runs in parallel)
 RUN_CASETYPE="${CASETYPE}"
 VPU_ARG=""
-if [[ "${CASETYPE}" == *"_VPU" ]]; then
-  export VPU=$(ecflow_client --query variable ${ECF_NAME}:VPU)
+SUBREGION="01123000"
+export VPU=$(ecflow_client --query variable ${ECF_NAME}:VPU)
+if [[ "${VPU}" != "NONE" ]]; then
   RUN_CASETYPE="${CASETYPE}_${VPU}"
   VPU_ARG="--vpu ${VPU}"
   REGION_SUBDIR="vpu_${VPU}"
+  SUBDIR=${VPU}
 else
-  REGION_SUBDIR="01123000"
+  REGION_SUBDIR=${SUBREGION}
+  SUBDIR=${SUBREGION}
 fi
 
 # Set paths to static regionalization input files
-REGION_DATA_ROOT="${HOMEnwm}/ush/nwm-msw-mgr/src/mswm/example_inputs/regionalization/${REGION_SUBDIR}"
+# This is the path inside the container
+REGION_DATA_ROOT="/ngen-app/ngen-python/lib/python3.11/site-packages/mswm/example_inputs/regionalization/${REGION_SUBDIR}"
 FORM_ASSIGN_FILE="${REGION_DATA_ROOT}/formulation_assignment.csv"
 CAT_GRP_FILE="${REGION_DATA_ROOT}/catchment_groups.csv"
 
 # configure and run RTE
-if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ||  ${CASETYPE} == "CONUS_ANALYSIS_ASSIM_VPU" ]]; then
+if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
   python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "AnA"                                  \
     --domain "CONUS"                                     \
@@ -121,7 +125,7 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ||  ${CASETYPE} == "CONUS_ANALYSIS_A
     --form-assign-file "${FORM_ASSIGN_FILE}"             \
     --cat-grp-file "${CAT_GRP_FILE}"                     \
     ${VPU_ARG}
-elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" || ${CASETYPE} == "CONUS_SHORT_RANGE_VPU" ]]; then
+elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
   python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "Short_Range"                          \
     --domain "CONUS"                                     \
@@ -133,7 +137,7 @@ elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" || ${CASETYPE} == "CONUS_SHORT_RANGE_
     --form-assign-file "${FORM_ASSIGN_FILE}"             \
     --cat-grp-file "${CAT_GRP_FILE}"                     \
     ${VPU_ARG}
-elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM_VPU" ]]; then
+elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
   export cyc=16
   python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "Extended_AnA"                         \
@@ -166,7 +170,7 @@ if [ ! -d ${COMOUT}/logs/${cyc}/${RUN_CASETYPE} ]; then
 fi
 
 #NGen logs
-cp ${DATA}/regionalization/test_bmi/*/*.log ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
+cp ${DATA}/regionalization/*/${SUBDIR}/*.log ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
 
 #log messages from MSWM
 cp -r ${DATA}/logs/* ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
@@ -174,26 +178,34 @@ cp -r ${DATA}/logs/* ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
 export err=$?; err_chk
 
 
-if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || \
-      ${CASETYPE} == "CONUS_ANALYSIS_ASSIM_VPU" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM_VPU" ]]; then
+if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
   # First-run end offset (hours before T0): AnA window is 3h (1+2) so its first
   # run ends at T0-2; Extended AnA window is 28h (24+4) so its first run ends at T0-4.
-  if [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
+  if [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
     run1_offset=-4
   else
     run1_offset=-2
   fi
 
   #copy warm states
-  cp -r ${DATA}/regionalization/test_bmi/*/state_save_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-  cp -r ${DATA}/regionalization/test_bmi/*/state_save_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp -r ${DATA}/regionalization/*/${SUBDIR}/state_save_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp -r ${DATA}/regionalization/*/${SUBDIR}/state_save_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 
   #cat-*.csv and nex-*.csv files
-  cp -r ${DATA}/regionalization/test_bmi/*/Output_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-  cp -r ${DATA}/regionalization/test_bmi/*/Output_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp ${DATA}/regionalization/*/${SUBDIR}/Output_${PDY}${cyc}/catchment_output.nc \
+	  ${COMOUT}/${cyc}/${RUN_CASETYPE}/catchment_output_${PDY}${cyc}00.nc
+  cp ${DATA}/regionalization/*/${SUBDIR}/Output_$($NDATE ${run1_offset} ${PDY}${cyc})/catchment_output.nc  \
+          ${COMOUT}/${cyc}/${RUN_CASETYPE}/catchment_output_$($NDATE ${run1_offset} ${PDY}${cyc})00.nc
+  cp ${DATA}/regionalization/*/${SUBDIR}/Output_${PDY}${cyc}/troute_output_${PDY}${cyc}00.nc \
+	  ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp ${DATA}/regionalization/*/${SUBDIR}/Output_$($NDATE ${run1_offset} ${PDY}${cyc})/troute_output_$($NDATE ${run1_offset} ${PDY}${cyc})00.nc  \
+          ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 else
   #catchment and T-route output files
-  cp ${DATA}/regionalization/test_bmi/*/Output/*.nc ${COMOUT}/${cyc}/${RUN_CASETYPE}/
+  cp ${DATA}/regionalization/*/${SUBDIR}/Output/catchment_output.nc \
+	  ${COMOUT}/${cyc}/${RUN_CASETYPE}/catchment_output_${PDY}${cyc}00.nc
+  cp ${DATA}/regionalization/*/${SUBDIR}/Output/troute_output_$($NDATE 1 ${PDY}${cyc})00.nc  \
+          ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 fi 
 export err=$?; err_chk
 

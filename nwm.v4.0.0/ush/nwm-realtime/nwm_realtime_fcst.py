@@ -235,8 +235,6 @@ class NWMRealtimeFcst:
         os.makedirs(f"{self.working_dir}/logs/rte", exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs/docker", exist_ok=True)
         os.makedirs(f"{self.working_dir}/logs/ngen", exist_ok=True)
-        os.makedirs(f"{self.working_dir}/regionalization/test_bmi/{self.run_id}/logs", exist_ok=True)
-        touch_file_if_not_exists(f"{self.working_dir}/regionalization/test_bmi/{self.run_id}/logs/msw_mgr_regionalization.log")
 
         config_bashrc = os.path.join(self.working_dir, "config.bashrc")
         with open(config_bashrc) as f:
@@ -273,8 +271,14 @@ class NWMRealtimeFcst:
             "CONUS_SHORT_RANGE": self._short_range_state_save_src,
         }
 
+        formulation_dirs = {
+            "CONUS_ANALYSIS_ASSIM": "region_ana",
+            "CONUS_EXT_ANALYSIS_ASSIM": "region_extended_ana",
+            "CONUS_SHORT_RANGE": "default_short",
+        }
+
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
-        dst_state_save = os.path.join(self.working_dir, "regionalization", "test_bmi", self.run_id, "state_save")
+        dst_state_save = os.path.join(self.working_dir, "regionalization", formulation_dirs[case_type], f"{self.run_id}_state_save")
         src_state_save = state_save_src_fns[case_type]()
         if os.path.isdir(src_state_save):
             shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
@@ -294,6 +298,20 @@ class NWMRealtimeFcst:
     def _docker_run(self, docker_args: str) -> int:
         """Run a single RTE invocation inside the container; return its exit code."""
         cmd = f'source run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" {docker_args}'
+        print( "docker run command: ", cmd )
+        result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir)
+        return result.returncode
+
+    def _docker_move_dir(self, src: str, dst: str) -> int:
+        """rename a directory; return its exit code."""
+        cmd = f'source run.sh && docker_run mv {src} {dst}'
+        result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir)
+        return result.returncode
+
+    def _docker_restart(self, src: str, dst: str, checkpoint_dir: str) -> int:
+        """Resume a single RTE invocation from an earlier stopped point inside the container; return its exit code."""
+        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_restart" -src {src} -dst {dst} --checkpoint_dir {checkpoint_dir}'
+        print( "docker run command: ", cmd )
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir)
         return result.returncode
 
@@ -335,10 +353,22 @@ class NWMRealtimeFcst:
         failing run, or of run 2 if both ran."""
         l1, l2 = window_hours
         # Host run directory; working_dir is mounted at /ngwpc/run_ngen in the container.
-        run_dir = os.path.join(self.working_dir, "regionalization", "test_bmi", self.run_id)
+        if case_type == "CONUS_ANALYSIS_ASSIM":
+            formulation_dir = "region_ana"
+        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
+            formulation_dir = "region_extended_ana"
+        else:
+            print(
+                f"ERROR: {case_type} unknown."
+                f"exited with return code 1",
+                flush=True,
+            )
+            return 1
+            
+        run_dir = os.path.join(self.working_dir, "regionalization", formulation_dir , self.run_id)
         # Hardcoded container path where RTE writes/reads the saved model state
         # (the run directory inside the /ngwpc/run_ngen mount).
-        state_save_dir = f"/ngwpc/run_ngen/regionalization/test_bmi/{self.run_id}/state_save"
+        state_save_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}_state_save"
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
         if os.path.isdir(src_state_save):
@@ -365,13 +395,43 @@ class NWMRealtimeFcst:
             f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
-        if rc != 0:
+        if rc is None or rc != 0:
             print(
                 f"ERROR: {case_type} run 1 (T0={dt1}, lookback={l1}h) "
-                f"exited with return code {rc}",
+                f"exited with return code {rc}, re-try one more time ...",
                 flush=True,
             )
-            return rc
+            # Try again
+            if case_type == "CONUS_ANALYSIS_ASSIM":
+               rc = self._docker_run(docker_args)
+            elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
+               src_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}"
+               dst_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}_restart"
+               checkpoint_dir = os.path.join(src_dir, "checkpoint" )
+               rc = self._docker_restart( src_dir, dst_dir, checkpoint_dir )    
+               if rc is None or rc != 0:
+                   print(
+                      f"ERROR: {case_type} run 1 (T0={dt1}, lookback={l1}h) "
+                      f"re-try exited with return code {rc}",
+                      flush=True,
+                   )
+                   return rc
+               rc_move = self._docker_move_dir( src_dir, f"{src_dir}_failed" )
+               if rc_move != 0:
+                  print(
+                     f"ERROR: {case_type} run 1 (T0={dt1}, lookback={l1}h) "
+                     f"renaming {src_dir} to {src_dir}_failed exited with return code {rc_move}",
+                     flush=True,
+                  )
+                  return rc_move
+               rc_move = self._docker_move_dir( dst_dir, f"{src_dir}" )
+               if rc_move != 0:
+                  print(
+                     f"ERROR: {case_type} run 1 (T0={dt1}, lookback={l1}h) "
+                     f"renaming {dst_dir} to {src_dir} exited with return code {rc_move}",
+                     flush=True,
+                  )
+                  return rc_move
 
         # Preserve run 1's outputs before run 2 overwrites them (end time = T0 - l2).
         self._archive_run_outputs(run_dir, self.t0 - timedelta(hours=l2))
@@ -385,8 +445,8 @@ class NWMRealtimeFcst:
         #if os.path.isdir(input_dir):
         #    shutil.rmtree(input_dir)
 
-        os.makedirs(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs", exist_ok=True)
-        touch_file_if_not_exists(f"{self.working_dir}/default/test_bmi/{self.run_id}/logs/msw_mgr_default.log")
+        os.makedirs(f"{self.working_dir}/regionalization/{formulation_dir}/{self.run_id}/logs", exist_ok=True)
+        touch_file_if_not_exists(f"{self.working_dir}/regionalization/{formulation_dir}/{self.run_id}/logs/msw_mgr_default.log")
 
         # Run 2: later chunk, ends at T0, window l2 hours; loads run 1's saved state.
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
@@ -396,13 +456,21 @@ class NWMRealtimeFcst:
             f'{self.output_format_arg}'
         )
         rc = self._docker_run(docker_args)
-        if rc != 0:
+        if rc is None or rc != 0:
             print(
                 f"ERROR: {case_type} run 2 (T0={dt2}, lookback={l2}h) "
-                f"exited with return code {rc}",
+                f"exited with return code {rc}, re-try one more time ...",
                 flush=True,
             )
-            return rc
+            # Try again
+            rc = self._docker_run(docker_args)
+            if rc != 0:
+                print(
+                    f"ERROR: {case_type} run 2 (T0={dt1}, lookback={l1}h) "
+                    f"re-try exited with return code {rc}",
+                    flush=True,
+                )
+                return rc
 
         # Preserve run 2's outputs (end time = T0).
         self._archive_run_outputs(run_dir, self.t0)
@@ -441,7 +509,7 @@ class NWMRealtimeFcst:
             src_state_save = self._short_range_state_save_src()
             # Hardcoded container path where RTE writes/reads the saved model state
             # (the run directory inside the /ngwpc/run_ngen mount).
-            state_save_dir = f"/ngwpc/run_ngen/regionalization/test_bmi/{self.run_id}/state_save"
+            state_save_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}_state_save"
             if os.path.isdir(src_state_save):
                 print(
                     f"INFO: Warm states found at {src_state_save}; "
@@ -461,7 +529,26 @@ class NWMRealtimeFcst:
                 f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}{self.output_format_arg} --checkpoint_interval 1'
                 f'{self.output_format_arg}'
             )
-            return self._docker_run(docker_args)
+            rc = self._docker_run(docker_args)
+            if rc is None or rc != 0:
+               print(
+                  f"ERROR: {case_type} (T0={self.t0} "
+                  f"exited with return code {rc}, re-try one more time ...",
+                  flush=True,
+               )
+               #backup the failed run, this is the directory in the container
+               src_dir = os.path.join("/ngwpc/run_ngen/regionalization/default_short", f"{self.run_id}_failed")
+               dst_dir = os.path.join("/ngwpc/run_ngen/regionalization/default_short", self.run_id)
+               rc_move = self._docker_move_dir( dst_dir, src_dir )
+               if rc_move != 0:
+                  print(
+                     f"ERROR: {case_type} run 1 (T0={dt1}, lookback={l1}h) "
+                     f"renaming {dst_dir} to {src_dir} exited with return code {rc_move}",
+                     flush=True,
+                  )
+                  return rc_move
+               checkpoint_dir = os.path.join(src_dir, "checkpoint" )
+               return self._docker_restart( src_dir, dst_dir, checkpoint_dir )
 
 
 def main():
