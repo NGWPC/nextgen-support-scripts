@@ -14,7 +14,8 @@ export SITE=PWCLUSTER
 
 export OPSROOT=/contrib/lfs/h1/ops/prod
 export COMROOT=/contrib/lfs/h1/ops/prod/com
-export DATAROOT=/contrib/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp
+#export DATAROOT=/contrib/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp
+export DATAROOT=/home/${LOGNAME}/rte_test
 export OPSCOMROOT=/contrib/lfs/h1/ops/prod/com
 export DCOMROOT=/contrib/lfs/h1/ops/prod/dcom
 export PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
@@ -22,7 +23,7 @@ export PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
 export PACKAGEHOME=${PACKAGEHOME:-$PACKAGEROOT}/$model.${nwm_ver}
 modelhome=$PACKAGEHOME
 export HOME${model}=$modelhome
-export KEEPDATA=YES
+export KEEPDATA=NO
 
 modelhome=$PACKAGEHOME
 export HOME${model}=$modelhome
