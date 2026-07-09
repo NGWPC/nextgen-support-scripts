@@ -8,6 +8,11 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 
+import ecflow
+
+from ecf_task_mgr.constants import AoiType, LogFileType, SavedStateType, SubtaskType
+from ecf_task_mgr.ecf_interface import EcflowConnection, EcflowInterface
+
 
 def touch_file_if_not_exists(file_path: str) -> None:
     """
@@ -90,6 +95,7 @@ class NWMRealtimeFcst:
         self.form_assign_file = form_assign_file
         self.cat_grp_file = cat_grp_file
         self.gageid = "01123000"
+
     # ------------------------------------------------------------------ #
     # Derived paths (mirrors $USHnwm and $PARMnwm from the ex-script)
     # ------------------------------------------------------------------ #
@@ -295,6 +301,59 @@ class NWMRealtimeFcst:
         `LookBack = (window_hours + 1) * 60`."""
         return (window_hours + 1) * 60
 
+    @staticmethod
+    def _is_restart( ecfI: EcflowInterface  ) -> bool:
+        """
+        Check the EcFlow server to decide if it is a new job or a restart job
+        """
+
+        workdir = NWMRealtimeFcst._pre_workdir( ecfI )
+
+        return True if workdir != "NONE" else False
+
+    @staticmethod
+    def _pre_workdir( ecfI: EcflowInterface  ) -> str:
+        """
+        Get the working directgory of the previous failed job
+        """
+        ecf_name = os.getenv("ECF_NAME")
+        if not ecf_name:
+          print("ECF_NAME is not set — are you running inside an ecFlow job?")
+          raise RuntimeError("ECF_NAME not found on the server.")
+
+        workdir = ecfI.var_fetch( ecf_name, "PRE_WORKDIR" )
+        return workdir
+
+    @staticmethod
+    def _pass1or2( ecfI: EcflowInterface  ) -> int | None:
+        """
+        Check the EcFlow server to decide if it is restart from pass 1 
+        or 2.
+        """
+        ecf_name = os.getenv("ECF_NAME")
+        if not ecf_name:
+          print("ECF_NAME is not set — are you running inside an ecFlow job?")
+          raise RuntimeError("ECF_NAME not found on the server.")
+
+        try:
+           pass_num = ecfI.var_fetch( var.value(), "PASS" )
+        except Exception as e:
+           return None
+
+        return pass_num
+
+    @staticmethod
+    def _set_ecf_var( ecfI: EcflowInterface, name: str, value: str  ) -> None:
+        """
+        set the PRE_WORKDIR variable
+        """
+        ecf_name = os.getenv("ECF_NAME")
+        if not ecf_name:
+          print("ECF_NAME is not set — are you running inside an ecFlow job?")
+          raise RuntimeError("ECF_NAME not found on the server.")
+
+        ecfI.var_set( ecf_name, name, value )
+
     def _docker_run(self, docker_args: str) -> int:
         """Run a single RTE invocation inside the container; return its exit code."""
         cmd = f'source run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" {docker_args}'
@@ -315,7 +374,90 @@ class NWMRealtimeFcst:
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir)
         return result.returncode
 
-    def _archive_run_outputs(self, run_dir: str, end_time: datetime) -> None:
+    def forecast_restart(self) -> int:
+        """Restart a failed Short Range forecast from a checkpoint."""
+        src_dir = f"/ngwpc/run_ngen_failed/regionalization/default_short/{self.run_id}"
+        dst_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}"
+        checkpoint_dir = os.path.join(src_dir, "checkpoint")
+        return self._docker_restart(src_dir, dst_dir, checkpoint_dir)
+
+    def ext_ana_restart(self, working_dir: str, pass_num: int) -> int:
+        """Resume a failed Extended AnA two-pass run.
+
+        working_dir: host path of the job's working directory (mapped to
+            /ngwpc/run_ngen in the container).
+        pass_num: 1 if pass 1 failed; 2 if pass 2 failed.
+
+        Pass 1 failure: restarts pass 1 via _docker_restart, then runs pass 2
+        normally via _docker_run.  Pass 2 failure: skips pass 1 entirely and
+        runs pass 2 directly via _docker_run.
+        """
+        formulation_dir = "region_extended_ana"
+        fconfig = "extended_ana"
+        rname = "region_extended_ana"
+        l1, l2 = 24, 4
+        extra_args = " -nwmout"
+
+        run_dir = os.path.join(self.working_dir, "regionalization", formulation_dir, self.run_id)
+        src_dir = f"/ngwpc/run_ngen_failed/regionalization/{formulation_dir}/{self.run_id}"
+        dst_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}"
+        state_save_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}_state_save"
+        dt1 = (self.t0 - timedelta(hours=l2)).strftime("%Y-%m-%d %H:%M:%S")
+        dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
+
+        if pass_num == 1:
+            checkpoint_dir = os.path.join(src_dir, "checkpoint")
+            rc = self._docker_restart(src_dir, dst_dir, checkpoint_dir)
+            if rc is None or rc != 0:
+                print(
+                    f"ERROR: CONUS_EXT_ANALYSIS_ASSIM restart pass 1 (T0={dt1}, lookback={l1}h) "
+                    f"exited with return code {rc}",
+                    flush=True,
+                )
+                return rc
+
+            self._archive_run_outputs(run_dir, self.t0 - timedelta(hours=l2))
+
+        if pass_num == 2:
+            ts = (self.t0 - timedelta(hours=l2)).strftime("%Y%m%d%H")
+            for name in ("Output", "state_save"):
+               src = os.path.join(working_dir, name)
+               dst = os.path.join(run_dir, f"{name}_{ts}")
+               if os.path.isdir(src):
+                  shutil.copytree(src, dst, dirs_exist_ok=True)
+                  print(f"INFO: Archived {src} -> {dst}", flush=True)
+               else:
+                  print(f"ERROR: Cannot archive missing directory: {src}", flush=True)
+                  return 1
+            state_save_dir = f"/ngwpc/run_ngen_failed/regionalization/{formulation_dir}/{self.run_id}_state_save"
+
+        # Pass 2: run normally via _docker_run (not _docker_restart).
+        docker_args = (
+            f'-n 2 -fconfig "{fconfig}" -dt "{dt2}" --lookback {self._lookback_minutes(l2)} '
+            f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"'
+            f'{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
+            f'{self.output_format_arg}'
+        )
+        rc = self._docker_run(docker_args)
+        if rc is None or rc != 0:
+            print(
+                f"ERROR: CONUS_EXT_ANALYSIS_ASSIM restart pass 2 (T0={dt2}, lookback={l2}h) "
+                f"exited with return code {rc}, re-try one more time ...",
+                flush=True,
+            )
+            rc = self._docker_run(docker_args)
+            if rc is None or rc != 0:
+                print(
+                    f"ERROR: CONUS_EXT_ANALYSIS_ASSIM restart pass 2 (T0={dt2}, lookback={l2}h) "
+                    f"re-try exited with return code {rc}",
+                    flush=True,
+                )
+                return rc
+
+        self._archive_run_outputs(run_dir, self.t0)
+        return rc
+
+    def _archive_run_outputs(self, run_dir: str, end_time: datetime) -> int:
         """Rename the run's Output, state_save, and logs directories to timestamped
         names (<name>_<ts>), where <ts> is the simulation end time in %Y%m%d%H format.
         Preserves each pass's results before the next pass overwrites them."""
@@ -328,6 +470,7 @@ class NWMRealtimeFcst:
                 print(f"INFO: Renamed {src} -> {dst}", flush=True)
             else:
                 print(f"WARNING: Cannot rename missing directory: {src}", flush=True)
+                return 1
 
         name = "state_save"
         src = os.path.join(run_dir, name)
@@ -337,6 +480,8 @@ class NWMRealtimeFcst:
             print(f"INFO: Archived {src} -> {dst}", flush=True)
         else:
             print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
+            return 1
+        return 0
 
     def _run_two_pass_ana(self, case_type: str, fconfig: str, rname: str,
                           src_state_save: str, window_hours: tuple,
@@ -365,6 +510,9 @@ class NWMRealtimeFcst:
             )
             return 1
             
+        ecfcon = EcflowConnection()
+        ecfintf = EcflowInterface( ecfcon )
+
         run_dir = os.path.join(self.working_dir, "regionalization", formulation_dir , self.run_id)
         # Hardcoded container path where RTE writes/reads the saved model state
         # (the run directory inside the /ngwpc/run_ngen mount).
@@ -415,6 +563,8 @@ class NWMRealtimeFcst:
                       f"re-try exited with return code {rc}",
                       flush=True,
                    )
+                   self._set_ecf_var( ecfintf, "PRE_WORKDIR", self.working_dir  )
+                   self._set_ecf_var( ecfintf, "PASS", "1" )
                    return rc
                rc_move = self._docker_move_dir( src_dir, f"{src_dir}_failed" )
                if rc_move != 0:
@@ -423,6 +573,8 @@ class NWMRealtimeFcst:
                      f"renaming {src_dir} to {src_dir}_failed exited with return code {rc_move}",
                      flush=True,
                   )
+                  self._set_ecf_var( ecfintf, "PRE_WORKDIR", self.working_dir  )
+                  self._set_ecf_var( ecfintf, "PASS", "1" )
                   return rc_move
                rc_move = self._docker_move_dir( dst_dir, f"{src_dir}" )
                if rc_move != 0:
@@ -431,6 +583,8 @@ class NWMRealtimeFcst:
                      f"renaming {dst_dir} to {src_dir} exited with return code {rc_move}",
                      flush=True,
                   )
+                  self._set_ecf_var( ecfintf, "PRE_WORKDIR", self.working_dir  )
+                  self._set_ecf_var( ecfintf, "PASS", "1" )
                   return rc_move
 
         # Preserve run 1's outputs before run 2 overwrites them (end time = T0 - l2).
@@ -470,18 +624,29 @@ class NWMRealtimeFcst:
                     f"re-try exited with return code {rc}",
                     flush=True,
                 )
+                self._set_ecf_var( ecfintf, "PRE_WORKDIR", self.working_dir  )
+                self._set_ecf_var( ecfintf, "PASS", "1" )
                 return rc
 
         # Preserve run 2's outputs (end time = T0).
-        self._archive_run_outputs(run_dir, self.t0)
+        rc = self._archive_run_outputs(run_dir, self.t0)
+        if rc is None or rc != 0:
+           self._set_ecf_var( ecfintf, "PRE_WORKDIR", self.working_dir  )
+           self._set_ecf_var( ecfintf, "PASS", "2" )
+        else:
+           self._set_ecf_var( ecfintf, "PRE_WORKDIR", "NONE"  )
+           self._set_ecf_var( ecfintf, "PASS", "NONE" )
         return rc
 
-    def runRTE(self) -> int:
+    def runRTE(self ) -> int:
         case_type = self._CASE_TYPES.get((self.config_name, self.domain))
         if case_type is None:
             raise NotImplementedError(
                 f"runRTE not implemented for config='{self.config_name}', domain='{self.domain}'"
             )
+
+        ecfcon = EcflowConnection()
+        ecfintf = EcflowInterface( ecfcon )
 
         if case_type == "CONUS_ANALYSIS_ASSIM":
             # AnA 3h window split into 1h (run 1) + 2h (run 2).
@@ -548,7 +713,46 @@ class NWMRealtimeFcst:
                   )
                   return rc_move
                checkpoint_dir = os.path.join(src_dir, "checkpoint" )
-               return self._docker_restart( src_dir, dst_dir, checkpoint_dir )
+               restart_rc = self._docker_restart( src_dir, dst_dir, checkpoint_dir )
+               if restart_rc is None or restart_rc != 0:
+                   self._set_ecf_var( ecfintf, "PRE_WORKDIR", self.working_dir  )
+                  
+
+
+    def runRTE_restart(self, working_dir: str, pass_num: int) -> int:
+        """Restart a previously failed RTE run.
+
+        For AnA: reruns from scratch via runRTE.
+        For Extended AnA: resumes from checkpoint via ext_ana_restart.
+        For Short Range: resumes from checkpoint via forecast_restart.
+
+        working_dir: host path of the failed job's working directory.
+        pass_num: pass number at which Extended AnA failed (1 or 2);
+            ignored for AnA and Short Range.
+        """
+        run_sh_path = os.path.join(self.working_dir, "run.sh")
+        with open(run_sh_path) as f:
+            content = f.read()
+        content = re.sub(
+            r'(-v "\$\{MNT__RUN_NGEN__HOST\}:\$\{MNT__RUN_NGEN__CONTAINER\}" \\)',
+            lambda m: m.group(1) + f'\n        -v "{working_dir}:/ngwpc/run_ngen_failed" \\',
+            content,
+        )
+        with open(run_sh_path, "w") as f:
+            f.write(content)
+
+        case_type = self._CASE_TYPES.get((self.config_name, self.domain))
+        if case_type is None:
+            raise NotImplementedError(
+                f"runRTE_restart not implemented for config='{self.config_name}', domain='{self.domain}'"
+            )
+
+        if case_type == "CONUS_ANALYSIS_ASSIM":
+            return self.runRTE()
+        elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
+            return self.ext_ana_restart(working_dir, pass_num)
+        elif case_type == "CONUS_SHORT_RANGE":
+            return self.forecast_restart()
 
 
 def main():
@@ -647,6 +851,13 @@ def main():
         cat_grp_file=args.cat_grp_file,
     )
 
+    ecfcon = EcflowConnection()
+    ecfintf = EcflowInterface( ecfcon )
+
+    is_restart = NWMRealtimeFcst._is_restart( ecfintf  )
+    pass_num = NWMRealtimeFcst._pass1or2( ecfintf  )
+    previous_workdir = NWMRealtimeFcst._pre_workdir( ecfintf  )
+
     print(f"Config   : {fcst.config_name}")
     print(f"Domain   : {fcst.domain}")
     print(f"T0       : {fcst.t0}")
@@ -654,6 +865,9 @@ def main():
     print(f"End      : {fcst.end_time}")
     print(f"Package  : {fcst.package_dir}")
     print(f"Work dir : {fcst.working_dir}")
+    print(f"if_restart : {is_restart}")
+    print(f"pass_num : {pass_num}")
+    print(f"previous_workdir : {previous_workdir}")
 
     try:
         fcst.configureRTE()
@@ -661,10 +875,16 @@ def main():
         print(f"ERROR: configureRTE failed: {e}", flush=True)
         sys.exit(1)
 
-    rc = fcst.runRTE()
-    if rc != 0:
-        print(f"ERROR: runRTE exited with return code {rc}", flush=True)
-        sys.exit(rc)
+    if is_restart:
+        rc = fcst.runRTE_restart(previous_workdir, pass_num)
+        if rc != 0:
+            print(f"ERROR: runRTE_restart exited with return code {rc}", flush=True)
+            sys.exit(rc)
+    else:
+        rc = fcst.runRTE()
+        if rc != 0:
+            print(f"ERROR: runRTE exited with return code {rc}", flush=True)
+            sys.exit(rc)
 
 
 if __name__ == "__main__":

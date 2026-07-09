@@ -91,6 +91,7 @@ check_rte_logs() {
 }
 
 set +e   # Disable exit-on-error
+
 # Append VPU region to case type if provided (to support multiple VPU runs in parallel)
 RUN_CASETYPE="${CASETYPE}"
 VPU_ARG=""
@@ -114,7 +115,7 @@ CAT_GRP_FILE="${REGION_DATA_ROOT}/catchment_groups.csv"
 
 # configure and run RTE
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
-  python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "AnA"                                  \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -126,7 +127,7 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
     --cat-grp-file "${CAT_GRP_FILE}"                     \
     ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
-  python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "Short_Range"                          \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -139,7 +140,7 @@ elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
     ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
   export cyc=16
-  python3.12  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "Extended_AnA"                         \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -154,10 +155,6 @@ fi
 
 check_rte_logs
 export err=$?; err_chk
-if [ "$err" -ne 0 ]; then
-    ecflow_client --alter=change variable PRE_WORKDIR "${DATA}" ${ECF_NAME}
-    exit 1
-fi
 
 set -e   # stop on errors 
 
@@ -176,6 +173,9 @@ cp ${DATA}/regionalization/*/${SUBDIR}/*.log ${COMOUT}/logs/${cyc}/${RUN_CASETYP
 cp -r ${DATA}/logs/* ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
 
 export err=$?; err_chk
+if [ "$err" -ne 0 ]; then
+    ecflow_client --alter=change variable PRE_WORKDIR "${DATA}" ${ECF_NAME}
+fi
 
 
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
@@ -208,6 +208,9 @@ else
           ${COMOUT}/${cyc}/${RUN_CASETYPE}/
 fi 
 export err=$?; err_chk
+if [ "$err" -eq 0 ]; then
+    ecflow_client --alter=change variable PRE_WORKDIR "NONE" ${ECF_NAME}
+fi
 
 msg="Ending $USHnwm/rte-nwm at `date`"
 
