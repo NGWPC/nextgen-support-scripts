@@ -28,7 +28,10 @@ docker stop ecflow-server 2>/dev/null || true
 
 # Start server container
 echo "Starting server container..."
-docker run --rm -d --net "${NETWORK}" --name ecflow-server -p 3141:3141 -v "$(pwd)/data/ecflow:/data/ecflow" ecflow-server /usr/local/ecflow/bin/ecflow_server
+docker run --rm -d \
+	-v "/var/run/docker.sock:/var/run/docker.sock" \
+	--net "${NETWORK}" --name ecflow-server -p 3141:3141 -v "$(pwd)/data/ecflow:/data/ecflow" \
+	ecflow-server ecflow_server
 echo "Container started."
 
 if [[ "${MODE}" == "test-only" ]]; then

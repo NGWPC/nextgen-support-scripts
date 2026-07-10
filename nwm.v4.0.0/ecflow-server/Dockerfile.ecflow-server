@@ -82,4 +82,12 @@ RUN mkdir -p ${ECF_HOME}
 RUN cmake --build /src/ecflow/build --target install
 ENV PATH="/usr/local/ecflow/bin:${PATH}"
 
+
+# Install Docker CLI (client only, no daemon) so jobs inside the container can
+# call `docker` commands against the host daemon via the mounted socket
+# (and even use the same images that exist on the host).
+RUN dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && \
+    dnf install -y docker-ce-cli
+
+
 CMD ["ecflow_server", "--host=0.0.0.0"]
