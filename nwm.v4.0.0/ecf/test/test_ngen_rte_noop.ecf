@@ -1,0 +1,13 @@
+#!/bin/bash
+%include <head.h>
+%include <model_envir.h>
+
+set -euo pipefail
+
+echo "TEST: Starting test_ngen_rte_noop (calls RTE's run_tests.py --noop)..."
+python3 "${PACKAGEHOME}/ush/nwm-realtime/nwm_realtime_fcst.py" test \
+  --test-mode noop \
+  --package-dir "${PACKAGEHOME}"
+echo "TEST: test_ngen_rte_noop completed."
+
+%include <tail.h>

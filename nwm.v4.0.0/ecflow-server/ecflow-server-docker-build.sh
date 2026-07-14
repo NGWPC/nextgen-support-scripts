@@ -27,7 +27,8 @@ docker build \
     --build-arg BOOST_VERS_DOT=${BOOST_VERS_DOT} \
     --build-arg BOOST_VERS_UNDER=${BOOST_VERS_UNDER} \
     -t ecflow-server \
-    -f Dockerfile.ecflow-server .
+    -f Dockerfile.ecflow-server \
+    .. 
 echo "Done building ecflow server image."
 
 if [ "${RUN_TESTS,,}" = "yes" ]; then

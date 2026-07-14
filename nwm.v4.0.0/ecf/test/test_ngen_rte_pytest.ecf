@@ -1,0 +1,13 @@
+#!/bin/bash
+%include <head.h>
+%include <model_envir.h>
+
+set -euo pipefail
+
+echo "TEST: Starting test_ngen_rte_pytest (calls RTE's run_pytest_external.sh)..."
+python3 "${PACKAGEHOME}/ush/nwm-realtime/nwm_realtime_fcst.py" test \
+  --test-mode pytest \
+  --package-dir "${PACKAGEHOME}"
+echo "TEST: test_ngen_rte_pytest completed."
+
+%include <tail.h>

@@ -115,7 +115,7 @@ CAT_GRP_FILE="${REGION_DATA_ROOT}/catchment_groups.csv"
 
 # configure and run RTE
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
-  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py cycle \
     --config-name "AnA"                                  \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -127,7 +127,7 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
     --cat-grp-file "${CAT_GRP_FILE}"                     \
     ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
-  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py cycle \
     --config-name "Short_Range"                          \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \
@@ -140,7 +140,7 @@ elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
     ${VPU_ARG}
 elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
   export cyc=16
-  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
+  python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py cycle \
     --config-name "Extended_AnA"                         \
     --domain "CONUS"                                     \
     --t0 "${PDY:0:4}-${PDY:4:2}-${PDY:6:2} ${cyc}:00:00" \

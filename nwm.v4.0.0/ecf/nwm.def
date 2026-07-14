@@ -3,6 +3,8 @@ suite nwm
    edit ECF_HOME "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"  # path to the package ecf directory
    edit ECF_INCLUDE "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"
    edit ECF_OUT "/contrib/lfs/h1/owp/ptmp/SOMEBODY/test/tmp"
+   edit ECF_JOB_CMD "bash %ECF_JOB% 1> %ECF_JOBOUT% 2>&1"
+   edit ECF_KILL_CMD "kill %ECF_RID%"
    edit CYC "$(echo %TIME%|cut -c1-2)"
    clock real    
    repeat date YMD 20260623 20261231 1                                                                          
@@ -36,5 +38,9 @@ suite nwm
          edit PASS NONE
          edit VPU 03S
      endfamily
+   endfamily
+   family test
+     task test_ngen_rte_noop
+     task test_ngen_rte_pytest
    endfamily
 endsuite

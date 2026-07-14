@@ -48,4 +48,6 @@ export KEEPDATA=${KEEPDATA:-NO}
 export PATH=${PACKAGEROOT}/prod_util.v2.0.14/ush:${PACKAGEROOT}/prod_util.v2.0.14/exec:$PATH
 export NDATE=${PACKAGEROOT}/prod_util.v2.0.14/exec/ndate
 
-source /contrib/software/py_venv/testbed/bin/activate
+_PY_VENV=/contrib/software/py_venv/testbed/bin/activate
+[ -f "${_PY_VENV}" ] && source "${_PY_VENV}" || true
+unset _PY_VENV

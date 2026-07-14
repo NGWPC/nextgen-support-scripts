@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 import argparse
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
-from datetime import datetime, timedelta
-
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import ecflow
-
-from ecf_task_mgr.constants import AoiType, LogFileType, SavedStateType, SubtaskType
+from ecf_task_mgr.constants import AoiType, SubtaskType
 from ecf_task_mgr.ecf_interface import EcflowConnection, EcflowInterface
+from ecf_task_mgr.tasks import Task
+
+USH_SUBDIR = "ush"
+NWM_RTE_SUBDIR = "nwm-rte"
+_NOOP_TASK_STR = "/nwm/test/test_ngen_rte_noop"
+_NOOP_CYCLE_DT = datetime(9999, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
 
 def touch_file_if_not_exists(file_path: str) -> None:
@@ -37,8 +43,36 @@ def touch_file_if_not_exists(file_path: str) -> None:
         print(f"OS error while creating '{file_path}': {e}")
 
 
-class NWMRealtimeFcst:
+def subproc_popen_wait__forward_signals(*args, **kwargs) -> subprocess.Popen:
+    """Run a subprocess via Popen in its own process group, forwarding SIGINT
+    and SIGTERM to the entire process group (so bash and all its children,
+    including docker run, are signalled), and return the Popen object.
+    Always uses shell=False."""
+    if args:
+        assert isinstance(args[0], list), (
+            f"First argument must be a list, got {type(args[0])}"
+        )
+    if kwargs.get("shell") is True:
+        raise ValueError("shell=True is not allowed; this wrapper enforces shell=False")
+    kwargs["shell"] = False
+    kwargs.setdefault("preexec_fn", os.setsid)  # new session, new process group
 
+    proc = subprocess.Popen(*args, **kwargs)
+
+    def _forward(signum, _frame):
+        os.killpg(os.getpgid(proc.pid), signum)  # signal entire process group
+
+    old_int = signal.signal(signal.SIGINT, _forward)
+    old_term = signal.signal(signal.SIGTERM, _forward)
+    try:
+        proc.wait()
+    finally:
+        signal.signal(signal.SIGINT, old_int)
+        signal.signal(signal.SIGTERM, old_term)
+    return proc
+
+
+class NWMRealtimeFcst:
     # Configuration names
     CONFIG_ANA = "AnA"
     CONFIG_SHORT_RANGE = "Short_Range"
@@ -102,7 +136,7 @@ class NWMRealtimeFcst:
 
     @property
     def ush_dir(self) -> str:
-        return os.path.join(self.package_dir, "ush")
+        return os.path.join(self.package_dir, USH_SUBDIR)
 
     @property
     def parm_dir(self) -> str:
@@ -231,7 +265,7 @@ class NWMRealtimeFcst:
     # ------------------------------------------------------------------ #
 
     def configureRTE(self) -> None:
-        rte_dir = os.path.join(self.ush_dir, "nwm-rte")
+        rte_dir = os.path.join(self.ush_dir, NWM_RTE_SUBDIR)
 
         shutil.copy(os.path.join(rte_dir, "config.bashrc"), self.working_dir)
         shutil.copy(os.path.join(rte_dir, "run.sh"), self.working_dir)
@@ -755,15 +789,70 @@ class NWMRealtimeFcst:
             return self.forecast_restart()
 
 
+def _run_noop_via_ecf_task_mgr(working_dir: str) -> None:
+    """Build a Task and Subtask via ecf_task_mgr (which creates the ecFlow status/info
+    variables on the server), then run the noop docker command as the subtask callback,
+    passing the ecf-task and ecf-subtask strings derived from the subtask itself."""
+    ecf_host = os.environ["ECF_HOST"]
+    ecf_port = int(os.environ["ECF_PORT"])
+
+    conn = EcflowConnection(settings={"host": ecf_host, "port": ecf_port})
+    task = Task(
+        conn=conn,
+        ecf_task_path=_NOOP_TASK_STR,
+        ecf_tryno=1,
+        ecf_pass="noop_pass",
+        ecf_rid="noop_rid",
+    )
+    st = task.create_subtask(
+        subtask_type=SubtaskType.NONE,
+        cycle_dt=_NOOP_CYCLE_DT,
+        aoi_type=AoiType.GAGE,
+        aoi_id="01123000",
+        run_callback=None,
+    )
+    # Clear any stale values from a previous run (create_subtask uses alter--add which does not overwrite existing variables).
+    task.iface.var_set(st.task, st.var_status, "")
+    task.iface.var_set(st.task, st.var_info, "")
+    ecf_task_str = str(task.ecf_path)
+    ecf_subtask_str = st.subtask_var_base
+
+    def noop_callback() -> int:
+        cmd = (
+            f'function sudo {{ "$@"; }}; source run.sh && docker_run python -um "ngen_rte.run_default" --noop -fconfig "noop" -dt "9999-01-01 00:00:00" --ecf-task "{ecf_task_str}" --ecf-subtask "{ecf_subtask_str}"'
+        )
+        result = subprocess.run(["bash", "-c", cmd], cwd=working_dir)
+        return result.returncode
+
+    st.run_callback = noop_callback
+    rc = task.run_subtask(st, verbosity=0)
+    if rc != 0:
+        raise RuntimeError(f"Noop run_default exited with return code {rc}")
+
+
+def get_pytest_cmd() -> list[str]:
+    """Return the command list for subproc_popen_wait__forward_signals for the pytest test mode."""
+    # export -f propagates the sudo passthrough into the child shell that runs the script.
+    return [
+        "bash",
+        "-c",
+        'function sudo { "$@"; }; export -f sudo; ./run_pytest_external.sh',
+    ]
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Run NWM realtime forecast")
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description="Run NWM realtime forecast cycle, or test. See subparsers for details.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Subcommand "cycle"
+    fcst_parser = subparsers.add_parser("cycle", help="Run a NWM realtime forecast")
+    fcst_parser.add_argument(
         "--t0",
         required=True,
         metavar="YYYY-MM-DD HH:MM:SS",
         help="Forecast start time (T0) in UTC, e.g. '2026-05-20 12:00:00'",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--config-name",
         default=NWMRealtimeFcst.CONFIG_ANA,
         choices=[
@@ -777,7 +866,7 @@ def main():
             f"(default: {NWMRealtimeFcst.CONFIG_ANA})"
         ),
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--domain",
         default=NWMRealtimeFcst.DOMAIN_CONUS,
         choices=[
@@ -791,47 +880,80 @@ def main():
             f"(default: {NWMRealtimeFcst.DOMAIN_CONUS})"
         ),
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--package-dir",
         required=True,
         help="Path to the NWM package directory",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--working-dir",
         required=True,
         help="Path to the temporary working directory",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--comout",
         required=True,
         help="Path to the COMOUT directory for reading/writing NWM output",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--previous-day-comout",
         required=True,
         help="Path to the previous day's COMOUT directory, used when T0 - 3h rolls back to the prior day",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--vpu",
         default=None,
         help="VPU identifier for CONUS runs, e.g. '03S'",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--hydrofab_file",
         default=None,
-        help="Path to the local hydrofabric geopackage file"
+        help="Path to the local hydrofabric geopackage file",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--form-assign-file",
         required=True,
-        help="Path to the regionalization formulation assignment file"
+        help="Path to the regionalization formulation assignment file",
     )
-    parser.add_argument(
+    fcst_parser.add_argument(
         "--cat-grp-file",
         default=None,
-        help="Path to the regionalization catchment grouping file"
+        help="Path to the regionalization catchment grouping file",
     )
+
+    # Subcommand "test"
+    test_parser = subparsers.add_parser("test", help="Run a RTE test (noop or pytest)")
+    test_parser.add_argument(
+        "--package-dir",
+        required=True,
+        help="Path to the NWM package directory",
+    )
+    test_parser.add_argument(
+        "--test-mode",
+        required=True,
+        choices=["noop", "pytest"],
+        help="'noop' runs RTE's run_tests.py --noop (to confirm packages are importable); 'pytest' runs RTE's run_pytest_external.sh (to run a sample realization)",
+    )
+
     args = parser.parse_args()
+
+    # Executed for subcommand "test"
+    if args.command == "test":
+        rte_dir = os.path.join(args.package_dir, USH_SUBDIR, NWM_RTE_SUBDIR)
+        if args.test_mode == "noop":
+            print(f"From {__file__}, running noop test via ecf_task_mgr", flush=True)
+            _run_noop_via_ecf_task_mgr(working_dir=rte_dir)
+        elif args.test_mode == "pytest":
+            cmd = get_pytest_cmd()
+            print(f"From {__file__}, running test command: {cmd}", flush=True)
+            proc = subproc_popen_wait__forward_signals(cmd, cwd=rte_dir)
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"Test command {repr(cmd)} exited with return code {proc.returncode}"
+                )
+        return
+
+    # Executed for subcommand "cycle"
     t0 = datetime.strptime(args.t0, "%Y-%m-%d %H:%M:%S")
     package_dir = args.package_dir
     working_dir = args.working_dir
