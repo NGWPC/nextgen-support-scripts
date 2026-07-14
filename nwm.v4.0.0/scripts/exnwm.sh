@@ -92,28 +92,13 @@ check_rte_logs() {
 
 set +e   # Disable exit-on-error
 
-# Append VPU region to case type if provided (to support multiple VPU runs in parallel)
-RUN_CASETYPE="${CASETYPE}"
-VPU_ARG=""
-SUBREGION="01123000"
-export VPU=$(ecflow_client --query variable ${ECF_NAME}:VPU)
-if [[ "${VPU}" != "NONE" ]]; then
-  RUN_CASETYPE="${CASETYPE}_${VPU}"
-  VPU_ARG="--vpu ${VPU}"
-  REGION_SUBDIR="vpu_${VPU}"
-  SUBDIR=${VPU}
-else
-  REGION_SUBDIR=${SUBREGION}
-  SUBDIR=${SUBREGION}
-fi
+# All regions (VPUs and/or basins) to run in this job are listed in the region
+# file; each entry carries its own hydrofabric/formulation/catchment paths, so a
+# single invocation runs every region.
+REGION_FILE=${USHnwm}/nwm-realtime/region.json
+echo "Using region file: ${REGION_FILE}"
 
-# Set paths to static regionalization input files
-# This is the path inside the container
-REGION_DATA_ROOT="/ngen-app/ngen-python/lib/python3.11/site-packages/mswm/example_inputs/regionalization/${REGION_SUBDIR}"
-FORM_ASSIGN_FILE="${REGION_DATA_ROOT}/formulation_assignment.csv"
-CAT_GRP_FILE="${REGION_DATA_ROOT}/catchment_groups.csv"
-
-# configure and run RTE
+# configure and run RTE (every region in REGION_FILE runs in one invocation)
 if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
   python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "AnA"                                  \
@@ -123,9 +108,7 @@ if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" ]]; then
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
-    --form-assign-file "${FORM_ASSIGN_FILE}"             \
-    --cat-grp-file "${CAT_GRP_FILE}"                     \
-    ${VPU_ARG}
+    --region-file "${REGION_FILE}"
 elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
   python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
     --config-name "Short_Range"                          \
@@ -135,9 +118,7 @@ elif [[ ${CASETYPE} == "CONUS_SHORT_RANGE" ]]; then
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
-    --form-assign-file "${FORM_ASSIGN_FILE}"             \
-    --cat-grp-file "${CAT_GRP_FILE}"                     \
-    ${VPU_ARG}
+    --region-file "${REGION_FILE}"
 elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
   export cyc=16
   python3  ${USHnwm}/nwm-realtime/nwm_realtime_fcst.py    \
@@ -148,69 +129,28 @@ elif [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
     --working-dir ${DATA}                                \
     --comout ${COMOUT}                                   \
     --previous-day-comout ${COMOUTm1}                    \
-    --form-assign-file "${FORM_ASSIGN_FILE}"             \
-    --cat-grp-file "${CAT_GRP_FILE}"                     \
-    ${VPU_ARG}
+    --region-file "${REGION_FILE}"
 fi
 
+run_rc=$?
 check_rte_logs
 export err=$?; err_chk
+if [ "$err" -ne 0 ]; then
+  exit 1
+fi
+
+if [ "$run_rc" -ne 0 ]; then
+  err_exit
+  exit 1
+fi
 
 set -e   # stop on errors 
 
-if [ ! -d ${COMOUT}/${cyc}/${RUN_CASETYPE} ]; then
-	mkdir -p ${COMOUT}/${cyc}/${RUN_CASETYPE}
-fi
-
-if [ ! -d ${COMOUT}/logs/${cyc}/${RUN_CASETYPE} ]; then
-	mkdir -p ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}
-fi
-
-#NGen logs
-cp ${DATA}/regionalization/*/${SUBDIR}/*.log ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
-
-#log messages from MSWM
-cp -r ${DATA}/logs/* ${COMOUT}/logs/${cyc}/${RUN_CASETYPE}/
-
-export err=$?; err_chk
-if [ "$err" -ne 0 ]; then
-    ecflow_client --alter=change variable PRE_WORKDIR "${DATA}" ${ECF_NAME}
-fi
-
-
-if [[ ${CASETYPE} == "CONUS_ANALYSIS_ASSIM" || ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
-  # First-run end offset (hours before T0): AnA window is 3h (1+2) so its first
-  # run ends at T0-2; Extended AnA window is 28h (24+4) so its first run ends at T0-4.
-  if [[ ${CASETYPE} == "CONUS_EXT_ANALYSIS_ASSIM" ]]; then
-    run1_offset=-4
-  else
-    run1_offset=-2
-  fi
-
-  #copy warm states
-  cp -r ${DATA}/regionalization/*/${SUBDIR}/state_save_${PDY}${cyc} ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-  cp -r ${DATA}/regionalization/*/${SUBDIR}/state_save_$($NDATE ${run1_offset} ${PDY}${cyc}) ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-
-  #cat-*.csv and nex-*.csv files
-  cp ${DATA}/regionalization/*/${SUBDIR}/Output_${PDY}${cyc}/catchment_output.nc \
-	  ${COMOUT}/${cyc}/${RUN_CASETYPE}/catchment_output_${PDY}${cyc}00.nc
-  cp ${DATA}/regionalization/*/${SUBDIR}/Output_$($NDATE ${run1_offset} ${PDY}${cyc})/catchment_output.nc  \
-          ${COMOUT}/${cyc}/${RUN_CASETYPE}/catchment_output_$($NDATE ${run1_offset} ${PDY}${cyc})00.nc
-  cp ${DATA}/regionalization/*/${SUBDIR}/Output_${PDY}${cyc}/troute_output_${PDY}${cyc}00.nc \
-	  ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-  cp ${DATA}/regionalization/*/${SUBDIR}/Output_$($NDATE ${run1_offset} ${PDY}${cyc})/troute_output_$($NDATE ${run1_offset} ${PDY}${cyc})00.nc  \
-          ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-else
-  #catchment and T-route output files
-  cp ${DATA}/regionalization/*/${SUBDIR}/Output/catchment_output.nc \
-	  ${COMOUT}/${cyc}/${RUN_CASETYPE}/catchment_output_${PDY}${cyc}00.nc
-  cp ${DATA}/regionalization/*/${SUBDIR}/Output/troute_output_$($NDATE 1 ${PDY}${cyc})00.nc  \
-          ${COMOUT}/${cyc}/${RUN_CASETYPE}/
-fi 
-export err=$?; err_chk
-if [ "$err" -eq 0 ]; then
-    ecflow_client --alter=change variable PRE_WORKDIR "NONE" ${ECF_NAME}
-fi
+# Per-region output staging to COMOUT (products, logs, and warm states under
+# ${COMOUT}/${cyc}/${CASETYPE}/<run_id>/) is done inside nwm_realtime_fcst.py by
+# NWMForecast.move_outputs_to_storage. NWMRunner records per-region outcome in
+# ${DATA}/job_status.json and sets the PRE_WORKDIR ecFlow variable (NONE on full
+# success, else ${DATA}) used to detect and drive restart runs. Nothing here.
 
 msg="Ending $USHnwm/rte-nwm at `date`"
 

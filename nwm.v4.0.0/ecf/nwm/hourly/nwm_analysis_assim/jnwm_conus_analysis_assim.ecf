@@ -26,10 +26,10 @@ export model=nwm
 #module list
 
 # EXPORT list here
-export cyc=`date --date="1 hour ago" -u +%%H`
-export min=`date --date="1 hour ago" -u +%%M`
+export cyc=`date --date="2 hour ago" -u +%%H`
+export min=`date --date="2 hour ago" -u +%%M`
 
-export PDY=`date --date="1 hour ago" -u +%%Y%%m%%d`
+export PDY=`date --date="2 hour ago" -u +%%Y%%m%%d`
 
 echo "I, %ECF_NAME%, am part of a suite that lives in %ECF_HOME%.  My date is '%DATE%' "
 echo "CYC=%CYC%"
