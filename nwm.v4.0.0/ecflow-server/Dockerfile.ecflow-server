@@ -90,4 +90,12 @@ RUN dnf config-manager --add-repo https://download.docker.com/linux/centos/docke
     dnf install -y docker-ce-cli
 
 
+# Install ecf_task_mgr. ensurepip bootstraps pip since python3.11-devel ships without it.
+COPY ecf/ecf_task_mgr /opt/ecf_task_mgr
+RUN python3 -m ensurepip && python3 -m pip install /opt/ecf_task_mgr
+
+# Make the ecflow Python bindings importable alongside the system Python packages.
+ENV PYTHONPATH=/usr/local/ecflow/lib/python3.11/site-packages${PYTHONPATH:+:${PYTHONPATH}}
+
+
 CMD ["ecflow_server", "--host=0.0.0.0"]
