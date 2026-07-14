@@ -27,15 +27,19 @@ class EcflowConnection:
 
     Parameters
     ----------
-    settings_path : Path
+    settings_path : Path, optional
         Path to JSON file with ``host`` and ``port`` keys.
+    settings : dict, optional
+        Dict with ``host`` and ``port`` keys. Takes precedence over ``settings_path``.
     """
 
     def __init__(
         self,
         settings_path: Path = _SETTINGS_FILE,
+        settings: dict | None = None,
     ) -> None:
-        settings = json.loads(Path(settings_path).read_text())
+        if settings is None:
+            settings = json.loads(Path(settings_path).read_text())
         self._host: str = settings["host"]
         self._port: int = settings["port"]
         self.client: ecflow.Client = ecflow.Client(self._host, self._port)
