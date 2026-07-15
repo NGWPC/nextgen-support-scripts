@@ -42,6 +42,7 @@ sed -i -e "s|^export PACKAGEROOT=.*|export PACKAGEROOT=$(dirname "${NWM_PACKAGE_
 if [ ! -d "${NWM_PACKAGE_DIR}/ush/nwm-rte" ]; then
   echo "Installing RTE ..."
   cd "${NWM_PACKAGE_DIR}/ush"
+  # TODO update this line to clone either the default branch or the development branch
   git clone -b maxkipp-ecflow-client https://github.com/NGWPC/nwm-rte.git
   cd ./nwm-rte/
   ./setup_clone_repos.sh https
