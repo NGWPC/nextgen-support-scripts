@@ -407,9 +407,15 @@ class NWMForecast(ABC):
 
     def _docker_copy_dir(self, src: str, dst: str) -> int:
         """copy a directory recursively inside the container; return its exit code."""
-        cmd = f'source run.sh && docker_run mkdir -p {dst}'
-        result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
+        #cmd = f'source run.sh && docker_run mkdir -p {dst}'
+        #result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         cmd = f'source run.sh && docker_run cp -r {src} {dst}'
+        result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
+        return result.returncode
+
+    def _docker_mkdir(self, dir: str) -> int:
+        """create a directory; return its exit code."""
+        cmd = f'source run.sh && docker_run mkdir -p {dir}'
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         return result.returncode
 

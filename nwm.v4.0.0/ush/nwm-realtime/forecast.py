@@ -105,7 +105,6 @@ class Forecast(NWMForecast):
             docker_args = (
                 f'-n {self.nprocs} -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
                 f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}{self.output_format_arg} --checkpoint_interval 1'
-                f'{self.output_format_arg}'
             )
             rc = self._docker_run(docker_args)
             if rc is None or rc != 0:

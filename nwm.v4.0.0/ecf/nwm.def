@@ -31,7 +31,6 @@ suite nwm
        task jnwm_conus_extended_analysis_assim
          edit CASETYPE CONUS_EXT_ANALYSIS_ASSIM
          edit PRE_WORKDIR NONE
-         edit PASS NONE
      endfamily
    endfamily
 endsuite

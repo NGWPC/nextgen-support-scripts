@@ -316,6 +316,7 @@ class AnalysisAssim(NWMForecast):
 
             #copy the previously failed directory to current working directory.
             formu_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}"
+            rc_mkdir = self._docker_mkdir(formu_dir)
             rc_copy = self._docker_copy_dir(src_dir, formu_dir)
             if rc_copy != 0:
                 print(f"ERROR: Copying directory: {src_dir} to {formu_dir} failed! Return code = {rc_copy}.", flush=True)
