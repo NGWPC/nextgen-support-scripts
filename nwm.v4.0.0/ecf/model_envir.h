@@ -49,5 +49,5 @@ export PATH=${PACKAGEROOT}/prod_util.v2.0.14/ush:${PACKAGEROOT}/prod_util.v2.0.1
 export NDATE=${PACKAGEROOT}/prod_util.v2.0.14/exec/ndate
 
 _PY_VENV=/contrib/software/py_venv/testbed/bin/activate
-[ -f "${_PY_VENV}" ] && source "${_PY_VENV}" || true
+[ -f "${_PY_VENV}" ] && source "${_PY_VENV}"
 unset _PY_VENV
