@@ -2,10 +2,14 @@
 suite nwm
    edit ECF_HOME "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"  # path to the package ecf directory
    edit ECF_INCLUDE "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"
-   edit ECF_OUT "/contrib/lfs/h1/owp/ptmp/SOMEBODY/test/tmp"
+   edit ECF_OUT "/lfs/h1/owp/ptmp/SOMEBODY/test/tmp"
+   #
+   #enable this for SLURM
+   #edit ECF_JOB_CMD 'sbatch %ECF_JOB% 1> %ECF_JOBOUT% 2>&1'
+   #edit ECF_KILL_CMD 'scancel %ECF_RID%'
    edit CYC "$(echo %TIME%|cut -c1-2)"
    clock real    
-   repeat date YMD 20260714 20261231 1                                                                          
+   repeat date YMD 20260715 20261231 1                                                                          
    family hourly
      time 00:30 23:30 01:00
      # The Analysis Assimilation family, including inland, coastal, conus, Hawaii, Alaska, PRVI

@@ -121,16 +121,17 @@ class AnalysisAssim(NWMForecast):
         state_save_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}_state_save"
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
-        if os.path.isdir(src_state_save):
+        src_state_save_tar = f"{src_state_save}.tar"
+        if os.path.isfile(src_state_save_tar):
             print(
-                f"INFO: Warm states found: {src_state_save}; "
+                f"INFO: Warm states found: {src_state_save_tar}; "
                 f"T0={self.t0}; {case_type} job will use warm states.",
                 flush=True,
             )
             load_state_arg = f' --load_state_from "{state_save_dir}"'
         else:
             print(
-                f"WARNING: state_save directory not found: {src_state_save}; "
+                f"WARNING: state_save directory not found: {src_state_save_tar}; "
                 f"T0={self.t0}; {case_type} job will use cold start.",
                 flush=True,
             )
@@ -251,13 +252,14 @@ class AnalysisAssim(NWMForecast):
         dt1 = (self.t0 - timedelta(hours=l2)).strftime("%Y-%m-%d %H:%M:%S")
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
 
-        ecfcon = EcflowConnection()
+        ecfcon = EcflowConnection(f"{self.package_dir}/ush/nwm-realtime/ecflow-settings.json")
         ecfintf = EcflowInterface(ecfcon)
         previous_workdir = self._pre_workdir(ecfintf)
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
         src_state_save=self._ana_state_save_src()
-        if os.path.isdir(src_state_save):
+        src_state_save_tar = f"{src_state_save}.tar"
+        if os.path.isfile(src_state_save_tar):
             print(
                 f"INFO: Warm states found: {src_state_save}; "
                 f"T0={self.t0}; {self.case_type} job will use warm states.",
@@ -385,8 +387,12 @@ class AnalysisAssim(NWMForecast):
         #catchment and t-route files should be stamped at the beginning 
         #of the time period
         ts_r1_begin = (self.t0 - timedelta(hours=l2) -  timedelta(hours=l1)).strftime("%Y%m%d%H") 
+        #for ts in (ts_t0, ts_r1):
+        #    rc |= self._store_tree(os.path.join(run_dir, f"state_save_{ts}"), dst)
+
         for ts in (ts_t0, ts_r1):
-            rc |= self._store_tree(os.path.join(run_dir, f"state_save_{ts}"), dst)
+            rc |= self._store_file(os.path.join(run_dir, f"state_save_{ts}.tar"), 
+            os.path.join(dst, f"state_save_{ts}.tar") )
 
         rc |= self._store_file(
             os.path.join(run_dir, f"Output_{ts_t0}", "catchment_output.nc"),

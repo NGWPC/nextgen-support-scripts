@@ -2,6 +2,7 @@ import glob
 import os
 import re
 import shutil
+import tarfile
 import subprocess
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
@@ -316,8 +317,28 @@ class NWMForecast(ABC):
             f"{self.run_id}_state_save",
         )
         src_state_save = self._state_save_src()
-        if os.path.isdir(src_state_save):
-            shutil.copytree(src_state_save, dst_state_save, dirs_exist_ok=True)
+        src_tar = f"{src_state_save}.tar"
+        print( "src_tar = ", src_tar )
+        if os.path.isfile(src_tar):
+           tar_file = os.path.basename(src_tar)
+           dst_state_save_tar = os.path.join(
+              self.working_dir, "regionalization", self._formulation_dir,
+              tar_file,
+           )
+           dst_path = os.path.join(
+              self.working_dir, "regionalization", self._formulation_dir )
+           try: 
+              os.makedirs(dst_path, exist_ok=True)
+           except Exception as e:
+              print( e )
+              sys.exit(1)
+
+           print( "dst_stat_save_tar = ", dst_state_save_tar )
+           shutil.copy( src_tar, dst_state_save_tar )
+           # Open the tar file in read mode
+           with tarfile.open(dst_state_save_tar, 'r') as tar:
+              # Extract state files
+              tar.extractall( path=dst_state_save) 
 
     # ------------------------------------------------------------------ #
     # ecFlow / container helpers  (shared by all configurations)
@@ -485,14 +506,17 @@ class NWMForecast(ABC):
         name = "state_save"
         src = os.path.join(run_dir, name)
         if os.path.isdir(src):
-            rc = self._docker_copy_dir(
-                os.path.join(c_run_dir, name),
-                os.path.join(c_run_dir, f"{name}_{ts}"),
-            )
+            tarcmd = f"tar -C {c_run_dir}/{name} -cf {c_run_dir}/{name}_{ts}.tar ./"
+            print( tarcmd )
+            #rc = self._docker_copy_dir(
+            #    os.path.join(c_run_dir, name),
+            #    os.path.join(c_run_dir, f"{name}_{ts}"),
+            #)
+            rc = self._docker_exec( tarcmd )
             if rc != 0:
-                print(f"ERROR: Failed to archive {src} -> {name}_{ts} (rc={rc})", flush=True)
+                print(f"ERROR: Failed to archive {src} -> {name}_{ts}.tar (rc={rc})", flush=True)
                 return 1
-            print(f"INFO: Archived {src} -> {name}_{ts}", flush=True)
+            print(f"INFO: Archived {src} -> {name}_{ts}.tar", flush=True)
         else:
             print(f"WARNING: Cannot archive missing directory: {src}", flush=True)
             return 1

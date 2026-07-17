@@ -11,7 +11,7 @@
     {
       "type": "vpu",
       "id": "03N",
-      "nprocs": 4,
+      "nprocs": 6,
       "hydrofabric": "",
       "formulation_assignment": "/ngen-app/ngen-python/lib/python3.11/site-packages/mswm/example_inputs/regionalization/vpu_03N/formulation_assignment.csv",
       "catchment_group": "/ngen-app/ngen-python/lib/python3.11/site-packages/mswm/example_inputs/regionalization/vpu_03N/catchment_groups.csv"

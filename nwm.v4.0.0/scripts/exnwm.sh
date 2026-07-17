@@ -90,6 +90,14 @@ check_rte_logs() {
     set $seton
 }
 
+#build the docker images for RTE
+#start docker daemon
+#sudo systemctl start docker
+#
+#cd ${USHnwm}/nwm-rte
+#./ngen_rte_build.sh
+#cd -
+
 set +e   # Disable exit-on-error
 
 # All regions (VPUs and/or basins) to run in this job are listed in the region

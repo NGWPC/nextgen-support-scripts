@@ -192,7 +192,8 @@ class NWMRunner:
             return 0
 
         self._overall_rc = 0
-        ecfcon = EcflowConnection()
+        package_dir = next(iter(self.jobs.values())).package_dir
+        ecfcon = EcflowConnection( f"{package_dir}/ush/nwm-realtime/ecflow-settings.json" )
         ecfintf = EcflowInterface(ecfcon)
         is_restart = NWMForecast._is_restart(ecfintf)
         previous_workdir = NWMForecast._pre_workdir(ecfintf)

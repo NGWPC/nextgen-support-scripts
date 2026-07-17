@@ -41,7 +41,35 @@ class Forecast(NWMForecast):
         src_dir = f"/ngwpc/run_ngen_failed/regionalization/default_short/{self.run_id}"
         dst_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}"
         checkpoint_dir = os.path.join(src_dir, "checkpoint")
-        return self._docker_restart(src_dir, dst_dir, checkpoint_dir)
+        if self._is_empty_or_missing( checkpoint_dir ):
+            rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
+            src_state_save = self._short_range_state_save_src()
+            # Hardcoded container path where RTE writes/reads the saved model state
+            # (the run directory inside the /ngwpc/run_ngen mount).
+            state_save_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}_state_save"
+            src_state_save_tar = f"{src_state_save}.tar"
+            if os.path.isfile(src_state_save_tar):
+                print(
+                    f"INFO: Warm states found at {src_state_save_tar}; "
+                    f"T0={self.t0:%Y-%m-%d %H:%M:%S}; CONUS_SHORT_RANGE job will use warm states.",
+                    flush=True,
+                )
+                load_state_arg = f' --load_state_from "{state_save_dir}"'
+            else:
+                print(
+                    f"WARNING: Warm states could not be found at {src_state_save_tar}; "
+                    f"T0={self.t0:%Y-%m-%d %H:%M:%S}; CONUS_SHORT_RANGE job cold started.",
+                    flush=True,
+                )
+                load_state_arg = ""
+            docker_args = (
+                f'-n {self.nprocs} -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
+                f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}{self.output_format_arg} --checkpoint_interval 1'
+            )
+            restart_rc = self._docker_run(docker_args)
+        else:
+            restart_rc = self._docker_restart( src_dir, dst_dir, checkpoint_dir )
+        return restart_rc
 
     def _store_logs(self, run_dir: str, dst_logs: str) -> None:
         """Single un-archived run: the run dir's top-level *.log files plus the
@@ -79,7 +107,7 @@ class Forecast(NWMForecast):
                 f"runRTE not implemented for config='{self.config_name}', domain='{self.domain}'"
             )
 
-        ecfcon = EcflowConnection()
+        ecfcon = EcflowConnection(f"{self.package_dir}/ush/nwm-realtime/ecflow-settings.json")
         ecfintf = EcflowInterface( ecfcon )
 
         if case_type == "CONUS_SHORT_RANGE":
@@ -88,16 +116,17 @@ class Forecast(NWMForecast):
             # Hardcoded container path where RTE writes/reads the saved model state
             # (the run directory inside the /ngwpc/run_ngen mount).
             state_save_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}_state_save"
-            if os.path.isdir(src_state_save):
+            src_state_save_tar = f"{src_state_save}.tar"
+            if os.path.isfile(src_state_save_tar):
                 print(
-                    f"INFO: Warm states found at {src_state_save}; "
+                    f"INFO: Warm states found at {src_state_save_tar}; "
                     f"T0={self.t0:%Y-%m-%d %H:%M:%S}; CONUS_SHORT_RANGE job will use warm states.",
                     flush=True,
                 )
                 load_state_arg = f' --load_state_from "{state_save_dir}"'
             else:
                 print(
-                    f"WARNING: Warm states could not be found at {src_state_save}; "
+                    f"WARNING: Warm states could not be found at {src_state_save_tar}; "
                     f"T0={self.t0:%Y-%m-%d %H:%M:%S}; CONUS_SHORT_RANGE job cold started.",
                     flush=True,
                 )
