@@ -35,10 +35,10 @@ def err_exit(msg):
 #        '/comh1': '/lustre/lfs/h1/ops/<envir>/com',
 #        '/comh2': '/lustre/lfs/h2/ops/<envir>/com',
 #    }
-if path.exists('/contrib/lfs/h1'):
+if path.exists('/lfs/h1'):
     com_aliases = { # use "<envir>" to include environment in path
-        '/comh1': '/contrib/lfs/h1/ops/<envir>/com',
-        '/comh2': '/contrib/lfs/h2/ops/<envir>/com',
+        '/comh1': '/lfs/h1/ops/<envir>/com',
+        '/comh2': '/lfs/h2/ops/<envir>/com',
     }
 else:
     err_exit('Unable to find /lfs/h1. Are you on WCOSS?')
@@ -163,7 +163,7 @@ def get_compath(relpath, envir=None, out=False, verbose=False):
 
     # Search the compaths list file for an appropriate match
     if not foundpath:
-        compaths_filename = "/contrib/lfs/h1/ops/%s/config/compaths.list"%envir
+        compaths_filename = "/lfs/h1/ops/%s/config/compaths.list"%envir
         try:
             with open(compaths_filename, 'r') as compaths_list:
                 file_dirlist = [line.strip().rstrip('/') for line in compaths_list if line and not line.startswith('#')]

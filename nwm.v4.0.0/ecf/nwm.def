@@ -2,10 +2,14 @@
 suite nwm
    edit ECF_HOME "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"  # path to the package ecf directory
    edit ECF_INCLUDE "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm.v4.0.0/ecf"
-   edit ECF_OUT "/contrib/lfs/h1/owp/ptmp/SOMEBODY/test/tmp"
+   edit ECF_OUT "/lfs/h1/owp/ptmp/SOMEBODY/test/tmp"
+   #
+   #enable this for SLURM
+   #edit ECF_JOB_CMD 'sbatch %ECF_JOB% 1> %ECF_JOBOUT% 2>&1'
+   #edit ECF_KILL_CMD 'scancel %ECF_RID%'
    edit CYC "$(echo %TIME%|cut -c1-2)"
    clock real    
-   repeat date YMD 20260623 20261231 1                                                                          
+   repeat date YMD 20260715 20261231 1                                                                          
    family hourly
      time 00:30 23:30 01:00
      # The Analysis Assimilation family, including inland, coastal, conus, Hawaii, Alaska, PRVI
@@ -14,7 +18,6 @@ suite nwm
        task jnwm_conus_analysis_assim
          edit CASETYPE CONUS_ANALYSIS_ASSIM
          edit PRE_WORKDIR NONE
-         edit VPU 03S
      endfamily
      # The short range forecast family
      family nwm_short_range
@@ -22,7 +25,6 @@ suite nwm
        task jnwm_conus_short_range
          edit CASETYPE CONUS_SHORT_RANGE
          edit PRE_WORKDIR NONE
-         edit VPU 03S
          trigger ../nwm_analysis_assim/jnwm_conus_analysis_assim eq complete
      endfamily
    endfamily
@@ -33,8 +35,6 @@ suite nwm
        task jnwm_conus_extended_analysis_assim
          edit CASETYPE CONUS_EXT_ANALYSIS_ASSIM
          edit PRE_WORKDIR NONE
-         edit PASS NONE
-         edit VPU 03S
      endfamily
    endfamily
 endsuite

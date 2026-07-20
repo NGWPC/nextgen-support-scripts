@@ -11,7 +11,7 @@ else
   export ECF_PORT=$1
 fi 
 
-export PATH=/contrib/software/ecflow/5.6.0/bin:$PATH
+export PATH=/contrib/software/ecflow/5.15.2/bin:$PATH
 
 PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
 PACKAGEDIR=${PACKAGEROOT}/nwm.v4.0.0
@@ -25,22 +25,22 @@ fi
 
 echo "Installing EcFlow/NCO scripts ... "
 
-cp -r ./ecf ${PACKAGEDIR}
+ln -s ./ecf ${PACKAGEDIR}
 
 PDY=$(date +"%Y%m%d")
 sed -i -e "s/Zhengtao\.Cui/${LOGNAME}/" ${PACKAGEDIR}/ecf/nwm.def
-sed -i -e "s/repeat date YMD 20260430/repeat date YMD ${PDY}/" ${PACKAGEDIR}/ecf/nwm.def
+sed -i -e "s/repeat date YMD 2026\d+/repeat date YMD ${PDY}/" ${PACKAGEDIR}/ecf/nwm.def
 
-cp -r ./jobs ${PACKAGEDIR}
-cp -r ./scripts ${PACKAGEDIR}
-cp -r ./ush ${PACKAGEDIR}
-cp -r ./versions ${PACKAGEDIR}
-cp -r ./prod_envir.2.0.6 ${PACKAGEROOT}
-cp -r ./prod_util.v2.0.14 ${PACKAGEROOT}
+ln -s ./jobs ${PACKAGEDIR}
+ln -s ./scripts ${PACKAGEDIR}
+ln -s ./ush ${PACKAGEDIR}
+ln -s ./versions ${PACKAGEDIR}
+ln -s ./prod_envir.2.0.6 ${PACKAGEROOT}
+ln -s ./prod_util.v2.0.14 ${PACKAGEROOT}
 
-mkdir -p /contrib/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/hourly/nwm_analysis_assim
-mkdir -p /contrib/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/hourly/nwm_short_range
-mkdir -p /contrib/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/daily/nwm_extended_analysis_assim
+mkdir -p /lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/hourly/nwm_analysis_assim
+mkdir -p /lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/hourly/nwm_short_range
+mkdir -p /lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/daily/nwm_extended_analysis_assim
 
 echo "Installing RTE ... "
 

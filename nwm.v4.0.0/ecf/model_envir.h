@@ -6,18 +6,17 @@
 export envir="test"
 export model="nwm"
 export nwm_ver=v4.0.0
-#export maillist1="Cham.Pham@noaa.gov,Donald.W.Johnson@noaa.gov,Brian.Cosgrove@noaa.gov"
+#export maillist1="Zhengtao.Cui@rtx.com"
 #export maillist2=$maillist1
-#export maillist3=$maillist1
 
 export SITE=PWCLUSTER
 
-export OPSROOT=/contrib/lfs/h1/ops/prod
-export COMROOT=/contrib/lfs/h1/ops/prod/com
-#export DATAROOT=/contrib/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp
-export DATAROOT=/home/${LOGNAME}/rte_test
-export OPSCOMROOT=/contrib/lfs/h1/ops/prod/com
-export DCOMROOT=/contrib/lfs/h1/ops/prod/dcom
+export OPSROOT=/lfs/h1/ops/prod
+export COMROOT=/lfs/h1/ops/prod/com
+#export DATAROOT=/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp
+export DATAROOT=/home/${LOGNAME}/test/tmp
+export OPSCOMROOT=/lfs/h1/ops/prod/com
+export DCOMROOT=/lfs/h1/ops/prod/dcom
 export PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
  
 export PACKAGEHOME=${PACKAGEHOME:-$PACKAGEROOT}/$model.${nwm_ver}
