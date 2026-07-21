@@ -28,8 +28,10 @@ class AnalysisAssim(NWMForecast):
         ext_ana_dir = "CONUS_EXT_ANALYSIS_ASSIM"
         default_path = os.path.join(base_comout, cyc, ana_dir, self.run_id, f"state_save_{ts}")
 
-        if cyc == "16":
-            ext_path = os.path.join(base_comout, cyc, ext_ana_dir, self.run_id, f"state_save_{ts}")
+        # At cycle 19z, use the Exteneded restart which is 16z
+        if cyc == "18": # 18z = 19z - 1
+            #uses the 16z restart from extended AnA
+            ext_path = os.path.join(base_comout, "16", ext_ana_dir, self.run_id, f"state_save_{ts}")
             if os.path.isdir(ext_path):
                 return ext_path
             print(
@@ -50,7 +52,8 @@ class AnalysisAssim(NWMForecast):
         if the preferred directory is not found. The caller is responsible for
         checking whether the returned path exists; if it does not, a cold start
         should be used."""
-        cyc = "12"
+        cyc = "16" # use 16z here because the 12z restart file is saved in the 16z
+                   # folder - Extended AnA runs at 16z cycle
         ts = self.start_time.strftime("%Y%m%d%H")
         ana_dir = "CONUS_ANALYSIS_ASSIM"
         ext_ana_dir = "CONUS_EXT_ANALYSIS_ASSIM"
@@ -66,7 +69,8 @@ class AnalysisAssim(NWMForecast):
             flush=True,
         )
         return os.path.join(
-            self.previous_day_comout, cyc, ana_dir, self.run_id, f"state_save_{ts}"
+                #the standard AnA restart file is saved in the 12z folder 
+            self.previous_day_comout, "12", ana_dir, self.run_id, f"state_save_{ts}"
         )
 
     # ------------------------------------------------------------------ #
