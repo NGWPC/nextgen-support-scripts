@@ -40,4 +40,39 @@ suite nwm
          edit ECF_JOBOUT '%ECF_OUT%/%ECF_NAME%.%ECF_TRYNO%.%ECF_DATE%_%TIME%'
      endfamily
    endfamily
+   family da_preprocessing
+     family fetch_raw_data
+       task jnwm_fetch_usgs
+         edit CASETYPE FETCH_USGS 
+         time +00:01
+       task jnwm_fetch_env_ca
+         edit CASETYPE FETCH_ENVCA 
+         cron 00:02 23:52 01:00
+       task jnwm_fetch_usace
+         edit CASETYPE FETCH_USACE 
+         cron 00:05 23:55 01:00
+       task jnwm_fetch_rfc
+         edit CASETYPE FETCH_RFC 
+         cron 00:10 23:55 01:00
+     endfamily
+     family preprocess
+       cron 00:00 23:55 00:15
+       # USGS and Env. Canada are preprocessed together so that their timeslices
+       # can be merged in the same pass
+       task jnwm_preprocess_usgs_n_envca
+         edit CASETYPE PREPROCESS_USGS_N_ENVCA
+       task jnwm_preprocess_usace
+         edit CASETYPE PREPROCESS_USACE
+       task jnwm_preprocess_rfc
+         edit CASETYPE PREPROCESS_RFC
+     endfamily
+   endfamily
+   family cleanup
+     # Daily housekeeping: delete run/observation folders and dbn log files
+     # older than CLEANUP_RETENTION_DAYS (default 3) from COMROOT, DCOMROOT and
+     # DBNROOT/log. Runs once a day at a quiet hour.
+     time 01:00
+     task jnwm_cleanup
+       edit CASETYPE CLEANUP
+   endfamily
 endsuite

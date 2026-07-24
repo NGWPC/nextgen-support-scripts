@@ -1,11 +1,7 @@
 import os
 from datetime import timedelta
 
-from ecf_task_mgr.ecf_interface import EcflowConnection, EcflowInterface
-
 from nwm_forecast import NWMForecast
-
-
 
 class Forecast(NWMForecast):
     """Forward forecast configurations (Short Range, Medium Range). A single RTE
@@ -38,15 +34,16 @@ class Forecast(NWMForecast):
 
     def forecast_restart(self) -> int:
         """Restart a failed Short Range forecast from a checkpoint."""
-        src_dir = f"/ngwpc/run_ngen_failed/regionalization/default_short/{self.run_id}"
-        dst_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}"
+        paths = self._paths()
+        src_dir = paths.failed_container_run_dir
+        dst_dir = paths.container_run_dir
         checkpoint_dir = os.path.join(src_dir, "checkpoint")
         if self._is_empty_or_missing( checkpoint_dir ):
             rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
             src_state_save = self._short_range_state_save_src()
-            # Hardcoded container path where RTE writes/reads the saved model state
+            # Container path where RTE writes/reads the saved model state
             # (the run directory inside the /ngwpc/run_ngen mount).
-            state_save_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}_state_save"
+            state_save_dir = paths.container(f"{self.run_id}_state_save")
             src_state_save_tar = f"{src_state_save}.tar"
             if os.path.isfile(src_state_save_tar):
                 print(
@@ -107,15 +104,13 @@ class Forecast(NWMForecast):
                 f"runRTE not implemented for config='{self.config_name}', domain='{self.domain}'"
             )
 
-        ecfcon = EcflowConnection(f"{self.package_dir}/ush/nwm-realtime/ecflow-settings.json")
-        ecfintf = EcflowInterface( ecfcon )
-
         if case_type == "CONUS_SHORT_RANGE":
+            paths = self._paths()
             rte_start_time = self.t0.strftime("%Y-%m-%d %H:%M:%S")
             src_state_save = self._short_range_state_save_src()
-            # Hardcoded container path where RTE writes/reads the saved model state
+            # Container path where RTE writes/reads the saved model state
             # (the run directory inside the /ngwpc/run_ngen mount).
-            state_save_dir = f"/ngwpc/run_ngen/regionalization/default_short/{self.run_id}_state_save"
+            state_save_dir = paths.container(f"{self.run_id}_state_save")
             src_state_save_tar = f"{src_state_save}.tar"
             if os.path.isfile(src_state_save_tar):
                 print(
@@ -143,8 +138,8 @@ class Forecast(NWMForecast):
                   flush=True,
                )
                #backup the failed run, this is the directory in the container
-               src_dir = os.path.join("/ngwpc/run_ngen/regionalization/default_short", f"{self.run_id}_failed")
-               dst_dir = os.path.join("/ngwpc/run_ngen/regionalization/default_short", self.run_id)
+               src_dir = paths.container(f"{self.run_id}_failed")
+               dst_dir = paths.container_run_dir
                rc_move = self._docker_move_dir( dst_dir, src_dir )
                if rc_move != 0:
                   print(
@@ -160,7 +155,7 @@ class Forecast(NWMForecast):
                    restart_rc = self._docker_restart( src_dir, dst_dir, checkpoint_dir )
 
                if restart_rc is None or restart_rc != 0:
-                   self._set_ecf_var( ecfintf, "PRE_WORKDIR", self.working_dir  )
+                   self.task.iface.var_set(self.task.ecf_path, "PRE_WORKDIR", self.working_dir  )
                return restart_rc
 
             # Initial run succeeded.

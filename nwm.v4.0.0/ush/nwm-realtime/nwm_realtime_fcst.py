@@ -93,7 +93,14 @@ def main():
 
     # Build one forecast per region (VPU or single-gage basin) and collect them
     # into an NWMRunner keyed by region.
-    runner = NWMRunner()
+
+    # hardcode the cores for extended AnA because it runs at the same time
+    # as the standarded AnA. A better algorithm is needed here to automatically
+    # detect idling cores and assign the idling cores.
+    ncores = os.cpu_count()
+    runner = NWMRunner( cores = [ c for c in range( ncores - 1, 9, -1 ) ] 
+                   if args.config_name == NWMForecast.CONFIG_EXT_ANA else None )
+
     for spec in region_specs:
         rtype = spec["type"].lower()
         is_vpu = rtype == "vpu"

@@ -3,10 +3,7 @@
 set -xa
 set -euo pipefail
 
-if [ $# -eq 0 ]; then
-  echo "Use default port."
-  export ECF_PORT=3141
-else
+if [ $# -eq 1 ]; then
   echo "Use port $1"
   export ECF_PORT=$1
 fi 
@@ -16,6 +13,9 @@ export NWM_PACKAGE_DIR="$(pwd)"
 export OPSROOT="${OPSROOT:-/lfs/h1/ops/prod}"
 export DATAROOT="${DATAROOT:-${HOME}/test/tmp}"
 export ECF_OUT="${DATAROOT}"
+export COMROOT="${COMROOT:-${OPSROOT}/com}"
+export DBNROOT="${DBNROOT:-${OPSROOT}/dbn}"
+export DCOMROOT="${DCOMROOT:-${OPSROOT}/dcom}"
 
 echo "PACKAGEROOT=${PACKAGEROOT}"
 echo "NWM_PACKAGE_DIR=${NWM_PACKAGE_DIR}"
@@ -46,6 +46,8 @@ sed -i -e "s|^\(\s\+\)+edit ECF_OUT \".\+\"|\1edit ECF_OUT \"${ECF_OUT}\"|" ecf/
 sed -i -e "s|^export DATAROOT=.*|export DATAROOT=${DATAROOT}|" ecf/model_envir.h
 sed -i -e "s|^export OPSROOT=.*|export OPSROOT=${OPSROOT}|" ecf/model_envir.h
 sed -i -e "s|^export COMROOT=.*|export COMROOT=${OPSROOT}/com|" ecf/model_envir.h
+sed -i -e "s|^export DCOMROOT=.*|export DCOMROOT=${DCOMROOT}|" ecf/model_envir.h
+sed -i -e "s|^export DBNROOT=.*|export DBNROOT=${DBNROOT}|" ecf/model_envir.h
 sed -i -e "s|^export OPSCOMROOT=.*|export OPSCOMROOT=${OPSROOT}/com|" ecf/model_envir.h
 sed -i -e "s|^export PACKAGEROOT=.*|export PACKAGEROOT=${PACKAGEROOT}|" ecf/model_envir.h
 
@@ -68,18 +70,24 @@ sudo mkdir -p "${ECF_OUT}/nwm/test"
 sudo mkdir -p "${ECF_OUT}/nwm/hourly/nwm_analysis_assim"
 sudo mkdir -p "${ECF_OUT}/nwm/hourly/nwm_short_range"
 sudo mkdir -p "${ECF_OUT}/nwm/daily/nwm_extended_analysis_assim"
+sudo mkdir -p "${ECF_OUT}/nwm/da_preprocessing/preprocess"
+sudo mkdir -p "${ECF_OUT}/nwm/da_preprocessing/fetch_raw_data"
+sudo mkdir -p "${ECF_OUT}/nwm/cleanup"
 
 echo "Starting ecflow-server container ..."
 cd "${NWM_PACKAGE_DIR}/ecflow-server"
 sudo \
-COMROOT="${OPSROOT}/com"           \
+COMROOT="${COMROOT}"           \
+DBNROOT="${DBNROOT}"           \
+DCOMROOT="${DCOMROOT}"        \
 NWM_PACKAGE_DIR="${NWM_PACKAGE_DIR}"          \
-DATAROOT="${DATAROOT}" ./ecflow-server-start.sh
+DATAROOT="${DATAROOT}"        \
+./ecflow-server-start.sh
 
 echo "Loading NWM suite into server ..."
 sudo docker exec ecflow-server bash -c "
   cd ${NWM_PACKAGE_DIR}/ecf && \
-  ecflow_client --delete yes /nwm 2>/dev/null || true && \
+  ecflow_client --delete force yes /nwm 2>/dev/null || true && \
   ecflow_client --load=nwm.def && \
   ecflow_client --begin=nwm && \
   ecflow_client --restart && \

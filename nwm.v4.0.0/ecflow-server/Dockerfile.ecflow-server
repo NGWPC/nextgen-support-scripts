@@ -36,7 +36,7 @@ RUN dnf -y install git cmake gcc gcc-c++ boost169-static openssl-devel python3.1
 
 
 # Build boost (from: https://www.boost.org/doc/user-guide/getting-started.html#from-source)
-RUN dnf -y install wget
+RUN dnf -y install wget findutils
 RUN wget https://archives.boost.io/release/${BOOST_VERS_DOT}/source/boost_${BOOST_VERS_UNDER}.tar.gz && \
     tar xf boost_${BOOST_VERS_UNDER}.tar.gz && \
     cd boost_${BOOST_VERS_UNDER} && \
@@ -93,6 +93,13 @@ RUN dnf config-manager --add-repo https://download.docker.com/linux/centos/docke
 # Install ecf_task_mgr. ensurepip bootstraps pip since python3.11-devel ships without it.
 COPY ecf/ecf_task_mgr /opt/ecf_task_mgr
 RUN python3 -m ensurepip && python3 -m pip install /opt/ecf_task_mgr
+RUN python3 -m ensurepip && python3 -m pip install requests pytz
+
+# Dependencies of the nwm-data-assimilation make_*.py tools driven by
+# ush/nwm-realtime/da_preprocessor.py (the DA pre-processing tasks). pytz is
+# installed above and is also required by them.
+# numpy is pinned to match nwm-data-assimilation/pyproject.toml (and ngen-forcing).
+RUN python3 -m pip install netCDF4 "numpy~=1.26.4" python-dateutil
 
 # Make the ecflow Python bindings importable alongside the system Python packages.
 ENV PYTHONPATH=/usr/local/ecflow/lib/python3.11/site-packages${PYTHONPATH:+:${PYTHONPATH}}

@@ -13,6 +13,8 @@ import ecflow
 from ecf_task_mgr.constants import AoiType, LogFileType, SavedStateType, SubtaskType
 from ecf_task_mgr.ecf_interface import EcflowConnection, EcflowInterface
 
+from run_paths import RunPaths
+from ecf_task_mgr.tasks import Task
 
 def touch_file_if_not_exists(file_path: str) -> None:
     """
@@ -118,6 +120,24 @@ class NWMForecast(ABC):
         # status file. None until the pass runs; "succeed" or "failed" after.
         self.pass1_status = None
         self.pass2_status = None
+
+        ecf_name = os.getenv("ECF_NAME")
+        if not ecf_name:
+          print("ECF_NAME is not set — are you running inside an ecFlow job?")
+          raise RuntimeError("ECF_NAME not found on the server.")
+
+        ecf_tryno= int(os.environ["ECF_TRYNO"])
+        ecf_pass= os.environ["ECF_PASS"]
+        ecf_rid = os.getenv("ECF_RID")
+
+        conn = EcflowConnection( f"{package_dir}/ush/nwm-realtime/ecflow-settings.json" )
+        self.task = Task(
+             conn=conn,
+             ecf_task_path=ecf_name,
+             ecf_tryno=ecf_tryno,
+             ecf_pass=ecf_pass,
+             ecf_rid=ecf_rid,
+        )
 
     # ------------------------------------------------------------------ #
     # Factory
@@ -239,6 +259,19 @@ class NWMForecast(ABC):
         """Unique identifier for run - VPU or gage ID"""
         return self.vpu if self.vpu else self.gageid
 
+    def _paths(self, formulation_dir: str = None, working_dir: str = None,
+               run_id: str = None) -> RunPaths:
+        """RunPaths resolver for this run's regionalization directory.
+
+        Defaults to (working_dir, _formulation_dir, run_id); pass overrides to
+        name a run under a different root (e.g. a previous failed working_dir) or
+        a formulation dir computed locally by a caller."""
+        return RunPaths(
+            self.working_dir if working_dir is None else working_dir,
+            self._formulation_dir if formulation_dir is None else formulation_dir,
+            self.run_id if run_id is None else run_id,
+        )
+
     # ------------------------------------------------------------------ #
     # Subclass-specific hooks used by shared code (configureRTE)
     # ------------------------------------------------------------------ #
@@ -312,21 +345,15 @@ class NWMForecast(ABC):
         with open(run_sh, "w") as f:
             f.write(content)
 
-        dst_state_save = os.path.join(
-            self.working_dir, "regionalization", self._formulation_dir,
-            f"{self.run_id}_state_save",
-        )
+        paths = self._paths()
+        dst_state_save = paths.host(f"{self.run_id}_state_save")
         src_state_save = self._state_save_src()
         src_tar = f"{src_state_save}.tar"
         print( "src_tar = ", src_tar )
         if os.path.isfile(src_tar):
            tar_file = os.path.basename(src_tar)
-           dst_state_save_tar = os.path.join(
-              self.working_dir, "regionalization", self._formulation_dir,
-              tar_file,
-           )
-           dst_path = os.path.join(
-              self.working_dir, "regionalization", self._formulation_dir )
+           dst_state_save_tar = paths.host(tar_file)
+           dst_path = paths.host()
            try: 
               os.makedirs(dst_path, exist_ok=True)
            except Exception as e:
@@ -353,17 +380,16 @@ class NWMForecast(ABC):
         return (window_hours + 1) * 60
 
     @staticmethod
-    def _is_restart( ecfI: EcflowInterface  ) -> bool:
+    def _is_restart(ecfcon: EcflowConnection) -> bool:
         """
         Check the EcFlow server to decide if it is a new job or a restart job
         """
-
-        workdir = NWMForecast._pre_workdir( ecfI )
+        workdir = NWMForecast._pre_workdir(ecfcon)
 
         return True if workdir != "NONE" else False
 
     @staticmethod
-    def _pre_workdir( ecfI: EcflowInterface  ) -> str:
+    def _pre_workdir(ecfcon: EcflowConnection) -> str:
         """
         Get the working directgory of the previous failed job
         """
@@ -372,11 +398,12 @@ class NWMForecast(ABC):
           print("ECF_NAME is not set — are you running inside an ecFlow job?")
           raise RuntimeError("ECF_NAME not found on the server.")
 
-        workdir = ecfI.var_fetch( ecf_name, "PRE_WORKDIR" )
+        ecfintf = EcflowInterface(ecfcon)
+        workdir = ecfintf.var_fetch( ecf_name, "PRE_WORKDIR" )
         return workdir
 
     @staticmethod
-    def _pass1or2( ecfI: EcflowInterface  ) -> int | None:
+    def _pass1or2(ecfcon: EcflowConnection) -> int | None:
         """
         Check the EcFlow server to decide if it is restart from pass 1
         or 2.
@@ -386,15 +413,16 @@ class NWMForecast(ABC):
           print("ECF_NAME is not set — are you running inside an ecFlow job?")
           raise RuntimeError("ECF_NAME not found on the server.")
 
+        ecfintf = EcflowInterface(ecfcon)
         try:
-           pass_num = ecfI.var_fetch( ecf_name, "PASS" )
+           pass_num = ecfintf.var_fetch( self.task.ecf_path, "PASS" )
         except Exception as e:
            return None
 
         return pass_num
 
     @staticmethod
-    def _set_ecf_var( ecfI: EcflowInterface, name: str, value: str  ) -> None:
+    def _set_ecf_var( ecfcon: EcflowConnection,  name: str, value: str  ) -> None:
         """
         set the PRE_WORKDIR variable
         """
@@ -403,7 +431,8 @@ class NWMForecast(ABC):
           print("ECF_NAME is not set — are you running inside an ecFlow job?")
           raise RuntimeError("ECF_NAME not found on the server.")
 
-        ecfI.var_set( ecf_name, name, value )
+        ecfintf = EcflowInterface(ecfcon)
+        ecfintf.var_set( ecf_name, name, value )
 
     def _docker_env(self) -> dict:
         """Environment for docker_run subprocesses. Exports CPUSET_CPUS so run.sh
@@ -451,7 +480,7 @@ class NWMForecast(ABC):
     def _container_path(self, host_path: str) -> str:
         """Map a host path under working_dir to its in-container path (working_dir
         is bind-mounted at /ngwpc/run_ngen)."""
-        return os.path.join("/ngwpc/run_ngen", os.path.relpath(host_path, self.working_dir))
+        return self._paths().to_container(host_path)
 
     def _docker_restart(self, src: str, dst: str, checkpoint_dir: str) -> int:
         """Resume a single RTE invocation from an earlier stopped point inside the container; return its exit code."""
@@ -469,7 +498,7 @@ class NWMForecast(ABC):
             content = f.read()
         content = re.sub(
             r'(-v "\$\{MNT__RUN_NGEN__HOST\}:\$\{MNT__RUN_NGEN__CONTAINER\}" \\)',
-            lambda m: m.group(1) + f'\n        -v "{working_dir}:/ngwpc/run_ngen_failed" \\',
+            lambda m: m.group(1) + f'\n        -v "{working_dir}:{RunPaths.RUN_NGEN_FAILED}" \\',
             content,
         )
         with open(run_sh_path, "w") as f:
@@ -532,9 +561,7 @@ class NWMForecast(ABC):
         {comout}/{cyc}/{case_type}/{run_id}/ and logs to
         {comout}/logs/{cyc}/{case_type}/{run_id}/, where cyc is T0's hour."""
         cyc = self.t0.strftime("%H")
-        run_dir = os.path.join(
-            self.working_dir, "regionalization", self._formulation_dir, self.run_id
-        )
+        run_dir = self._paths().host_run_dir
         dst = os.path.join(self.comout, cyc, self.case_type, self.run_id)
         dst_logs = os.path.join(self.comout, "logs", cyc, self.case_type, self.run_id)
         os.makedirs(dst, exist_ok=True)
