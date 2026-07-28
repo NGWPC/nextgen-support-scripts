@@ -13,6 +13,7 @@ export SITE=PWCLUSTER
 
 export OPSROOT=/lfs/h1/ops/prod
 export COMROOT=/lfs/h1/ops/prod/com
+export DBNROOT=/lfs/h1/ops/prod/dbn
 export DATAROOT=/home/Zhengtao.Cui/test/tmp
 export OPSCOMROOT=/lfs/h1/ops/prod/com
 export DCOMROOT=/lfs/h1/ops/prod/dcom

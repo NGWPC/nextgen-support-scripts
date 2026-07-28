@@ -44,6 +44,8 @@ docker run --rm -d --net "${NETWORK}" --name ecflow-server \
   -p 3141:3141 \
   -v "/var/run/docker.sock:/var/run/docker.sock" \
   -v "${COMROOT}:${COMROOT}"           \
+  -v "${DBNROOT}:${DBNROOT}"           \
+  -v "${DCOMROOT}:${DCOMROOT}"           \
   -v "${NWM_PACKAGE_DIR}:${NWM_PACKAGE_DIR}" \
   -v "${DATAROOT}:${DATAROOT}" \
   ecflow-server ecflow_server

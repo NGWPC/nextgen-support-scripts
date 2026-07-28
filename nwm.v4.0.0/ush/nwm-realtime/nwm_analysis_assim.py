@@ -119,10 +119,11 @@ class AnalysisAssim(NWMForecast):
             )
             return 1
 
-        run_dir = os.path.join(self.working_dir, "regionalization", formulation_dir , self.run_id)
-        # Hardcoded container path where RTE writes/reads the saved model state
+        paths = self._paths(formulation_dir=formulation_dir)
+        run_dir = paths.host_run_dir
+        # Container path where RTE writes/reads the saved model state
         # (the run directory inside the /ngwpc/run_ngen mount).
-        state_save_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}_state_save"
+        state_save_dir = paths.container(f"{self.run_id}_state_save")
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
         src_state_save_tar = f"{src_state_save}.tar"
@@ -160,7 +161,7 @@ class AnalysisAssim(NWMForecast):
             if case_type == "CONUS_ANALYSIS_ASSIM":
                rc = self._docker_run(docker_args)
             elif case_type == "CONUS_EXT_ANALYSIS_ASSIM":
-               src_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}"
+               src_dir = paths.container_run_dir
                rc_move = self._docker_move_dir( src_dir, f"{src_dir}_failed" )
                if rc_move != 0:
                   print(
@@ -170,7 +171,7 @@ class AnalysisAssim(NWMForecast):
                   )
                   self.pass1_status = "failed"
                   return rc_move
-               dst_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}"
+               dst_dir = paths.container_run_dir
                checkpoint_dir = os.path.join(f"{src_dir}_failed", "checkpoint" )
                if self._is_empty_or_missing( checkpoint_dir ):
                   rc = self._docker_run(docker_args)
@@ -194,7 +195,7 @@ class AnalysisAssim(NWMForecast):
         # Clean up run 1 artifacts so run 2 starts with a fresh working directory.
         # RTE writes run_dir as root, so do this in-container (find/mkdir/touch run
         # as root); shell globs don't expand under docker_run, hence find -delete.
-        c_run_dir = self._container_path(run_dir)
+        c_run_dir = paths.container_run_dir
         self._docker_exec(f'find {c_run_dir} -maxdepth 1 -name "*.log" -delete')
         self._docker_exec(f'find {c_run_dir} -maxdepth 1 -name "*.json" -delete')
         self._docker_exec(f'mkdir -p {c_run_dir}/logs')
@@ -202,7 +203,7 @@ class AnalysisAssim(NWMForecast):
 
         # Run 2: later chunk, ends at T0, window l2 hours; loads run 1's saved state.
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
-        state_save_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}/state_save"
+        state_save_dir = paths.container(self.run_id, "state_save")
         docker_args = (
             f'-n {self.nprocs} -fconfig "{fconfig}" -dt "{dt2}" --lookback {self._lookback_minutes(l2)} '
             f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
@@ -249,16 +250,15 @@ class AnalysisAssim(NWMForecast):
         l1, l2 = 24, 4
         extra_args = " -nwmout"
 
-        run_dir = os.path.join(self.working_dir, "regionalization", formulation_dir, self.run_id)
-        src_dir = f"/ngwpc/run_ngen_failed/regionalization/{formulation_dir}/{self.run_id}"
-        dst_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}"
-        state_save_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}_state_save"
+        paths = self._paths(formulation_dir=formulation_dir)
+        run_dir = paths.host_run_dir
+        src_dir = paths.failed_container_run_dir
+        dst_dir = paths.container_run_dir
+        state_save_dir = paths.container(f"{self.run_id}_state_save")
         dt1 = (self.t0 - timedelta(hours=l2)).strftime("%Y-%m-%d %H:%M:%S")
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
 
-        ecfcon = EcflowConnection(f"{self.package_dir}/ush/nwm-realtime/ecflow-settings.json")
-        ecfintf = EcflowInterface(ecfcon)
-        previous_workdir = self._pre_workdir(ecfintf)
+        previous_workdir = self._pre_workdir()
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
         src_state_save=self._ana_state_save_src()
@@ -280,7 +280,11 @@ class AnalysisAssim(NWMForecast):
 
         if pass_num == 1:
             checkpoint_dir = os.path.join(src_dir, "checkpoint")
-            checkpoint_dir_host =  f"{previous_workdir}/regionalization/{formulation_dir}/{self.run_id}/checkpoint"
+            # The failed run's checkpoint on the host (previous_workdir is what is
+            # mounted at /ngwpc/run_ngen_failed for this restart).
+            checkpoint_dir_host = self._paths(
+                formulation_dir=formulation_dir, working_dir=previous_workdir
+            ).host(self.run_id, "checkpoint")
             if self._is_empty_or_missing(checkpoint_dir_host):
                dt1 = (self.t0 - timedelta(hours=l2)).strftime("%Y-%m-%d %H:%M:%S")
                checkpoint_arg = f" --checkpoint_interval {run1_checkpoint_interval}" if run1_checkpoint_interval is not None else ""
@@ -321,14 +325,14 @@ class AnalysisAssim(NWMForecast):
             #      return 1
 
             #copy the previously failed directory to current working directory.
-            formu_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}"
+            formu_dir = paths.container()
             rc_mkdir = self._docker_mkdir(formu_dir)
             rc_copy = self._docker_copy_dir(src_dir, formu_dir)
             if rc_copy != 0:
                 print(f"ERROR: Copying directory: {src_dir} to {formu_dir} failed! Return code = {rc_copy}.", flush=True)
                 return 1
 
-        state_save_dir = f"/ngwpc/run_ngen/regionalization/{formulation_dir}/{self.run_id}/state_save"
+        state_save_dir = paths.container(self.run_id, "state_save")
 
         # Pass 2: run normally via _docker_run (not _docker_restart).
         docker_args = (

@@ -3,6 +3,7 @@ import os
 import threading
 
 from ecf_task_mgr.ecf_interface import EcflowConnection, EcflowInterface
+from ecf_task_mgr.tasks import Task
 
 from nwm_forecast import NWMForecast
 from nwm_region import NWMRegion
@@ -194,9 +195,8 @@ class NWMRunner:
         self._overall_rc = 0
         package_dir = next(iter(self.jobs.values())).package_dir
         ecfcon = EcflowConnection( f"{package_dir}/ush/nwm-realtime/ecflow-settings.json" )
-        ecfintf = EcflowInterface(ecfcon)
-        is_restart = NWMForecast._is_restart(ecfintf)
-        previous_workdir = NWMForecast._pre_workdir(ecfintf)
+        is_restart = NWMForecast._is_restart(ecfcon)
+        previous_workdir = NWMForecast._pre_workdir(ecfcon)
 
         # All forecasts share the same working directory.
         working_dir = next(iter(self.jobs.values())).working_dir
@@ -275,8 +275,8 @@ class NWMRunner:
         # Restart pointer: clear it when everything succeeded, else point the next
         # run at this job's working directory.
         if self._overall_rc == 0:
-            NWMForecast._set_ecf_var(ecfintf, "PRE_WORKDIR", "NONE")
+            NWMForecast._set_ecf_var(ecfcon, "PRE_WORKDIR", "NONE")
         else:
-            NWMForecast._set_ecf_var(ecfintf, "PRE_WORKDIR", working_dir)
+            NWMForecast._set_ecf_var(ecfcon, "PRE_WORKDIR", working_dir)
 
         return self._overall_rc
