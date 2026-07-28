@@ -19,6 +19,11 @@ if [[ "${MODE}" != "start" && "${MODE}" != "test-only" ]]; then
 	exit 2
 fi
 
+mkdir -p "${DATAROOT}"
+
+#echo "PACKAGEROOT=${PACKAGEROOT}"
+echo "DATAROOT=${DATAROOT}"
+
 # idempotent network creation
 echo "Creating network..."
 docker network inspect "${NETWORK}" >/dev/null 2>&1 || docker network create "${NETWORK}"
@@ -26,9 +31,22 @@ docker network inspect "${NETWORK}" >/dev/null 2>&1 || docker network create "${
 echo "Stopping container if it already exists..."
 docker stop ecflow-server 2>/dev/null || true
 
-# Start server container
+# Clean up ecflow data directory to ensure fresh start (removes checkpoint with HALTED state)
+# The /data/ecflow inside the container is mounted from the host
+echo "Cleaning ecflow data directory..."
+rm -rf "${DATAROOT}"/ecflow/* 2>/dev/null || true
+
+# Start server container.
+# Mount paths at their host-absolute locations so that docker_run calls
+# (which go through the host Docker daemon via the socket) use correct -v paths.
 echo "Starting server container..."
-docker run --rm -d --net "${NETWORK}" --name ecflow-server -p 3141:3141 -v "$(pwd)/data/ecflow:/data/ecflow" ecflow-server /usr/local/ecflow/bin/ecflow_server
+docker run --rm -d --net "${NETWORK}" --name ecflow-server \
+  -p 3141:3141 \
+  -v "/var/run/docker.sock:/var/run/docker.sock" \
+  -v "${COMROOT}:${COMROOT}"           \
+  -v "${NWM_PACKAGE_DIR}:${NWM_PACKAGE_DIR}" \
+  -v "${DATAROOT}:${DATAROOT}" \
+  ecflow-server ecflow_server
 echo "Container started."
 
 if [[ "${MODE}" == "test-only" ]]; then

@@ -94,7 +94,7 @@ source ${SCRIPTnwm}/exnwm.sh
 echo "JOB $job HAS COMPLETED NORMALLY."
 
 if [ "$KEEPDATA" != YES ]; then
-    sudo rm -rf $DATA
+    rm -rf $DATA
 fi
 
 date

@@ -11,67 +11,82 @@ else
   export ECF_PORT=$1
 fi 
 
-export PATH=/contrib/software/ecflow/5.15.2/bin:$PATH
+export PACKAGEROOT="${PWD%/*}"
+export NWM_PACKAGE_DIR="$(pwd)"
+export OPSROOT="${OPSROOT:-/lfs/h1/ops/prod}"
+export DATAROOT="${DATAROOT:-${HOME}/test/tmp}"
+export ECF_OUT="${DATAROOT}"
 
-PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
-PACKAGEDIR=${PACKAGEROOT}/nwm.v4.0.0
+echo "PACKAGEROOT=${PACKAGEROOT}"
+echo "NWM_PACKAGE_DIR=${NWM_PACKAGE_DIR}"
+echo "DATAROOT=${DATAROOT}"
+echo "OPSROOT=${OPSROOT}"
+echo "ECF_OUT=${ECF_OUT}"
 
-if [ ! -d ${PACKAGEDIR} ]; then
-  mkdir -p ${PACKAGEDIR}
-else
-  echo "Installation already exists at ${PACKAGEDIR}, please remove the package (rm -rf ${PACKAGEDIR}) and try again. "
-  exit -1
-fi
 
-echo "Installing EcFlow/NCO scripts ... "
+function run_ecf_task() {
+  local task_path="$1"
+  echo "Triggering ${task_path} ..."
+  docker exec ecflow-server bash -c "ecflow_client --run=${task_path}"
+  while docker exec ecflow-server bash -c "ecflow_client --get_state=${task_path}" | grep -q "state:submitted\|state:active"; do
+    sleep 5
+    echo "  ... ${task_path} is running ..."
+  done
+  echo "${task_path} final state: $(docker exec ecflow-server bash -c "ecflow_client --get_state=${task_path}" | grep -o 'state:[^ ]*')"
+}
 
-ln -s ./ecf ${PACKAGEDIR}
 
 PDY=$(date +"%Y%m%d")
-sed -i -e "s/Zhengtao\.Cui/${LOGNAME}/" ${PACKAGEDIR}/ecf/nwm.def
-sed -i -e "s/repeat date YMD 2026\d+/repeat date YMD ${PDY}/" ${PACKAGEDIR}/ecf/nwm.def
 
-ln -s ./jobs ${PACKAGEDIR}
-ln -s ./scripts ${PACKAGEDIR}
-ln -s ./ush ${PACKAGEDIR}
-ln -s ./versions ${PACKAGEDIR}
-ln -s ./prod_envir.2.0.6 ${PACKAGEROOT}
-ln -s ./prod_util.v2.0.14 ${PACKAGEROOT}
+sed -i -e "s/repeat date YMD [0-9]+/repeat date YMD ${PDY}/" ecf/nwm.def
+sed -i -e "s|^\(\s\+\)edit ECF_HOME \".\+\"|\1edit ECF_HOME \"${NWM_PACKAGE_DIR}/ecf\"|" ecf/nwm.def
+sed -i -e "s|^\(\s\+\)edit ECF_INCLUDE \".\+\"|\1edit ECF_INCLUDE \"${NWM_PACKAGE_DIR}/ecf\"|" ecf/nwm.def
+sed -i -e "s|^\(\s\+\)+edit ECF_OUT \".\+\"|\1edit ECF_OUT \"${ECF_OUT}\"|" ecf/nwm.def
 
-mkdir -p /lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/hourly/nwm_analysis_assim
-mkdir -p /lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/hourly/nwm_short_range
-mkdir -p /lfs/h1/owp/ptmp/${LOGNAME}/test/tmp/nwm/daily/nwm_extended_analysis_assim
+sed -i -e "s|^export DATAROOT=.*|export DATAROOT=${DATAROOT}|" ecf/model_envir.h
+sed -i -e "s|^export OPSROOT=.*|export OPSROOT=${OPSROOT}|" ecf/model_envir.h
+sed -i -e "s|^export COMROOT=.*|export COMROOT=${OPSROOT}/com|" ecf/model_envir.h
+sed -i -e "s|^export OPSCOMROOT=.*|export OPSCOMROOT=${OPSROOT}/com|" ecf/model_envir.h
+sed -i -e "s|^export PACKAGEROOT=.*|export PACKAGEROOT=${PACKAGEROOT}|" ecf/model_envir.h
 
-echo "Installing RTE ... "
-
-cd ${PACKAGEDIR}/ush
-
-git clone https://github.com/NGWPC/nwm-rte.git
-
-cd ./nwm-rte/
-
-./setup_clone_repos.sh https
-./ngen_rte_build.sh
-
-
-echo "Installing NWM suit on server ..."
-
-cd ${PACKAGEDIR}/ecf
-
-#terminate the server
-#ecflow_client --group="halt=yes; check_pt; terminate=yes"
-# check if the server is running
-if ecflow_client --ping > /dev/null 2>&1; then
-    echo "Server is already running."
+if [ ! -d "${NWM_PACKAGE_DIR}/ush/nwm-rte" ]; then
+  echo "Installing RTE ..."
+  cd "${NWM_PACKAGE_DIR}/ush"
+  # TODO update this line to clone either the default branch or the development branch
+  git clone -b maxkipp-ecflow-client https://github.com/NGWPC/nwm-rte.git
+  cd ./nwm-rte/
+  ./setup_clone_repos.sh https
+  ./ngen_rte_build.sh
+  cd "${NWM_PACKAGE_DIR}"
 else
-    echo "Start server on port $ECF_PORT"
-    nohup ecflow_server --port=$ECF_PORT &
+  echo "RTE already installed, skipping."
 fi
 
-ecflow_client --delete yes /nwm > /dev/null 2>&1 || true
-ecflow_client --load=nwm.def
-ecflow_client --begin=nwm
-ecflow_client --stats
-ecflow_client --get
 
-echo "NWM v4.0.0 is installed successfully on testbed."
+sudo mkdir -p "${ECF_OUT}"
+sudo mkdir -p "${ECF_OUT}/nwm/test"
+sudo mkdir -p "${ECF_OUT}/nwm/hourly/nwm_analysis_assim"
+sudo mkdir -p "${ECF_OUT}/nwm/hourly/nwm_short_range"
+sudo mkdir -p "${ECF_OUT}/nwm/daily/nwm_extended_analysis_assim"
+
+echo "Starting ecflow-server container ..."
+cd "${NWM_PACKAGE_DIR}/ecflow-server"
+sudo \
+COMROOT="${OPSROOT}/com"           \
+NWM_PACKAGE_DIR="${NWM_PACKAGE_DIR}"          \
+DATAROOT="${DATAROOT}" ./ecflow-server-start.sh
+
+echo "Loading NWM suite into server ..."
+sudo docker exec ecflow-server bash -c "
+  cd ${NWM_PACKAGE_DIR}/ecf && \
+  ecflow_client --delete yes /nwm 2>/dev/null || true && \
+  ecflow_client --load=nwm.def && \
+  ecflow_client --begin=nwm && \
+  ecflow_client --restart && \
+  ecflow_client --stats
+"
+
+echo "NWM v4.0.0 is installed (Docker approach). Running tests..."
+
+#run_ecf_task /nwm/test/test_ngen_rte_noop
+#run_ecf_task /nwm/test/test_ngen_rte_pytest

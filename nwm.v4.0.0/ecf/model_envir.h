@@ -13,11 +13,10 @@ export SITE=PWCLUSTER
 
 export OPSROOT=/lfs/h1/ops/prod
 export COMROOT=/lfs/h1/ops/prod/com
-#export DATAROOT=/lfs/h1/owp/ptmp/${LOGNAME}/test/tmp
-export DATAROOT=/home/${LOGNAME}/test/tmp
+export DATAROOT=/home/Zhengtao.Cui/test/tmp
 export OPSCOMROOT=/lfs/h1/ops/prod/com
 export DCOMROOT=/lfs/h1/ops/prod/dcom
-export PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/${LOGNAME}/test/packages
+export PACKAGEROOT=/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm-automation-scripts
  
 export PACKAGEHOME=${PACKAGEHOME:-$PACKAGEROOT}/$model.${nwm_ver}
 modelhome=$PACKAGEHOME
@@ -44,7 +43,7 @@ export SENDECF=${SENDECF:-NO}
 export SENDCOM=${SENDCOM:-YES}
 export KEEPDATA=${KEEPDATA:-NO}
 
-export PATH=${PACKAGEROOT}/prod_util.v2.0.14/ush:${PACKAGEROOT}/prod_util.v2.0.14/exec:$PATH
-export NDATE=${PACKAGEROOT}/prod_util.v2.0.14/exec/ndate
+export PATH=${PACKAGEHOME}/prod_util.v2.0.14/ush:${PACKAGEHOME}/prod_util.v2.0.14/exec:$PATH
+export NDATE=${PACKAGEHOME}/prod_util.v2.0.14/exec/ndate
 
-source /contrib/software/py_venv/testbed/bin/activate
+#source /contrib/software/py_venv/testbed/bin/activate

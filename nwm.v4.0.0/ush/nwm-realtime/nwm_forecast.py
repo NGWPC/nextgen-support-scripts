@@ -415,14 +415,14 @@ class NWMForecast(ABC):
 
     def _docker_run(self, docker_args: str) -> int:
         """Run a single RTE invocation inside the container; return its exit code."""
-        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" {docker_args}'
+        cmd = f'function sudo {{ "$@"; }}; source run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" {docker_args}'
         print( "docker run command: ", cmd )
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         return result.returncode
 
     def _docker_move_dir(self, src: str, dst: str) -> int:
         """rename a directory; return its exit code."""
-        cmd = f'source run.sh && docker_run mv {src} {dst}'
+        cmd = f'function sudo {{ "$@"; }}; source run.sh && docker_run mv {src} {dst}'
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         return result.returncode
 
@@ -430,13 +430,13 @@ class NWMForecast(ABC):
         """copy a directory recursively inside the container; return its exit code."""
         #cmd = f'source run.sh && docker_run mkdir -p {dst}'
         #result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
-        cmd = f'source run.sh && docker_run cp -r {src} {dst}'
+        cmd = f'function sudo {{ "$@"; }}; source run.sh && docker_run cp -r {src} {dst}'
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         return result.returncode
 
     def _docker_mkdir(self, dir: str) -> int:
         """create a directory; return its exit code."""
-        cmd = f'source run.sh && docker_run mkdir -p {dir}'
+        cmd = f'function sudo {{ "$@"; }}; source run.sh && docker_run mkdir -p {dir}'
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         return result.returncode
 
@@ -444,7 +444,7 @@ class NWMForecast(ABC):
         """Run an arbitrary command inside the container (as root); return its exit
         code. `docker_run` runs the command directly (no shell), so shell globs are
         not expanded — use `find ... -name '<glob>'` for wildcard matching."""
-        cmd = f'source run.sh && docker_run {args}'
+        cmd = f'function sudo {{ "$@"; }}; source run.sh && docker_run {args}'
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         return result.returncode
 
@@ -455,7 +455,7 @@ class NWMForecast(ABC):
 
     def _docker_restart(self, src: str, dst: str, checkpoint_dir: str) -> int:
         """Resume a single RTE invocation from an earlier stopped point inside the container; return its exit code."""
-        cmd = f'source run.sh && docker_run python -um "ngen_rte.run_restart" -src {src} -dst {dst} --checkpoint_dir {checkpoint_dir}'
+        cmd = f'function sudo {{ "$@"; }}; source run.sh && docker_run python -um "ngen_rte.run_restart" -src {src} -dst {dst} --checkpoint_dir {checkpoint_dir}'
         print( "docker run command: ", cmd )
         result = subprocess.run(["bash", "-c", cmd], cwd=self.working_dir, env=self._docker_env())
         return result.returncode
