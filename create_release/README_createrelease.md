@@ -1,6 +1,6 @@
-# Release Automation Script Documentation
+# createRelease.sh — Documentation
 
-This document describes how to use the provided Bash script to automate GitLab releases (both release candidates and official releases) across one or more repositories. It covers command-line options, the JSON configuration file format, and interactive prompts.
+This document describes how to use `createRelease.sh` to automate GitHub releases (release candidates, official releases, and OWP branch cuts) across one or more repositories. It covers prerequisites, the JSON configuration file format, command-line options, interactive prompts, and troubleshooting.
 
 ---
 
@@ -15,508 +15,318 @@ This document describes how to use the provided Bash script to automate GitLab r
    * [Sample JSON](#sample-json)
 4. [Command-Line Usage](#command-line-usage)
 
-   * [Positional Arguments](#positional-arguments)
-   * [Default Values](#default-values)
+   * [Options](#options)
    * [Help Flag](#help-flag)
-5. [Script Behavior](#script-behavior)
+5. [Environment Branch Model](#environment-branch-model)
 
-   * [Release Types](#release-types)
-   * [Submodule Handling](#submodule-handling)
-   * [Interactive Prompts](#interactive-prompts)
-6. [Detailed Steps per Repository](#detailed-steps-per-repository)
+   * [Per-Repo `env` Targeting](#per-repo-env-targeting)
+6. [Release Types](#release-types)
 
-   1. [Determine Branches](#determine-branches)
-   2. [Merge Requests and Tagging](#merge-requests-and-tagging)
-   3. [Changelog Generation](#changelog-generation)
-   4. [Create Release & Merge Back](#create-release-merge-back)
-   5. [Cleanup & Summary](#cleanup-summary)
-7. [Examples](#examples)
-8. [Troubleshooting](#troubleshooting)
+   * [RC — Release Candidate](#rc--release-candidate)
+   * [OFFICIAL](#official)
+   * [OWP — Branch Only](#owp--branch-only)
+7. [Submodule Handling](#submodule-handling)
+8. [Interactive Prompts](#interactive-prompts)
+9. [What Happens Per Repository](#what-happens-per-repository)
+10. [Cleanup, Logging & Summary](#cleanup-logging--summary)
+11. [Exit Codes](#exit-codes)
+12. [Examples](#examples)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-This script automates the end-to-end release workflow for GitLab repositories, including:
+`createRelease.sh` automates the end-to-end release workflow for GitHub repositories, including:
 
-* Creating merge requests (MRs) from one branch to another
-* Waiting for merge requests to become mergeable
-* Triggering merges via GitLab’s API
-* Tagging releases (both release candidates and official releases)
-* Generating changelogs for official releases
-* Handling submodules (if applicable)
-* Merging changes back into the appropriate branches
-* Producing a summary report of successes/failures
+* Merging one release branch into the next (`development` → `ngwpc-candidate` → `ngwpc-release`) via pull requests
+* Waiting for a PR to become mergeable and triggering the merge (direct merge, falling back to auto-merge)
+* Updating submodule pointers to match the parent repo's release branch — automatically, or pausing for you to do it by hand (the default) — *before* the release below is created
+* Generating a changelog for OFFICIAL releases
+* Tagging and creating GitHub releases (pre-release for RC, official for OFFICIAL)
+* Merging completed release branches back into `development`, then updating `development`'s submodule pointers the same way — automatically, or pausing for you to do it by hand (the default)
+* Cutting standalone OWP branches for submission upstream
+* Producing a per-repo summary table and log file
 
-The script reads a JSON file containing one or more repository configurations. For each entry, it:
-
-1. Switches to the specified local `repo_directory` as specified in the Json file.
-2. Decides on source/target branches based on `RELEASE_TYPE` (RC vs OFFICIAL).
-3. Creates a merge request (unless it’s the first RC or an official release, in some cases).
-4. Waits until the merge request is mergeable (polling GitLab).
-5. Triggers the merge and monitors until it is merged.
-6. Generates a changelog (only for OFFICIAL).
-7. Creates a GitLab release tag (e.g., `v1.2` or `1.2-rc1`).
-8. If RC (and not `-rc1`), merges back to `development`.
-9. If submodules exist, repeats branch/merge process for each submodule.
-10. Cleans up any temporary branches and prints a summary.
+The script reads a JSON file listing one or more repository entries. For each entry it determines source/target branches from `--release-type`, merges as needed, handles submodules for the target branch, generates a changelog (OFFICIAL only), tags and creates the GitHub release, merges back into `development`, handles submodules again for `development`, cleans up temporary branches, and records a status line for the final summary.
 
 ---
 
 ## Prerequisites
 
-1. **Bash** (≥ 4.x) on a Unix-like system (e.g., Linux, macOS).
-
-2. **`jq`** installed and available on `PATH` (used to parse/encode JSON).
-
-3. **`curl`** (with TLS support).
-
-4. A file `~/.gitlab_token` containing a valid GitLab [Personal Access Token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html) with API privileges.
-
-   * The script reads this file to set `GITLAB_TOKEN`.
-   * Ensure no extra whitespace or newline after the token.
-
-5. A working Git repository in each `repo_directory` listed in the JSON file, with an `origin` remote pointing to your GitLab instance (e.g., `git@gitlab.sh.nextgenwaterprediction.com:…`).
-
-6. Network access to the GitLab API (e.g., `https://gitlab.sh.nextgenwaterprediction.com/api/v4/`).
-
-7. If any repository uses submodules, those submodules must already be initialized (`git submodule init && git submodule update`).
+1. **Bash** on a Unix-like system (Linux, macOS, WSL).
+2. **`git`**, **`jq`**, and **`sed`** on `PATH`.
+3. **GitHub CLI (`gh`)**, installed and authenticated (`gh auth login`). The script checks `gh auth status` at startup and exits if it isn't valid.
+4. A working local clone of each `repo_directory` listed in the JSON file, with an `origin` remote pointing to the GitHub repo (HTTPS or SSH).
+5. Network access to `github.com`.
+6. If a repository uses submodules and you want them updated automatically (`--automatic-submodules`), the submodule's own repo needs a branch with the exact same name as whichever parent branch is being updated (`development`, `development-pw`, `ngwpc-candidate`, `ngwpc-candidate-pw`, `ngwpc-release`, `ngwpc-release-pw`) already pushed to its origin. The script follows an existing same-named branch in the submodule — it does not create one there for you.
 
 ---
 
 ## JSON Configuration File
 
-The script expects a JSON array (list) of objects. Each object represents one “release job” for a repository. The default filename is `createReleaseConfig.json` (unless overridden on the command line).
+The script expects a JSON array of objects, one per "release job." Default filename: `createReleaseConfig.json` (override with `-c`/`--config`).
 
 ### Required Fields
 
-* **`repo_directory`**
-
-  * String path to the local clone of the GitLab repository.
-  * Can use a tilde (`~`) prefix; the script will expand it to `$HOME`.
-  * Example: `"~/projects/peter-test1"`.
-
-* **`release`**
-
-  * String base version (e.g., `"10.9"`, `"1.2"`).
-  * For RCs, the script will automatically compute the next `-rcX` tag (e.g., `"10.9-rc1"`, `"10.9-rc2"`, etc.).
-  * For OFFICIAL, it uses exactly what you provide (e.g., `"10.9"`).
-
-* **`release_notes`**
-
-  * String text that will be used as the “description” for the GitLab release (in the web UI).
-  * Can include multiple lines if you wrap in JSON properly (e.g., use `\n`).
-  * Example: `"Fixes for edge-case handling\n– Updated dependencies\n– Security patch"`.
+* **`repo_directory`** — Path to the local clone. A leading `~` is expanded to `$HOME`.
+* **`release`** — Base version string (e.g. `"10.9"`). For `RC`, the script computes the next `-rcX` suffix automatically. For `OFFICIAL`, this is used verbatim (plus a `-pw` suffix under the PW environment). Ignored for `OWP` other than to name the branch (`ngwpc-<release>`).
 
 ### Optional Fields
 
-* **`skip`** (boolean)
-
-  * If `true`, the script will not process this repository and will show `(skipping)` in the interactive summary.
-  * Defaults to `false` if omitted.
-
-* **`ngencerf_version`** (string)
-
-  * If provided, the script will inject this string into a `version.env` or similar file in the repo before tagging.
-  * Used by repos that embed a separate “ngencerf” version.
-  * If omitted or empty, no version injection is performed.
-  * Used for the server only
-
-* **`ngencerf_date`** (string)
-
-  * If provided (e.g., `"2025-02-20"`), the script can write/update a `version.env` or metadata file with this date (format `YYYY-MM-DD`).
-  * Omit if not needed.
-  * Used for the server only
-
-* **`has_submodules`** (boolean)
-
-  * If `true`, the script will detect submodules via `.gitmodules`, check them out to the appropriate branch, and create a temporary MR in the parent repo to capture the submodule pointer updates.
-  * Defaults to `false` if omitted.
-  * If your repo does not have submodules or you do not want the script to adjust submodules, omit this field or set it to `false`.
-  * The parent of the sub-modules (e.g., ngen) should be listed after all of the submodules
+* **`release_notes`** (string, default `""`) — Body text for the GitHub release.
+* **`commit_summary`** (string, default `""`) — For `OFFICIAL` releases only: appended to the release notes under a "Commit Summary" heading, ahead of the auto-generated "Change Log" section.
+* **`has_submodules`** (boolean, default `false`) — If `true`, the script updates this repo's submodule pointers after each merge (see [Submodule Handling](#submodule-handling)). If the repo has no `.gitmodules` file, this is a harmless no-op.
+* **`skip`** (boolean, default `false`) — If `true`, the repo is listed as "(skipping)" and never processed, regardless of `env`.
+* **`env`** (string: `PW`, `AWS`, or `ALL`; default `ALL`) — Restricts which `-e`/`--environment` run this entry is processed under, independent of `skip`. See [Environment Branch Model](#environment-branch-model) for the full breakdown.
 
 ### Sample JSON
 
 ```json
 [
   {
-    "repo_directory": "~/projects/peter-test1",
+    "repo_directory": "~/sandbox/test_repo1",
     "release": "10.9",
-    "release_notes": "Implement feature XYZ\nFixed bug #123",
-    "ngencerf_version": "v2.0.0",
-    "ngencerf_date": "2025-02-20"
+    "release_notes": "Implement feature XYZ\nFixed bug #123"
   },
   {
-    "repo_directory": "~/projects/peter-test-sub1",
+    "repo_directory": "~/sandbox/test_repo_sub1",
     "release": "10.4",
     "release_notes": "Initial RC for module ABC",
     "skip": true
   },
   {
-    "repo_directory": "~/projects/peter-test2",
+    "repo_directory": "~/sandbox/test_repo2",
     "release": "10.5",
     "release_notes": "Stabilize integration with other repos",
+    "commit_summary": "Bumped the parser dependency and updated the ngen submodule.",
     "has_submodules": true
+  },
+  {
+    "repo_directory": "~/sandbox/pw_only_repo",
+    "release": "10.5",
+    "release_notes": "Parallel Works specific fix",
+    "env": "PW"
   }
 ]
 ```
 
-* The first entry will create an **OFFICIAL** or **RC** (depending on command-line) release of version `10.9`, plus inject `v2.0.0` and `2025-02-20` into any `version.env` (if your repo expects it).
-* The second entry is marked `"skip": true`, so the script will list it but will not process it.
-* The third entry will process submodules (assuming `~/projects/peter-test2` has submodules).
+* The first entry gets processed normally.
+* The second is marked `"skip": true` — listed, but never touched.
+* The third has submodules — its pointers get updated per whatever `--automatic-submodules` mode is in effect. `commit_summary` only shows up in the release notes for an `OFFICIAL` run.
+* The fourth only runs under `-e PW`; it's silently skipped ("env=PW doesn't apply under -e STANDARD") on a `STANDARD` run.
 
 ---
 
 ## Command-Line Usage
 
 ```
-./create_release.sh <RELEASE_TYPE> [JSON_FILE] [WAIT_TIME]
+./createRelease.sh --release-type <RC|OFFICIAL|OWP> [OPTIONS]
 ```
 
-* `create_release.sh` is the name of the script (e.g., if you saved it as `create_release.sh`).
-* You can also invoke it via `bash create_release.sh` or make it executable (`chmod +x create_release.sh`).
+### Options
 
-### Positional Arguments
+| Flag | Required | Description | Default |
+|---|---|---|---|
+| `-r`, `--release-type TYPE` | **Yes** | `RC`, `OFFICIAL`, or `OWP` (case-insensitive) | — |
+| `-c`, `--config FILE` | No | Path to the JSON config file | `createReleaseConfig.json` |
+| `-v`, `--verbose` | No | Print the exact `gh` commands being executed (to stderr) | `false` |
+| `-w`, `--wait-time SECONDS` | No | Max seconds to wait for a PR to become mergeable, and (separately) max seconds to wait for a triggered merge to actually complete, before giving up | `60` |
+| `-e`, `--environment ENV` | No | `STANDARD` or `PW` — selects the branch set (see [Environment Branch Model](#environment-branch-model)) | `STANDARD` |
+| `-a`, `--automatic-submodules` | No | Update submodule pointers automatically instead of pausing for a manual update | `false` (manual) |
+| `-h`, `--help` | No | Show usage and exit | — |
 
-1. **`RELEASE_TYPE`** (required)
-
-   * Either `RC` or `OFFICIAL` (case-insensitive).
-   * `RC` will generate a release candidate tag (`<release>-rcX`) and follow the RC workflow.
-   * `OFFICIAL` will create an official release tag (`<release>`).
-
-2. **`JSON_FILE`** (optional)
-
-   * Path to your JSON configuration file.
-   * Default: `createReleaseConfig.json` in the current directory.
-   * Must be valid JSON array as described above.
-
-3. **`WAIT_TIME`** (optional)
-
-   * Number of seconds to wait for each merge request to become mergeable before prompting you.
-   * Default: `300` (5 minutes).
-   * If a merge request is still blocked after `WAIT_TIME`, the script prompts “Continue waiting (C) or Skip this repo (S)?”.
-
-### Default Values
-
-* If `JSON_FILE` is omitted, the script attempts to read `./createReleaseConfig.json`.
-* If `WAIT_TIME` is omitted, it uses `300` (5 minutes) as the default poll timeout.
+`STANDARD` also accepts `AWS` or `DEFAULT`; `PW` also accepts `PARALLEL-WORKS` or `PARALLEL_WORKS` — all case-insensitive.
 
 ### Help Flag
 
+```bash
+./createRelease.sh --help
 ```
-./create_release.sh --help
-```
-
 or
-
+```bash
+./createRelease.sh -h
 ```
-./create_release.sh -h
-```
-
-or
-
-```
-./create_release.sh ?
-```
-
-Any of the above will print a usage summary and exit. The usage summary includes:
-
-* Synopsis: `Usage: create_release.sh <RELEASE_TYPE> [JSON_FILE] [WAIT_TIME]`
-* Description of RC vs OFFICIAL workflows.
-* Explanation of arguments and defaults.
-* Example call (e.g., `create_release.sh RC release_config.json 300`).
 
 ---
 
-## Script Behavior
+## Environment Branch Model
 
-Below is a high-level overview of what the script does, focusing on the user-facing steps and interactive prompts.
+The script never touches `main`/`master` directly — it works across three long-lived release branches per environment:
 
-### Release Types
+| | STANDARD | PW |
+|---|---|---|
+| Development | `development` | `development-pw` |
+| Release candidate | `ngwpc-candidate` | `ngwpc-candidate-pw` |
+| Release | `ngwpc-release` | `ngwpc-release-pw` |
 
-1. **RC (Release Candidate) Process**
+Release tags follow the same pattern:
 
-   * If this is the first RC for a given `release` (e.g., no tags matching `10.9-rc*`), it:
+| | STANDARD | PW |
+|---|---|---|
+| RC | `10.2-rc1` | `10.2-rc1-pw` |
+| OFFICIAL | `10.2` | `10.2-pw` |
 
-     1. Merges `development → release-candidate`.
-     2. Optionally updates submodules (if `has_submodules: true`).
-     3. Creates GitLab release with tag `10.9-rc1` (or `10.9-rc2`, etc.).
-     4. Merges `release-candidate → development` (except for `rc1`; only for subsequent RCs).
+If `ngwpc-candidate` or `ngwpc-release` (or their `-pw` counterparts) don't exist yet on a given repo, the script creates them from the appropriate source branch the first time they're needed — no PR, just a direct push, since there's nothing to review yet.
 
-   * For subsequent RCs for the same `release` (e.g., `10.9-rc2`, `10.9-rc3`):
+### Per-Repo `env` Targeting
 
-     1. It skips the initial merge from `development` (assuming `release-candidate` already has those commits).
-     2. Still tags the existing `release-candidate` branch with the new `-rcX`.
-     3. Merges `release-candidate → development` upon completion.
+Which of the above two branch sets a given config entry actually runs under is controlled by its optional `env` field (`PW`, `AWS`, or `ALL`; default `ALL`), independent of `skip`:
 
-2. **OFFICIAL Release Process**
+| `env` value | Processed under `-e STANDARD` | Processed under `-e PW` |
+|---|---|---|
+| `ALL` (or omitted) | yes | yes |
+| `AWS` | yes | no |
+| `PW` | no | yes |
 
-   * Merges `release-candidate → main` (or `master`) (detects which exists).
-   * Optionally updates submodules on `main/master`.
-   * Creates a GitLab release tag (e.g., `10.9`).
-   * Merges those final changes back into `development`.
-
-> **Note:** The script detects whether your repo uses `main` or `master` by querying the GitLab API. If neither exists, it reports an error and skips that repo.
-
-### Submodule Handling
-
-* If an entry’s JSON object has `"has_submodules": true`, the script will:
-
-  1. Read `.gitmodules` to list submodule paths.
-  2. For each submodule:
-
-     * Check out the appropriate branch (`release-candidate`, `development`, or `main/master`).
-     * Run `git pull` in that submodule.
-  3. In the parent repository, create a temporary branch named `temp_submodules_<target>_<RELEASE_NUMBER>`.
-  4. Commit the updated submodule pointers on that temporary branch.
-  5. Open a merge request (`temp_submodules_… → <target_branch>`), wait until mergeable, then trigger the merge.
-  6. Delete the temporary branch locally and remotely after merging.
-
-If a submodule does not have `main` or `master`, it prints an error and skips that submodule.
-
-### Interactive Prompts
-
-1. **Initial Confirmation**
-
-   * After reading the JSON file and listing each repo (with `(skipping)` flagged accordingly), the script prompts:
-
-     ```
-     Proceed with processing these repositories? (Y/N):
-     ```
-   * `Y` (or `y`): continue.
-   * `N` (or `n`): abort the entire script (exit).
-
-2. **Per-Repo Confirmation (before creating the actual GitLab release)**
-
-   * Right before “Creating official GitLab release for …” (or right before tagging an RC), the script pauses and prompts:
-
-     ```
-     Proceed with the actual GitLab <RELEASE_TYPE> release for <REPO_PROJECT>? (Y)es, (N)o, (Q)uit:
-     ```
-   * `Y`: proceed for this repo.
-   * `N`: skip this repo (mark it “FAILED” in summary).
-   * `Q`: quit the entire script immediately.
-
-3. **Merge Request Polling Timeout**
-
-   * If a MR does not become mergeable within `WAIT_TIME` seconds (default 300 s), the script prompts:
-
-     ```
-     Merge request <MR_ID> is still not mergeable. (C)ontinue waiting, (S)kip this repo:
-     ```
-   * `C`: reset the timer and keep waiting.
-   * `S`: skip this repository (mark as failed) and move on.
+This lets one config file serve both deployment targets — entries that only apply to one platform (AWS vs. Parallel Works) are simply tagged accordingly, and everything else keeps running under every `-e` the same as before this field existed.
 
 ---
 
-## Detailed Steps per Repository
+## Release Types
 
-Below is a breakdown of what happens internally when `process_repo` is invoked for each non-skipped entry:
+### RC — Release Candidate
 
-### 1. Determine Branches
+* **First RC (`-rc1`) for a release:** merges `development` → `ngwpc-candidate` via PR (creating `ngwpc-candidate` from `development` first if it doesn't exist), updates `ngwpc-candidate`'s submodule pointers if `has_submodules`, then tags and creates a GitHub **pre-release** on `ngwpc-candidate`.
+* **Subsequent RCs (`-rc2`, `-rc3`, ...):** skips the merge from `development` (assumes `ngwpc-candidate` already has what it needs), updates submodule pointers if applicable, tags and creates the next pre-release, **then merges `ngwpc-candidate` back into `development`** and updates `development`'s submodule pointers if applicable.
+* The next RC number is determined automatically from existing tags matching `<release>-rcN[-pw]`.
+* A submodule-pointer-update failure on the merge-back fails that step only — the RC pre-release already created is **not** rolled back.
 
-* The script reads `"release": "<base>"`.
-* If `RELEASE_TYPE="RC"`, it calls `get_next_rc_number("<base>")` (e.g., `10.9 → 10.9-rc1`).
-* If `RELEASE_TYPE="OFFICIAL"`, it uses `<base>` verbatim (e.g., `10.9`).
-* It checks for existing tags on the remote (`git ls-remote --tags origin`).
+### OFFICIAL
 
-  * If that tag already exists, it errors out and skips the repo.
-* It determines:
+* Merges `ngwpc-candidate` → `ngwpc-release` via PR (creating `ngwpc-release` first if needed), updates submodule pointers if applicable, generates a changelog (commit log since the last official tag, written to `changelogs/<repo>_<release>_changelog.txt`), tags and creates the **official** GitHub release on `ngwpc-release`, then **always** merges `ngwpc-release` back into `development` and updates `development`'s submodule pointers if applicable — regardless of RC-vs-`rc1` rules, since there's no `-rc1` concept for OFFICIAL.
+* A submodule-pointer-update failure on the merge-back fails that step only — the official release already created is **not** rolled back.
 
-  * For RC:
+### OWP — Branch Only
 
-    * `SOURCE_BRANCH="development"`
-    * `TARGET_BRANCH="release-candidate"`
-  * For OFFICIAL:
+* Creates `ngwpc-<release>` (or `ngwpc-<release>-pw` under PW) directly from `ngwpc-release` and pushes it. No PR, no tag, no GitHub release.
+* This branch is what eventually gets submitted as a pull request to the upstream NOAA OWP parent repository — the script only prepares and pushes it; it does **not** open that PR.
 
-    * `SOURCE_BRANCH="release-candidate"`
-    * `TARGET_BRANCH` is detected dynamically via `determine_release_branch()`, which queries GitLab’s API for `main` or `master`.
+---
 
-### 2. Merge Requests and Tagging
+## Submodule Handling
 
-1. **Initial MR (if RC1 or OFFICIAL)**
+Controlled by `has_submodules` in the config entry, and by whether `--automatic-submodules` was passed:
 
-   * If `RC` and tag ends with `-rc1`, create an MR `development → release-candidate`.
-   * If `OFFICIAL`, create an MR `release-candidate → <main or master>`.
-   * Uses `execute_merge_request()` which:
+* **`has_submodules: false`** (or omitted) — nothing happens; submodules are ignored entirely.
+* **`has_submodules: true`, no `--automatic-submodules` (the default)** — the script **pauses** at each point it would otherwise update pointers (see below) and prints instructions: since the target branch is protected against direct pushes, create a new branch from it, update each submodule to the commit it should point to, commit, push that branch, and open+merge a PR into the target branch — then check the target branch back out, and press **C** to continue, **S** to skip this repo, or **Q** to quit the whole run. There's no timeout on this prompt; it's a real manual task.
+* **`has_submodules: true`, with `--automatic-submodules`** — the script does it for you: fetches the submodule's same-named branch, checks it out (detached), stages the updated gitlink(s), and if anything actually changed, commits, pushes a temporary branch, and merges it into the parent branch via PR. If a repo's `.gitmodules` file doesn't exist, this is a silent no-op either way.
 
-     * Does a local merge test on a temporary branch to catch conflicts early.
-     * If no conflicts, calls `create_merge_request()` (via GitLab API) to open a MR.
-     * Calls `wait_until_mergeable()` to poll the MR until it is mergeable (checks both `merge_status == "can_be_merged"` and `detailed_merge_status == "mergeable"`).
-     * Once mergeable, calls `trigger_merge()` to merge the MR via API.
-     * Monitors until `state == "merged"`.
+This happens at **two points** per repo, whichever mode is active:
 
-2. **Subsequent RCs**
+1. Right after merging into the target branch (`ngwpc-candidate` for RC, `ngwpc-release` for OFFICIAL) — on every RC run, not just `-rc1`.
+2. Right after merging the target branch back into `development` — on RC2+ and every OFFICIAL run (not RC1, since RC1 doesn't merge back).
 
-   * If `-rcX` where `X > 1`, skip creating the first MR (`development → release-candidate`) because those commits should already be on `release-candidate`.
-   * Still tag the existing `release-candidate` branch with the new `-rcX` tag.
+---
 
-### 3. Changelog Generation (OFFICIAL Only)
+## Interactive Prompts
 
-* If `RELEASE_TYPE="OFFICIAL"`, after merging `release-candidate` into `main/master`, it calls `generate_changelog()`.
+| Prompt | When | Options | Timeout |
+|---|---|---|---|
+| `Proceed with processing these repositories? (Y/N):` | Once, after listing all configured repos | Y / N | none |
+| `Proceed with processing this repository? (C)ontinue, (S)kip, (Q)uit` | Once per repo, before touching it | C / S / Q | 60s → defaults to C |
+| `Pull Request N not ready (state: ...). (C)ontinue waiting, (S)kip:` | Only if a PR is still not mergeable after `--wait-time` seconds | C / S | none once triggered — but only appears at all on a real terminal; under non-interactive stdin it skips straight to failing instead of prompting |
+| `(C)ontinue once done, (S)kip this repository, (Q)uit:` — preceded by: `Manual submodule update (pass --automatic-submodules to update pointers automatically instead): This repository is currently checked out on <branch>. '<branch>' is protected, so you can't push to it directly. Instead: 1. Create a new branch from here... 2. Update each submodule and commit. 3. Push the new branch, then open and merge a PR into '<branch>'. 4. Check '<branch>' back out before continuing below.` | Manual submodule update pause (see above) | C / S / Q | none |
 
-  * Finds the most recent “official” tag matching `^[0-9]+\.[0-9]+$` (skips any `-rc*`).
-  * Computes the commit range from that tag to `HEAD`.
-  * Writes a file in `./changelogs/<repo_name>_<RELEASE_NUMBER>_changelog.txt` containing:
+---
 
-    ```
-    ## Changelog for <repo> <RELEASE_NUMBER> (<commit_date>)
+## What Happens Per Repository
 
-    <list of commit messages (one line each, excluding merges), in chronological order>
-    ```
-  * Prints “Changelog saved to …” in green.
+For each non-skipped, environment-matching entry (see [Per-Repo `env` Targeting](#per-repo-env-targeting)), `process_repo` roughly does the following. Everything below is written using the `STANDARD` branch names for readability — under `-e PW`, every branch mentioned is automatically its `-pw` counterpart instead (`development-pw`, `ngwpc-candidate-pw`, `ngwpc-release-pw`):
 
-### 4. Create Release & Merge Back
+1. **Determine `RELEASE_NUMBER`** — for `RC`, via `get_next_rc_number`; for `OFFICIAL` under PW, `<release>-pw`; otherwise `<release>` verbatim.
+2. **OWP short-circuit** — if `--release-type OWP`, create/push the branch and return; nothing below applies.
+3. **Per-repo C/S/Q prompt**, then confirm `gh` can see the repo and that `RELEASE_NUMBER` isn't already an existing tag.
+4. **Determine source/target branches** — `development`→`ngwpc-candidate` for RC, `ngwpc-candidate`→`ngwpc-release` for OFFICIAL (or their `-pw` counterparts under `-e PW`, per above).
+5. **Merge source → target** (skipped for RC2+, which assumes the target already has what it needs). The merge does a local no-commit merge test first to catch conflicts before ever opening a PR — a conflict confined to submodule gitlinks (paths matching `extern/*`) is allowed through to let the PR resolve it per repo rules; any other conflict blocks the PR entirely and fails the repo.
+6. **Submodule pointer update** on the target branch, automatic or manual per above.
+7. **Changelog generation** (OFFICIAL only) — commit log since the last tag matching `X.Y` (or `X.Y-pw`), written to `changelogs/<repo>_<release>_changelog.txt`, and folded into the release notes under a "Change Log" heading (after "Commit Summary", if `commit_summary` was provided).
+8. **Create the GitHub release** — pre-release for RC, official for OFFICIAL.
+9. **Merge target → `development`** (RC2+ and every OFFICIAL run).
+10. **Submodule pointer update** on `development`, automatic or manual per above.
+11. Return to source/target/development branches, pulling latest, before moving to the next repo.
 
-1. **Interactive Confirmation**
+---
 
-   * Prompt:
+## Cleanup, Logging & Summary
 
-     ```
-     Proceed with the actual GitLab <RELEASE_TYPE> release for <REPO_PROJECT>? (Y)es, (N)o, (Q)uit:
-     ```
+* **Per-repo cleanup** always runs (via a shell `trap`), regardless of success or failure: checks out `development`, records status (`SUCCESS` / `FAILED` / `QUIT`), elapsed time, and latest commit hash, then deletes any temporary branches created for that repo (`merge_test_*`, `update_submodules_*`) both locally and on origin.
+* **Logging** — everything printed goes to `createRelease_<timestamp>.log` in the current directory (ANSI color codes stripped), in addition to the terminal.
+* **Summary** — after all repos are processed (or Quit is chosen), a table is printed and written to `release_summary.txt`:
 
-2. **Create GitLab Release**
+  ```
+  Repository                | Release       | Status     | Time   | Commit Hash
+  ----------------------------------------------------------------------------------------
+  ~/sandbox/test_repo1     | 10.9-rc1      | SUCCESS    |  42s   | abcdef1234567890...
+  ~/sandbox/test_repo2     | 10.5          | FAILED     |  30s   | 123456abcdef7890...
+  ----------------------------------------------------------------------------------------
+  All repositories processed (Total elapsed time: 75 seconds).
+  ```
 
-   * Calls `create_release("<API_URL>", "<RELEASE_NUMBER>", "Release <RELEASE_NUMBER>", "<release_notes>", "<TARGET_BRANCH>")`
-   * If successful (HTTP 2xx), prints in green “Release created successfully.”
-   * If failed, prints error in red and marks this repo as failed in the summary.
+---
 
-3. **Merge Back into Development (RC Except RC1)**
+## Exit Codes
 
-   * If `RELEASE_TYPE="RC"` and `<RELEASE_NUMBER>` is *not* `-rc1`, then create an MR `release-candidate → development`.
-   * If `RELEASE_TYPE="OFFICIAL"`, after creating the release, it always merges `main/master → development` so that any hotfixes included in the official tag are propagated forward.
-
-4. **Submodule Branch Reset**
-
-   * If `has_submodules=true`, after the above merges, it calls `process_submodules("development")` to ensure all submodules are now on `development`.
-
-### 5. Cleanup & Summary
-
-1. **Branch Cleanup**
-
-   * `cleanup_repo()` is registered via `trap` so it always runs when `process_repo` exits.
-   * It:
-
-     * Checks out `development` and pulls the latest.
-     * Captures the latest commit hash.
-     * Records status (`SUCCESS` or `FAILED`), elapsed time, and commit hash into a global associative array (`repo_status[<path>]`).
-     * Iterates over any temporary branches stored in `TEMP_BRANCHES[]` and deletes them both locally (`git branch -D`) and remotely (`git push origin --delete`).
-     * Appends the repo to `repo_order[]`.
-2. **Global Summary**
-
-   * After all repos are processed (or the user chooses to quit), the script calls `print_summary()`.
-   * It prints a formatted table:
-
-     ```
-     Repository                | Release       | Status     | Time   | Commit Hash
-     ----------------------------------------------------------------------------------------
-     ~/projects/peter-test1   | 10.9-rc1      | SUCCESS    |  42s   | abcdef1234567890...
-     ~/projects/peter-test2   | 10.5          | FAILED     |  30s   | 123456abcdef7890...
-     ...
-     ----------------------------------------------------------------------------------------
-     All repositories processed (Total elapsed time: 75 seconds).
-     ```
-   * It also writes the same output to `release_summary.txt` in the script’s original working directory.
+* **`0`** — every processed repo succeeded.
+* **`1`** — at least one repo ended FAILED. This latches: a later repo succeeding does not clear an earlier failure.
+* **`2`** — Quit was chosen at some point (per-repo prompt or a manual-submodule pause), and the remaining repos were never processed.
 
 ---
 
 ## Examples
 
-1. **Basic RC Release with Default JSON File and Default Wait Time**
+```bash
+# Basic RC release, default config file, manual submodule updates
+./createRelease.sh --release-type RC
 
-   ```bash
-   ./create_release.sh RC
-   ```
+# Official release with a custom config file
+./createRelease.sh --release-type OFFICIAL --config release_config.json
 
-   * Reads `./createReleaseConfig.json`.
-   * Uses `300s` (5 minutes) as `WAIT_TIME`.
-   * Prompts for each interactive confirmation.
+# RC under the Parallel Works environment, with a longer PR-wait budget
+./createRelease.sh --release-type RC --config release_config.json --wait-time 120 --environment PW
 
-2. **Official Release with Custom JSON File**
+# Cut an OWP branch under PW
+./createRelease.sh --release-type OWP --environment PW
 
-   ```bash
-   ./create_release.sh OFFICIAL my_repos.json
-   ```
+# RC with submodule pointers updated automatically instead of pausing
+./createRelease.sh --release-type RC --automatic-submodules
 
-   * Reads `my_repos.json`.
-   * Uses default `WAIT_TIME=300s`.
-   * For each entry not marked `"skip": true`, merges `release-candidate → main`, generates changelog, and tags.
-
-3. **RC Release with 10-Minute Wait Time**
-
-   ```bash
-   ./create_release.sh RC createReleaseConfig.json 600
-   ```
-
-   * Same as example 1, but waits up to 600 seconds for each MR to become mergeable.
-
-4. **Help Invocation**
-
-   ```bash
-   ./create_release.sh --help
-   ```
-
-   * Prints usage and exits.
+# See the exact gh commands being run, for debugging
+./createRelease.sh --release-type RC --verbose
+```
 
 ---
 
 ## Troubleshooting
 
-* **JSON File Not Found / Invalid JSON**
+* **`JSON file <filename> not found.`** — Check `--config`, or the default `createReleaseConfig.json` in the current directory.
 
-  * If `JSON_FILE` does not exist, you’ll see:
+* **`Error: JSON file '<file>' is invalid and could not be parsed.`** — Fix the JSON; verify with `jq . <file>`.
 
-    ```
-    JSON file <filename> not found.
-    ```
+* **`Error: JSON configuration must contain a top-level array.`** — The file must be a JSON array (`[ {...}, {...} ]`), not a single object.
 
-    and the script exits with usage information.
-  * If the JSON is syntactally invalid, `jq length` will fail. Double-check your JSON with `jq . myfile.json`.
+* **`Error: invalid "env" value '<value>' for repo_directory '<dir>' (entry N). Must be PW, AWS, or ALL.`** — Fix the `env` field on that config entry; this is checked for every entry before any repo is touched.
 
-* **Missing `~/.gitlab_token`**
+* **`WAIT_TIME must be a positive integer number of seconds.`** — `--wait-time` must be a plain positive integer.
 
-  * If no `~/.gitlab_token` is present, `GITLAB_TOKEN` will be empty.
-  * API calls to GitLab will return `401 Unauthorized` or `404 Not Found`.
-  * Ensure `~/.gitlab_token` contains exactly your GitLab personal token (no extra newline or spaces).
+* **`Invalid environment '<value>'. Use STANDARD or PW.`** — See the accepted aliases in [Options](#options).
 
-* **Target Branch (`main` or `master`) Not Found**
+* **`gh cannot determine repository context in <dir>. Is this a GitHub repo and are you authenticated?`** — Run `gh auth status` in that repo; confirm `origin` points to GitHub.
 
-  * If neither `main` nor `master` exists in the remote, you’ll see:
+* **`Tag '<release>' already exists in the remote repository.`** — Pick a different `release` value, or confirm you didn't already run this release.
 
-    ```
-    Error: Neither 'main' nor 'master' branch found in repository ...
-    ```
-  * Confirm your default branch name (e.g., `master` vs `main`) and update accordingly.
+* **`Merge has conflicts outside submodules. Pull request will not be created.`** — A real conflict, not just a submodule-pointer mismatch. Resolve manually on the source/target branch, push, and re-run.
 
-* **Merge Conflicts Detected Locally**
+* **`Submodule <path> does not have an origin/<branch> branch.`** — Under `--automatic-submodules`, the submodule's own repo needs a branch with that exact name pushed to its origin first — the script follows an existing branch, it doesn't create one.
 
-  * The script does a local `git merge --no-commit --no-ff origin/<source>` test in a temporary branch.
-  * If conflicts are detected, it aborts the merge test and prints:
+* **`Error triggering merge for PR N.`** followed by `Direct merge attempt said: ...` / `Auto-merge attempt said: ...`** — Both merge strategies failed; the two "said" lines show `gh`'s actual error for each attempt (a required check, branch protection, an existing conflict, etc.).
 
-    ```
-    Merge conflicts detected between <source> and <target>. Merge request will not be created.
-    ```
-  * Resolve conflicts manually in your local `development` or `release-candidate` branch, commit, push, and then re-run the script.
+* **`Gave up waiting for pull request N to complete after <wait-time>s (last state: ...).`** — The merge was triggered (often via auto-merge) but never actually completed within `--wait-time`. Common cause: a required status check that never reports on a repo with no CI configured. Increase `--wait-time`, or check the PR directly.
 
-* **“Merge request cannot be completed – either no changes to merge or a conflict”**
+* **`GraphQL: Base branch was modified. Review and try the merge again.`** — A transient GitHub race, most often seen when merging PRs against the same repo in quick succession; simply re-running the merge shortly after usually succeeds.
 
-  * If the API’s `detailed_merge_status` contains `broken_status`, it indicates either there truly are no changes remaining to merge (e.g., everything is already up to date), or a conflict is blocking the MR.
-  * In that case, you may skip or continue waiting. If truly “no changes,” it’s safe to skip.
+* **`PR N still not mergeable after <wait-time>s; stdin isn't a terminal, so skipping instead of prompting.`** — Expected when running non-interactively (e.g. automation, CI, or the regression harness); on a real terminal this would instead offer a Continue/Skip prompt.
 
-* **Skipping Repositories**
+* **Repository shows FAILED in the summary but the script exited 0 in an older run** — Fixed: the script's own exit code now reflects whether any repo failed (see [Exit Codes](#exit-codes)).
 
-  * If you accidentally marked a repo with `"skip": true`, it will be listed as “(skipping)” during the initial summary.
-  * To include it, remove `skip` or set it to `false` in the JSON.
-
-* **Submodule Errors**
-
-  * If a submodule lacks both `main` and `master`, you will see a red error line:
-
-    ```
-    Error: Neither 'main' nor 'master' branch found in submodule <path>.
-    ```
-  * Make sure your submodules use a recognized default branch, or set `"has_submodules": false`.
-
----
-
+* **Skipped repositories** — Check the pre-flight list: `"skip": true` shows as `(skipping)`; an `env` mismatch shows as `(skipping: env=... doesn't apply under -e ...)`.
