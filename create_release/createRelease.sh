@@ -65,21 +65,21 @@ OPTIONS
     -r, --release-type TYPE   Release workflow: RC, OFFICIAL, or OWP.
 
   Optional options:
-    -c, --config FILE          Configuration JSON file.
-                               Default: createReleaseConfig.json
-    -v, --verbose              Print the exact 'gh' commands being executed
-                               Default: false
-    -w, --wait-time SECONDS    Maximum wait before prompting while a PR is blocked.
-                               Default: 60
-    -e, --environment ENV      Branch/release environment: STANDARD or PW.
-                               Default: STANDARD
+    -c, --config FILE         Configuration JSON file.
+                              Default: createReleaseConfig.json
+    -v, --verbose             Print the exact 'gh' commands being executed
+                              Default: false
+    -w, --wait-time SECONDS   Maximum wait before prompting while a PR is blocked.
+                              Default: 60
+    -e, --environment ENV     Branch/release environment: STANDARD or PW.
+                              Default: STANDARD
     -a, --automatic-submodules For repos with has_submodules=true, update
-                               submodule pointers automatically. Without this
-                               flag (the default), the script pauses instead
-                               so you can update and push them by hand on
-                               each relevant branch, then continue.
-                               Default: false (manual)
-    -h, --help                 Display this help and exit.
+                              submodule pointers automatically. Without this
+                              flag (the default), the script pauses instead
+                              so you can update and push them by hand on
+                              each relevant branch, then continue.
+                              Default: false (manual)
+    -h, --help                Display this help and exit.
 
 Environment branches:
   STANDARD:
@@ -935,8 +935,8 @@ process_submodules() {
 # Function: manual_submodule_pause
 # Used instead of process_submodules unless --automatic-submodules is set
 # (manual is the default). Rather than updating submodule pointers
-# automatically, this pauses so the user can update them by hand on the
-# given branch, then continue.
+# automatically, this pauses so the user can update them by hand — via a
+# feature branch and PR, since the target branch is protected — then continue.
 #
 # Arguments:
 #   $1 - Branch the repo is currently checked out on (the one whose submodule
@@ -962,8 +962,11 @@ manual_submodule_pause() {
   echo
   echo -e "${YELLOW}Manual submodule update (pass --automatic-submodules to update pointers automatically instead):${NC}"
   echo -e "This repository is currently checked out on ${GREEN}$branch${NC}."
-  echo "Update each submodule to the commit it should point to, then commit and push"
-  echo "that change directly to '$branch' (no PR needed — you already have it checked out)."
+  echo "'$branch' is protected, so you can't push to it directly. Instead:"
+  echo "  1. Create a new branch from here, e.g.: git checkout -b update-submodules-$branch"
+  echo "  2. Update each submodule to the commit it should point to, then commit that change."
+  echo "  3. Push the new branch, then open and merge a pull request into '$branch'."
+  echo "  4. Check '$branch' back out (git checkout $branch && git pull) before continuing below."
   echo
 
   while true; do
