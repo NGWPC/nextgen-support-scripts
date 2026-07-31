@@ -88,7 +88,11 @@ class Forecast(NWMForecast):
             os.path.join(dst, f"catchment_output_{ts_t0}00.nc"),
         )
         rc |= self._store_file(
-            os.path.join(run_dir, "Output", f"troute_output_{ts_sr}00.nc"),
+            os.path.join(run_dir, "Output", f"troute_output_{ts_t0}00.nc"),
+            dst,
+        )
+        rc |= self._store_file(
+            os.path.join(run_dir, "Output", f"troute_lakeout_{ts_t0}00.nc"),
             dst,
         )
         return rc

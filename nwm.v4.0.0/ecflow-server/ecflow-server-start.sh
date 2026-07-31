@@ -40,7 +40,10 @@ rm -rf "${DATAROOT}"/ecflow/* 2>/dev/null || true
 # Mount paths at their host-absolute locations so that docker_run calls
 # (which go through the host Docker daemon via the socket) use correct -v paths.
 echo "Starting server container..."
+mkdir -p ${DBNROOT}/ecflow/log
 docker run --rm -d --net "${NETWORK}" --name ecflow-server \
+  -e ECF_LOG=${DBNROOT}/ecflow/log/a49927e4b7fc.ecf.log  \
+  -e ECF_TIMEOUT=600  \
   -p 3141:3141 \
   -v "/var/run/docker.sock:/var/run/docker.sock" \
   -v "${COMROOT}:${COMROOT}"           \
