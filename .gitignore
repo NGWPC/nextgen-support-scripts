@@ -11,3 +11,13 @@
 
 # ecflow server data
 nwm.v4.0.0/ecflow-server/data/ecflow/
+
+# ecflow job output and testbed tmp data
+nwm.v4.0.0/data/tmp/
+
+# ngen runtime output
+nwm.v4.0.0/ush/run_ngen/
+
+# ecflow-generated job scripts (generated from .ecf templates by the server)
+nwm.v4.0.0/ecf/nwm/**/*.job*
+nwm.v4.0.0/ecf/nwm/test/
