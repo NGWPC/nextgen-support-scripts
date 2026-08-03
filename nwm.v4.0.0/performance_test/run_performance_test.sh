@@ -5,7 +5,7 @@
 #SBATCH -t 00:60:00
 #SBATCH --nodes 1
 #SBATCH --exclusive
-#SBATCH --ntasks-per-node=16
+#SBATCH --ntasks-per-node=18
 
 function run_vpu()
 {
@@ -40,6 +40,7 @@ ext_ana_time2=$(date -d "19:10" +%s)
 
 sudo systemctl start docker 
 
+workdir=$(pwd)
 cd ../ush/nwm-rte
 ./ngen_rte_build.sh
 
@@ -53,10 +54,11 @@ cd ../ush/nwm-rte
 #fi
 
 # use the working directory on local disk
-#export RUN_NGEN_ROOT__HOST=${HOME}/test/tmp
+export RUN_NGEN_ROOT__HOST=${HOME}/test/tmp
 #export RUN_NGEN_ROOT__HOST=/media/test/tmp
-export RUN_NGEN_ROOT__HOST=/lfs/h1/ops/prod/owp/test/tmp
+#export RUN_NGEN_ROOT__HOST=/lfs/h1/ops/prod/owp/test/tmp
 
+cd ${workdir}
 #prepare RTE to run
 source ../ush/nwm-rte/config.bashrc
 
@@ -161,15 +163,17 @@ nprocs=6
 echo "Running VPU 03N short range on processors ${CPUSET_CPUS} ..."
 run_vpu "YES" ${VPU} ${nprocs}
 
+wait
+
 # Record end time
 end_time=$(date +%s)
 
-total_time=$((end_time - start_time))
+total_time_parallel=$((end_time - start_time))
 
 # Convert total time to H:M:S
-vpu2_hours=$(( (total_time - time_between) / 3600))
-vpu2_minutes=$((( (total_time - time_between) % 3600) / 60))
-vpu2_seconds=$(( (total_time - time_between) % 60))
+vpu2_hours=$(( (total_time_parallel - time_between) / 3600))
+vpu2_minutes=$((( (total_time_parallel - time_between) % 3600) / 60))
+vpu2_seconds=$(( (total_time_parallel - time_between) % 60))
 
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
@@ -177,5 +181,45 @@ minutes=$(((total_time % 3600) / 60))
 seconds=$((total_time % 60))
 
 printf "Total time of parallel execution from start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
+
+total_minutes=$(( total_time / 60 ))
+total_minutes_parallel=$(( total_time_parallel / 60 ))
+
+DATA="Sequential  $total_minutes\nParallel  $total_minutes_parallel\n"
+
+tempdata=$(printf "%b" "$DATA")
+
+  gnuplot -persist <<-EOFMarker
+      \$Mydata << EOD
+$tempdata
+EOD
+      # Set terminal to png or pdf for output
+      set terminal pngcairo enhanced font 'Arial, 12'
+      set output 'VPU_sequential_vs_parallel.png'
+
+      # Set title and labels
+      set title "Parallel VPU runs (03S and 03N)"
+      set xlabel '2 VPUs - 03S and 03N'
+      set ylabel "Wall clock time (mins) " offset 0,0,0
+      set key right top
+      set yrange [0:*]
+
+      # Set style of bars
+      set style data histogram
+      set style histogram cluster gap 1
+      #set style fill solid
+      set style fill pattern border -1
+
+      # Adjust width of bars
+      set boxwidth 0.8
+
+      set grid ytics
+      # Adjust xtics for labels
+      set xtics rotate by -45
+
+      # Plot data from file
+      plot \$Mydata using 2:xtic(1) with boxes title 'Wall clock time' fillstyle pattern 2
+EOFMarker
+
 
 exit 0

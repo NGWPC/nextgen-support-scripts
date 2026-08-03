@@ -35,6 +35,7 @@ docker stop ecflow-server 2>/dev/null || true
 # The /data/ecflow inside the container is mounted from the host
 echo "Cleaning ecflow data directory..."
 rm -rf "${DATAROOT}"/ecflow/* 2>/dev/null || true
+rm -rf "${DBNROOT}"/user/usgs_api/* 2>/dev/null || true
 
 # Start server container.
 # Mount paths at their host-absolute locations so that docker_run calls

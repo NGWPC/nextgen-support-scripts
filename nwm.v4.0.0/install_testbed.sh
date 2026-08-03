@@ -38,7 +38,6 @@ function run_ecf_task() {
 
 PDY=$(date +"%Y%m%d")
 
-sed -i -e "s/repeat date YMD [0-9]+/repeat date YMD ${PDY}/" ecf/nwm.def
 sed -i -e "s|^\(\s\+\)edit ECF_HOME \".\+\"|\1edit ECF_HOME \"${NWM_PACKAGE_DIR}/ecf\"|" ecf/nwm.def
 sed -i -e "s|^\(\s\+\)edit ECF_INCLUDE \".\+\"|\1edit ECF_INCLUDE \"${NWM_PACKAGE_DIR}/ecf\"|" ecf/nwm.def
 sed -i -e "s|^\(\s\+\)+edit ECF_OUT \".\+\"|\1edit ECF_OUT \"${ECF_OUT}\"|" ecf/nwm.def

@@ -9,8 +9,8 @@ suite nwm
    #edit ECF_KILL_CMD 'scancel %ECF_RID%'
    edit CYC "$(echo %TIME%|cut -c1-2)"
    clock real    
-   repeat date YMD 20260721 20261231 1                                                                          
    family hourly
+     date *.*.*
      time 00:30 23:30 01:00
      # The Analysis Assimilation family, including inland, coastal, conus, Hawaii, Alaska, PRVI
      family nwm_analysis_assim
@@ -31,6 +31,7 @@ suite nwm
      endfamily
    endfamily
    family daily
+     date *.*.*
      time 18:30
      family nwm_extended_analysis_assim
        # CONUS inland extended AnA
@@ -71,7 +72,7 @@ suite nwm
      # Daily housekeeping: delete run/observation folders and dbn log files
      # older than CLEANUP_RETENTION_DAYS (default 3) from COMROOT, DCOMROOT and
      # DBNROOT/log. Runs once a day at a quiet hour.
-     time 01:00
+     cron 01:00
      task jnwm_cleanup
        edit CASETYPE CLEANUP
    endfamily
