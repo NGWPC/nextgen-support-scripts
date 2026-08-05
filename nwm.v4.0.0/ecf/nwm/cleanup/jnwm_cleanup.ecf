@@ -46,6 +46,6 @@ export cyc=%CYC%
 export PDY=`date -u +%%Y%%m%%d`
 export CASETYPE=%CASETYPE%
 
-${HOMEnwm}/jobs/JNWM_CLEANUP
+source ${HOMEnwm}/jobs/JNWM_CLEANUP
 
 %include <tail.h>
