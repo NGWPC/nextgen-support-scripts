@@ -23,14 +23,15 @@ function run_vpu()
 
 function parallel_run_vpu()
 {
-   nprocs=$1
+   local nprocs=$1
    export CPUSET_CPUS="$2"
+   local run_time_secs=$3
 
    #clean up first
    sudo rm -rf ${RUN_NGEN_ROOT__HOST}/regionalization/*
 
    # Record start time
-   start_time=$(date +%s)
+   local start_time=$(date +%s)
 
    # --- 1 processor ---
    VPU="03S"
@@ -38,12 +39,12 @@ function parallel_run_vpu()
    run_vpu ${VPU} ${nprocs}
 
    # Record end time
-   end_time=$(date +%s)
+   local end_time=$(date +%s)
 
-   total_time_secs=$((end_time - start_time))
+   local total_time_secs=$((end_time - start_time))
 
    # Output results
-   echo $total_time_secs
+   eval $run_time_secs="'$total_time_secs'"
 }
 
 set -euo pipefail
@@ -56,9 +57,7 @@ cd ../ush/nwm-rte
 ./ngen_rte_build.sh
 
 # use the working directory on local disk
-#export RUN_NGEN_ROOT__HOST=${HOME}/test/tmp
-export RUN_NGEN_ROOT__HOST=/media/test/tmp
-#export RUN_NGEN_ROOT__HOST=/lfs/h1/ops/prod/owp/test/tmp
+export RUN_NGEN_ROOT__HOST=/media/test/tmp/scale/${LOGNAME}
 
 cd ${workdir}
 #prepare RTE to run
@@ -85,8 +84,8 @@ DATA="# nprocs  wall clock time (secs)"
 # 1 processor 
 
 echo "Running VPU 03S short range on processor 0 ..."
-total_time=$(parallel_run_vpu 1 "0")
-echo "Time of the 1 processor: ${total_time} seconds"
+parallel_run_vpu 1 "0" total_time
+echo "Time of 1 processor: ${total_time} seconds"
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
 minutes=$(((total_time % 3600) / 60))
@@ -96,8 +95,9 @@ DATA+=$'\n'"1  $total_time"
 
 # 2 processors
 echo "Running VPU 03S short range on 2 processors ..."
-total_time=$(parallel_run_vpu 2 "0,1")
-echo "Time of the 2 processors: ${total_time} seconds"
+
+parallel_run_vpu 2 "0,1" total_time
+echo "Time of 2 processors: ${total_time} seconds"
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
 minutes=$(((total_time % 3600) / 60))
@@ -107,8 +107,8 @@ DATA+=$'\n'"2  $total_time"
 
 # 4 processors
 echo "Running VPU 03S short range on 4 processors ..."
-total_time=$(parallel_run_vpu 4 "0,1,2,3")
-echo "Time of the 4 processors: ${total_time} seconds"
+parallel_run_vpu 4 "0,1,2,3" total_time
+echo "Time of 4 processors: ${total_time} seconds"
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
 minutes=$(((total_time % 3600) / 60))
@@ -118,8 +118,8 @@ DATA+=$'\n'"4  $total_time"
 
 # 8 processors
 echo "Running VPU 03S short range on 8 processors ..."
-total_time=$(parallel_run_vpu 8 "0,1,2,3,4,5,6,7")
-echo "Time of the 8 processors: ${total_time} seconds"
+parallel_run_vpu 8 "0,1,2,3,4,5,6,7" total_time
+echo "Time of 8 processors: ${total_time} seconds"
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
 minutes=$(((total_time % 3600) / 60))
@@ -129,8 +129,8 @@ DATA+=$'\n'"8  $total_time"
 
 # 12 processors
 echo "Running VPU 03S short range on 12 processors ..."
-total_time=$(parallel_run_vpu 12 "0,1,2,3,4,5,6,7,8,9,10,11")
-echo "Time of the 12 processors: ${total_time} seconds"
+parallel_run_vpu 12 "0,1,2,3,4,5,6,7,8,9,10,11" total_time
+echo "Time of 12 processors: ${total_time} seconds"
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
 minutes=$(((total_time % 3600) / 60))
@@ -140,8 +140,8 @@ DATA+=$'\n'"12  $total_time"
 
 # 16 processors
 echo "Running VPU 03S short range on 16 processors ..."
-total_time=$(parallel_run_vpu 16 "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14.15")
-echo "Time of the 16 processors: ${total_time} seconds"
+parallel_run_vpu 16 "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15" total_time
+echo "Time of 16 processors: ${total_time} seconds"
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
 minutes=$(((total_time % 3600) / 60))

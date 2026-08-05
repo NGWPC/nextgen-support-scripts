@@ -2,7 +2,7 @@
 
 #SBATCH -J Perf_2_vpus 
 #SBATCH -o Perf_2_vpus_%j.log
-#SBATCH -t 00:60:00
+#SBATCH -t 02:00:00
 #SBATCH --nodes 1
 #SBATCH --exclusive
 #SBATCH --ntasks-per-node=18
@@ -54,9 +54,7 @@ cd ../ush/nwm-rte
 #fi
 
 # use the working directory on local disk
-export RUN_NGEN_ROOT__HOST=${HOME}/test/tmp
-#export RUN_NGEN_ROOT__HOST=/media/test/tmp
-#export RUN_NGEN_ROOT__HOST=/lfs/h1/ops/prod/owp/test/tmp
+export RUN_NGEN_ROOT__HOST=/media/test/tmp/vpu/${LOGNAME}
 
 cd ${workdir}
 #prepare RTE to run
