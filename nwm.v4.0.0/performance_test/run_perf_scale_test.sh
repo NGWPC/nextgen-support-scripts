@@ -84,7 +84,7 @@ DATA="# nprocs  wall clock time (secs)"
 # 1 processor 
 
 echo "Running VPU 03S short range on processor 0 ..."
-parallel_run_vpu 1 "0" total_time
+parallel_run_vpu 1 "17" total_time
 echo "Time of 1 processor: ${total_time} seconds"
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
@@ -92,6 +92,14 @@ minutes=$(((total_time % 3600) / 60))
 seconds=$((total_time % 60))
 printf "Total time of 1 processor start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
 DATA+=$'\n'"1  $total_time"
+
+# Now save the output files from the serial execution
+sudo mv ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output \
+      ${RUN_NGEN_ROOT__HOST}/Output.serial
+
+echo "------------------------------------------------------------------------------------------"
+echo "Archieved the serial run output files to ${RUN_NGEN_ROOT__HOST}/Output.serial."
+echo "------------------------------------------------------------------------------------------"
 
 # 2 processors
 echo "Running VPU 03S short range on 2 processors ..."
@@ -148,6 +156,70 @@ minutes=$(((total_time % 3600) / 60))
 seconds=$((total_time % 60))
 printf "Total time of 16 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
 DATA+=$'\n'"16  $total_time"
+
+echo "------------------------------------------------------------------------------------------"
+echo "Compare the serial run output files to the 16 processor parallel run output files ..."
+echo "------------------------------------------------------------------------------------------"
+#
+# Update the run.sh script
+#
+RTE=$(pwd)/../ush/nwm-rte
+sed  -e "s|\$(pwd)/bin_mounted/|$RTE/bin_mounted/|" \
+	-e "/^\s\+time sudo docker/a \ \ \ \ \ \$\{CPUSET_CPUS:+--cpuset-cpus=\"\$\{CPUSET_CPUS\}\"\}  \\\\" \
+	-e "/^\s\+time sudo docker/a \ \ \ \ \ -v ${workdir}:${workdir}  \\\\" \
+        -e "s|-w \"/ngen-app/bin\"|-w ${workdir}|" \
+	-e "s|\$(pwd)|$RUN_NGEN_ROOT__HOST|" \
+	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_run.sh
+
+echo "------------------------------------------------------------------------------------------"
+echo "Comparing the catchment_output.nc files ..."
+echo " Serial run oututput file is ${RUN_NGEN_ROOT__HOST}/Output.serial/catchment_output.nc."
+echo " 16 processor parallel run oututput file is ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output/catchment_output.nc."
+echo "------------------------------------------------------------------------------------------"
+
+source my_run.sh && docker_run python compare_netcdf.py ./Output/catchment_output.nc \
+	/ngwpc/run_ngen/Output.serial/catchment_output.nc
+
+#if [ "$rc" -eq 0 ]; then
+#   echo "PASS: The serial run output file is scientifically identical to the parallel run output file!"
+#   echo "PASS: The maximum absolute difference is less than 1e-8 and the maximum relative difference is less than 1e-5!"
+#else
+#   echo "FAIL: The serial run output file is NOT scientifically identical to the parallel run output file!"
+#fi
+
+echo "------------------------------------------------------------------------------------------"
+echo "Comparing the troute_output_202603300600.nc file ..."
+echo " Serial run oututput file is ${RUN_NGEN_ROOT__HOST}/Output.serial/troute_output_202603300600.nc."
+echo " 16 processor parallel run oututput file is ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output/troute_output_202603300600.nc."
+echo "------------------------------------------------------------------------------------------"
+
+source my_run.sh && docker_run python compare_netcdf.py ./Output/troute_output_202603300600.nc \
+	/ngwpc/run_ngen/Output.serial/troute_output_202603300600.nc \
+	--atol 0.1
+
+#if [ "$rc" -eq 0 ]; then
+#   echo "PASS: The serial run output file is scientifically identical to the parallel run output file!"
+#   echo "PASS: The maximum absolute difference is less than 5e-2 and the maximum relative difference is less than 1e-5!"
+#else
+#   echo "FAIL: The serial run output file is NOT scientifically identical to the parallel run output file!"
+#fi
+
+echo "------------------------------------------------------------------------------------------"
+echo "Comparing the troute_lakeout_202603300600.nc file ..."
+echo " Serial run oututput file is ${RUN_NGEN_ROOT__HOST}/Output.serial/troute_lakeout_202603300600.nc."
+echo " 16 processor parallel run oututput file is ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output/troute_lakeout_202603300600.nc."
+echo "------------------------------------------------------------------------------------------"
+
+source my_run.sh && docker_run python compare_netcdf.py ./Output/troute_lakeout_202603300600.nc \
+	/ngwpc/run_ngen/Output.serial/troute_lakeout_202603300600.nc \
+	--atol 0.001
+
+#if [ "$rc" -eq 0 ]; then
+#   echo "PASS: The serial run output file is scientifically identical to the parallel run output file!"
+#   echo "PASS: The maximum absolute difference is less than 1e-3 and the maximum relative difference is less than 1e-5!"
+#else
+#   echo "FAIL: The serial run output file is NOT scientifically identical to the parallel run output file!"
+#fi
 
 echo "Creating the runtime vs. number of cores figure ..."
 
