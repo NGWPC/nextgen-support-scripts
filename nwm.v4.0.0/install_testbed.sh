@@ -3,10 +3,9 @@
 set -xa
 set -euo pipefail
 
-#!/bin/bash
-
 # Default values
 RTE_BRANCH="development-pw"
+export ECF_PORT=3141
 
 while getopts "p:b:" opt; do
 case $opt in
@@ -92,6 +91,7 @@ DBNROOT="${DBNROOT}"           \
 DCOMROOT="${DCOMROOT}"        \
 NWM_PACKAGE_DIR="${NWM_PACKAGE_DIR}"          \
 DATAROOT="${DATAROOT}"        \
+ECF_PORT="${ECF_PORT}"        \
 ./ecflow-server-start.sh
 
 echo "Loading NWM suite into server ..."

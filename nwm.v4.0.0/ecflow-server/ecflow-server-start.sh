@@ -21,7 +21,6 @@ fi
 
 mkdir -p "${DATAROOT}"
 
-#echo "PACKAGEROOT=${PACKAGEROOT}"
 echo "DATAROOT=${DATAROOT}"
 
 # idempotent network creation
@@ -43,9 +42,10 @@ rm -rf "${DBNROOT}"/user/usgs_api/* 2>/dev/null || true
 echo "Starting server container..."
 mkdir -p ${DBNROOT}/ecflow/log
 docker run --rm -d --net "${NETWORK}" --name ecflow-server \
-  -e ECF_LOG=${DBNROOT}/ecflow/log/a49927e4b7fc.ecf.log  \
+  -e ECF_LOG=${DBNROOT}/ecflow/log/ecf_server.log  \
   -e ECF_TIMEOUT=600  \
-  -p 3141:3141 \
+  -e ECF_PORT=${ECF_PORT}  \
+  -p ${ECF_PORT}:${ECF_PORT} \
   -v "/var/run/docker.sock:/var/run/docker.sock" \
   -v "${COMROOT}:${COMROOT}"           \
   -v "${DBNROOT}:${DBNROOT}"           \
