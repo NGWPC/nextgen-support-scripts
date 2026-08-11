@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+#
+# SCRIPT NAME: bootstrap.bash
+# USAGE: This script is used as the user bootrap when configurating and build the 
+#        operational testbed Early Access cluster using Parallel Works cluster tool.
+#        When configurating a cluster, paste the content of this entire file to the 
+#        "User Bootstrap" textbox under the "Advanced Settings" section.
+#
+
 set -euo pipefail
 
 # install dnf-plugins-core

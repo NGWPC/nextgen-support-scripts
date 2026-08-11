@@ -3,10 +3,21 @@
 set -xa
 set -euo pipefail
 
-if [ $# -eq 1 ]; then
-  echo "Use port $1"
-  export ECF_PORT=$1
-fi 
+#!/bin/bash
+
+# Default values
+RTE_BRANCH="development-pw"
+
+while getopts "p:b:" opt; do
+case $opt in
+p) export ECF_PORT=$OPTARG; echo "Use port $OPTARG";;
+b) RTE_BRANCH=$OPTARG; echo "Use RTE branch: $OPTARG";;
+\?) # Invalid option
+   echo "Usage: $0 [-p <port>] [-b <RTE branch name>]"
+   exit 1
+   ;;
+esac
+done
 
 export PACKAGEROOT="${PWD%/*}"
 export NWM_PACKAGE_DIR="$(pwd)"
@@ -54,7 +65,7 @@ if [ ! -d "${NWM_PACKAGE_DIR}/ush/nwm-rte" ]; then
   echo "Installing RTE ..."
   cd "${NWM_PACKAGE_DIR}/ush"
   # TODO update this line to clone either the default branch or the development branch
-  git clone -b development-pw https://github.com/NGWPC/nwm-rte.git
+  git clone -b ${RTE_BRANCH} https://github.com/NGWPC/nwm-rte.git
   cd ./nwm-rte/
   ./setup_clone_repos.sh https
   ./ngen_rte_build.sh
