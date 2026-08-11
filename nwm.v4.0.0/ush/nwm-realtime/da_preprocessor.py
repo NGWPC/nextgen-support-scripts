@@ -356,9 +356,16 @@ class DAPreprocessor(ABC):
             print(f"ERROR: Preprocessing tool not found: {script}", flush=True)
             return 1
 
+        my_env = os.environ.copy()
+        if "PYTHONPATH" in my_env:
+           my_env["PYTHONPATH"] = f"{self.package_dir}/ush/nwm-data-assimilation:" + \
+                      my_env["PYTHONPATH"]
+        else:
+           my_env["PYTHONPATH"] = f"{self.package_dir}/ush/nwm-data-assimilation"
+
         cmd = [self.python, script] + [str(a) for a in args]
         print(f"INFO: Running {' '.join(cmd)}", flush=True)
-        rc = subprocess.run(cmd, cwd=self.working_dir).returncode
+        rc = subprocess.run(cmd, cwd=self.working_dir, env=my_env).returncode
         if rc != 0:
             print(f"ERROR: {os.path.basename(script)} exited with return code {rc}", flush=True)
         return rc

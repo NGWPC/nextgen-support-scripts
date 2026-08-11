@@ -63,6 +63,12 @@ class Forecast(NWMForecast):
                 f'-n {self.nprocs} -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
                 f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}{self.output_format_arg} --checkpoint_interval 1'
             )
+            working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+            if os.path.isdir( working_rfc_path ) and any(os.scandir(working_rfc_path)):
+                docker_args += f' -rfc {os.path.join(paths.container_run_dir, "rfc_timeseries")}'
+            else:
+                print("WARNING: RFC Reservoir timeseries not found! Skipping reservoir data assimilation!")
+
             restart_rc = self._docker_run(docker_args)
         else:
             restart_rc = self._docker_restart( src_dir, dst_dir, checkpoint_dir )
@@ -134,6 +140,12 @@ class Forecast(NWMForecast):
                 f'-n {self.nprocs} -fconfig "short_range" -dt "{rte_start_time}" -rname "default_short" -nwmout'
                 f'{load_state_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}{self.output_format_arg} --checkpoint_interval 1'
             )
+            working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+            if os.path.isdir( working_rfc_path ) and any(os.scandir(working_rfc_path)):
+                docker_args += f' -rfc {os.path.join(paths.container_run_dir, "rfc_timeseries")}'
+            else:
+                print("WARNING: RFC Reservoir timeseries not found! Skipping reservoir data assimilation!")
+
             rc = self._docker_run(docker_args)
             if rc is None or rc != 0:
                print(
