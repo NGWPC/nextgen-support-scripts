@@ -150,6 +150,12 @@ class AnalysisAssim(NWMForecast):
             f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{checkpoint_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
             f'{self.output_format_arg}'
         )
+        working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+        if os.path.isdir( working_rfc_path ) and any(os.scandir(working_rfc_path)):
+            docker_args += f' -rfc {os.path.join(paths.container_run_dir, "rfc_timeseries")}'
+        else:
+            print("WARNING: RFC Reservoir timeseries not found! Skipping reservoir data assimilation!")
+
         rc = self._docker_run(docker_args)
         if rc is None or rc != 0:
             print(
@@ -209,6 +215,12 @@ class AnalysisAssim(NWMForecast):
             f'--save_state -rname "{rname}"{extra_args} --load_state_from "{state_save_dir}"{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
             f'{self.output_format_arg}'
         )
+        working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+        if os.path.isdir( working_rfc_path ) and any(os.scandir(working_rfc_path)):
+            docker_args += f' -rfc {os.path.join(paths.container_run_dir, "rfc_timeseries")}'
+        else:
+            print("WARNING: RFC Reservoir timeseries not found! Skipping reservoir data assimilation!")
+
         rc = self._docker_run(docker_args)
         if rc is None or rc != 0:
             print(
@@ -237,7 +249,8 @@ class AnalysisAssim(NWMForecast):
         """Resume a failed Extended AnA two-pass run.
 
         working_dir: host path of the job's working directory (mapped to
-            /ngwpc/run_ngen in the container).
+-            /ngwpc/run_ngen in the container).
+
         pass_num: 1 if pass 1 failed; 2 if pass 2 failed.
 
         Pass 1 failure: restarts pass 1 via _docker_restart, then runs pass 2
@@ -258,7 +271,8 @@ class AnalysisAssim(NWMForecast):
         dt1 = (self.t0 - timedelta(hours=l2)).strftime("%Y-%m-%d %H:%M:%S")
         dt2 = self.t0.strftime("%Y-%m-%d %H:%M:%S")
 
-        previous_workdir = self._pre_workdir()
+        ecfcon = EcflowConnection( f"{self.package_dir}/ush/nwm-realtime/ecflow-settings.json" )
+        previous_workdir = self._pre_workdir(ecfcon)
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
         src_state_save=self._ana_state_save_src()
@@ -293,6 +307,12 @@ class AnalysisAssim(NWMForecast):
                f'--save_state -rname "{rname}"{extra_args}{load_state_arg}{checkpoint_arg}{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
                f'{self.output_format_arg}'
                )
+               working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+               if os.path.isdir( working_rfc_path ) and any(os.scandir(working_rfc_path)):
+                   docker_args += f' -rfc {os.path.join(paths.container_run_dir, "rfc_timeseries")}'
+               else:
+                   print("WARNING: RFC Reservoir timeseries not found! Skipping reservoir data assimilation!")
+
                rc = self._docker_run(docker_args)
             else:
                rc = self._docker_restart(src_dir, dst_dir, checkpoint_dir)
@@ -341,6 +361,12 @@ class AnalysisAssim(NWMForecast):
             f'{self.vpu_arg}{self.hydrofab_arg}{self.form_assign_arg}{self.cat_grp_arg}'
             f'{self.output_format_arg}'
         )
+        working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+        if os.path.isdir( working_rfc_path ) and any(os.scandir(working_rfc_path)):
+            docker_args += f' -rfc {os.path.join(paths.container_run_dir, "rfc_timeseries")}'
+        else:
+            print("WARNING: RFC Reservoir timeseries not found! Skipping reservoir data assimilation!")
+
         rc = self._docker_run(docker_args)
         if rc is None or rc != 0:
             print(

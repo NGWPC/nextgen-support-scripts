@@ -366,6 +366,24 @@ class NWMForecast(ABC):
            with tarfile.open(dst_state_save_tar, 'r') as tar:
               # Extract state files
               tar.extractall( path=dst_state_save) 
+        #
+        # Copy RFC reservoir output timeseries
+        #
+        rfc_path = os.path.join(self.comout, "rfc_timeseries")
+        working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+        if os.path.isdir( rfc_path ) and any(os.scandir(rfc_path)):
+            shutil.copytree( rfc_path, working_rfc_path, dirs_exist_ok=True )
+        else:
+            print("WARNING: RFC Reservoir timeseries does not exist or is empty! Skipping reservoir data assimilation!")
+
+        # Copy the previous day RFC reservoir output timeseries
+        if self.start_time.hour <= 6 or self.start_time.date() < self.t0.date():
+           rfc_path = os.path.join(self.previous_day_comout, "rfc_timeseries")
+           working_rfc_path = os.path.join(paths.host_run_dir, "rfc_timeseries")
+           if os.path.isdir( rfc_path ) and any(os.scandir(rfc_path)):
+                shutil.copytree( rfc_path, working_rfc_path, dirs_exist_ok=True )
+           else:
+                print("WARNING: Previous RFC Reservoir timeseries does not exist or is empty!")
 
     # ------------------------------------------------------------------ #
     # ecFlow / container helpers  (shared by all configurations)
