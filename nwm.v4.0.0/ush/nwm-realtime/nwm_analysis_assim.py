@@ -406,16 +406,26 @@ class AnalysisAssim(NWMForecast):
             os.path.join(run_dir, f"Output_{ts_t0}", "catchment_output.nc"),
             os.path.join(dst, f"catchment_output_{ts_r1}00.nc"),
         )
+        ts_tr_r1 = (self.t0 - timedelta(hours=l2) - timedelta(hours=1)).strftime("%Y%m%d%H")
         rc |= self._store_file(
-            os.path.join(run_dir, f"Output_{ts_t0}", f"troute_output_{ts_r1}00.nc"),
+            os.path.join(run_dir, f"Output_{ts_t0}", f"troute_output_{ts_tr_r1}00.nc"),
+            dst,
+        )
+        rc |= self._store_file(
+            os.path.join(run_dir, f"Output_{ts_t0}", f"troute_lakeout_{ts_tr_r1}00.nc"),
             dst,
         )
         rc |= self._store_file(
             os.path.join(run_dir, f"Output_{ts_r1}", "catchment_output.nc"),
             os.path.join(dst, f"catchment_output_{ts_r1_begin}00.nc"),
         )
+        ts_tr_r1_begin = (self.t0 - timedelta(hours=l2) -  timedelta(hours=l1) - timedelta(hours=1)).strftime("%Y%m%d%H") 
         rc |= self._store_file(
-            os.path.join(run_dir, f"Output_{ts_r1}", f"troute_output_{ts_r1_begin}00.nc"),
+            os.path.join(run_dir, f"Output_{ts_r1}", f"troute_output_{ts_tr_r1_begin}00.nc"),
+            dst,
+        )
+        rc |= self._store_file(
+            os.path.join(run_dir, f"Output_{ts_r1}", f"troute_lakeout_{ts_tr_r1_begin}00.nc"),
             dst,
         )
         return rc
