@@ -63,7 +63,7 @@ env
 ########################################################
 # Execute the script.
 ########################################################
-${SCRIPTnwm}/exnwm_cleanup.sh
+source ${SCRIPTnwm}/exnwm_cleanup.sh
 
 echo "JOB $job HAS COMPLETED NORMALLY."
 

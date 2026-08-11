@@ -21,7 +21,6 @@ fi
 
 mkdir -p "${DATAROOT}"
 
-#echo "PACKAGEROOT=${PACKAGEROOT}"
 echo "DATAROOT=${DATAROOT}"
 
 # idempotent network creation
@@ -35,13 +34,18 @@ docker stop ecflow-server 2>/dev/null || true
 # The /data/ecflow inside the container is mounted from the host
 echo "Cleaning ecflow data directory..."
 rm -rf "${DATAROOT}"/ecflow/* 2>/dev/null || true
+rm -rf "${DBNROOT}"/user/usgs_api/* 2>/dev/null || true
 
 # Start server container.
 # Mount paths at their host-absolute locations so that docker_run calls
 # (which go through the host Docker daemon via the socket) use correct -v paths.
 echo "Starting server container..."
+mkdir -p ${DBNROOT}/ecflow/log
 docker run --rm -d --net "${NETWORK}" --name ecflow-server \
-  -p 3141:3141 \
+  -e ECF_LOG=${DBNROOT}/ecflow/log/ecf_server.log  \
+  -e ECF_TIMEOUT=600  \
+  -e ECF_PORT=${ECF_PORT}  \
+  -p ${ECF_PORT}:${ECF_PORT} \
   -v "/var/run/docker.sock:/var/run/docker.sock" \
   -v "${COMROOT}:${COMROOT}"           \
   -v "${DBNROOT}:${DBNROOT}"           \

@@ -1,8 +1,0 @@
-%include "../head.h"
-
-echo "I, %ECF_NAME%, am part of a suite that lives in %ECF_HOME%"
-sleep 2
-
-%include "../tail.h"
-
-
