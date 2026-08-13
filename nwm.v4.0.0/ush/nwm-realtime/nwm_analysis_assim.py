@@ -32,10 +32,11 @@ class AnalysisAssim(NWMForecast):
         if cyc == "18": # 18z = 19z - 1
             #uses the 16z restart from extended AnA
             ext_path = os.path.join(base_comout, "16", ext_ana_dir, self.run_id, f"state_save_{ts}")
-            if os.path.isdir(ext_path):
+            ext_ana_state_tar = f"{ext_path}.tar"
+            if os.path.isfile(ext_ana_state_tar):
                 return ext_path
             print(
-                f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing "
+                f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states {ext_ana_state_tar} are missing "
                 f"(cyc={cyc}, T0={self.t0:%Y-%m-%d %H:%M:%S}); "
                 f"using warm states from {ana_dir} case type instead.",
                 flush=True,
