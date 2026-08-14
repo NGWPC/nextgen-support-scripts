@@ -277,7 +277,7 @@ class AnalysisAssim(NWMForecast):
         previous_workdir = self._pre_workdir(ecfcon)
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
-        src_state_save=self._ana_state_save_src()
+        src_state_save=self._ext_ana_state_save_src()
         src_state_save_tar = f"{src_state_save}.tar"
         if os.path.isfile(src_state_save_tar):
             print(
