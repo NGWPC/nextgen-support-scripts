@@ -61,10 +61,11 @@ class AnalysisAssim(NWMForecast):
         primary_path = os.path.join(
             self.previous_day_comout, cyc, ext_ana_dir, self.run_id, f"state_save_{ts}"
         )
-        if os.path.isdir(primary_path):
+        ext_ana_state_tar = f"{primary_path}.tar"
+        if os.path.isfile(ext_ana_state_tar):
             return primary_path
         print(
-            f"WARNING: {ext_ana_dir} warm states are missing at "
+            f"WARNING: {ext_ana_dir} warm states {ext_ana_state_tar} are missing at "
             f"{self.start_time:%Y-%m-%d %H:%M:%S} (T0={self.t0:%Y-%m-%d %H:%M:%S}); "
             f"using warm states from {ana_dir} case type instead.",
             flush=True,
