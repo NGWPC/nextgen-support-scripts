@@ -1,72 +1,119 @@
 #!/bin/bash
-
-# Start logging everything to a file
-LOGFILE="createRelease_$(date +%Y%m%d_%H%M%S).log"
-exec > >(tee >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$LOGFILE")) 2>&1
-echo "All output will be logged to: $LOGFILE"
-
-declare -a TEMP_BRANCHES
-
-# Unified release branch used across all repositories for OFFICIAL releases.
-RELEASE_BRANCH="ngwpc-release"
-RELEASE_CANDIDATE_BRANCH='ngwpc-candidate'
-
-# Toggle for printing the exact 'gh' commands being executed.
-# Printed commands go to STDERR so that JSON captures using $(...) are not polluted.
-DEBUG_GH=true
-
-#-----------------------------------------
-# Function: usage
-# Displays usage information and exits.
-#-----------------------------------------
-usage() {
-  echo "Usage: $(basename "$0") <RELEASE_TYPE> [JSON_FILE] [WAIT_TIME]"
-  echo
-  echo "This script automates the release process for GitHub repositories, handling merges,"
-  echo "submodules, and versioning."
-  echo "It performs the following steps based on the release type:"
-  echo
-  echo "🔹 RC (Release Candidate) Process:"
-  echo "  1. Merge from 'development' to '\$RELEASE_CANDIDATE_BRANCH' (except for RC1)."
-  echo "  2. If submodules exist, ensure they are on the correct branch."
-  echo "  3. Create a GitHub release for the RC."
-  echo "  4. Merge '\$RELEASE_CANDIDATE_BRANCH' back into 'development' (except for RC1)."
-  echo
-  echo "🔹 Official Release Process:"
-  echo "  1. Merge from '\$RELEASE_CANDIDATE_BRANCH' to '\$RELEASE_BRANCH'."
-  echo "  2. If submodules exist, ensure they are on the correct branch."
-  echo "  3. Create a GitHub release for the official version."
-  echo
-  echo "🔹 Handling Submodules:"
-  echo "  - Submodules are checked out to match the parent's target branch"
-  echo "    ('\$RELEASE_CANDIDATE_BRANCH', 'development', or '\$RELEASE_BRANCH'), then committed in the parent."
-  echo "  - A temporary branch is created for submodule updates, ensuring consistency across modules."
-  echo "  - The temporary branch is then merged back into the appropriate target branch."
-  echo
-  echo "Arguments:"
-  echo "  RELEASE_TYPE : REQUIRED. Must be either 'OFFICIAL' or 'RC'."
-  echo "  JSON_FILE    : Optional. Path to the configuration JSON file."
-  echo "                 Default is 'createReleaseConfig.json'."
-  echo "  WAIT_TIME    : Optional. Wait time for mergeable check in seconds."
-  echo "                 Default is 300 seconds."
-  echo
-  echo "Example:"
-  echo "  $(basename "$0") RC release_config.json 300"
-  echo
-  exit 0
-}
-
-# If the first argument is -h or --help, display usage.
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-fi
-
 # Define color codes
 RED='\033[1;31m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[1;34m'
 NC='\033[0m' # No Color
+
+declare -a TEMP_BRANCHES
+
+# Release branch names are selected in main(). The default environment uses
+# development/ngwpc-candidate/ngwpc-release. Passing PW selects the -pw variants.
+DEVELOPMENT_BRANCH="development"
+RELEASE_CANDIDATE_BRANCH="ngwpc-candidate"
+RELEASE_BRANCH="ngwpc-release"
+BRANCH_ENVIRONMENT="STANDARD"
+
+# Toggle for printing the exact 'gh' commands being executed.
+# Printed commands go to STDERR so that JSON captures using $(...) are not polluted.
+DEBUG_GH=false
+
+#-----------------------------------------
+# Function: usage
+# Displays usage information and exits.
+#-----------------------------------------
+usage() {
+  cat <<EOF
+
+Usage: $(basename "$0") --release-type <RC|OFFICIAL|OWP> [OPTIONS]
+
+This script automates the release process for GitHub repositories repositories listed in a JSON
+configuration file, handling merges, submodules, and versioning.
+
+Release Type Workflows: 
+  RC — Release Candidate Mode
+      - First RC (-rc1) for a release: merges development → ngwpc-candidate (creating ngwpc-candidate 
+        from development if it doesn't exist yet), updates ngwpc-candidate's submodule pointers if 
+        applicable, then tags and creates a pre-release on ngwpc-candidate.
+      - Subsequent RCs (-rc2, -rc3, ...): skips the merge (assumes ngwpc-candidate already has what it
+        needs), updates ngwpc-candidate's submodule pointers if applicable, tags and creates the next 
+        pre-release, then merges ngwpc-candidate back into development and updates development's 
+        submodule pointers if applicable. A conflict updating development's submodule pointers fails 
+        that step only — the RC pre-release already created is not rolled back.
+      - The next RC number is determined automatically from existing git tags matching <release>-rcN[-pw].
+      - In the PW environment, the tag gets a -pw suffix (e.g. 10.2-rcN-pw).
+
+  OFFICIAL — Official Release Mode
+    - Merges ngwpc-candidate → ngwpc-release (creating ngwpc-release if needed), updates submodule 
+      pointers if applicable, generates a changelog (commit log since the last official tag, written
+      to changelogs/<repo>_<release>_changelog.txt), tags and creates the official release on 
+      ngwpc-release, then merges ngwpc-release back into development. A conflict updating development's 
+      submodule pointers fails that step only — the Official release already created is not rolled back.
+    - In the PW environment, the tag gets a -pw suffix (e.g. 10.2-pw).
+
+  OWP — Branch-Only Mode
+    - Creates ngwpc-<release> (or ngwpc-<release>-pw under PW) branch directly from ngwpc-release and 
+      pushes it. No merge request, no tagging, no GitHub release — the repo is done as soon as the 
+      branch is pushed.
+    - This branch is what gets submitted as a pull request to the upstream NOAA OWP parent repository;
+      the script only prepares and pushes it, it does not open that PR for you.
+    - In the PW environment, the tag gets a -pw suffix (e.g. 10.2-pw).
+
+OPTIONS
+  Required option:
+    -r, --release-type TYPE   Release workflow: RC, OFFICIAL, or OWP.
+
+  Optional options:
+    -c, --config FILE         Configuration JSON file.
+                              Default: createReleaseConfig.json
+    -v, --verbose             Print the exact 'gh' commands being executed
+                              Default: false
+    -w, --wait-time SECONDS   Maximum wait before prompting while a PR is blocked.
+                              Default: 60
+    -e, --environment ENV     Branch/release environment: STANDARD or PW.
+                              Default: STANDARD
+    -a, --automatic-submodules For repos with has_submodules=true, update
+                              submodule pointers automatically. Without this
+                              flag (the default), the script pauses instead
+                              so you can update and push them by hand on
+                              each relevant branch, then continue.
+                              Default: false (manual)
+    -h, --help                Display this help and exit.
+
+Environment branches:
+  STANDARD:
+    development
+    ngwpc-candidate
+    ngwpc-release
+
+  PW:
+    development-pw
+    ngwpc-candidate-pw
+    ngwpc-release-pw
+
+Release tags:
+  STANDARD RC:       10.2-rc1
+  STANDARD official: 10.2
+  PW RC:             10.2-rc1-pw
+  PW official:       10.2-pw
+
+Examples:
+  $(basename "$0") --release-type RC
+  $(basename "$0") --release-type OFFICIAL --config release_config.json
+  $(basename "$0") --release-type RC --config release_config.json --wait-time 120 --environment PW
+  $(basename "$0") --release-type OWP --environment PW
+  $(basename "$0") --release-type RC --automatic-submodules
+
+Per-repo config field "env" (optional; PW, AWS, or ALL; defaults to ALL):
+  Controls which -e environment(s) a repo entry is processed under, independent
+  of the "skip" flag:
+    -e PW                -> repo runs only if env is PW or ALL
+    -e STANDARD (default) -> repo runs only if env is AWS or ALL
+  A repo entry with "skip": true is always skipped regardless of "env".
+EOF
+  exit "${1:-0}"
+}
 
 #-----------------------------------------
 # Function: git_push
@@ -131,33 +178,35 @@ clean_and_encode_project() {
 }
 
 #-----------------------------------------
-# (Deprecated) Function: determine_release_branch
-# Determines whether the remote repository has a branch named "main" or "master"
-# by querying the Git remote directly (no GitHub API).
+# Function: repo_env_applies
+# Decides whether a repo config entry should be processed under the current
+# BRANCH_ENVIRONMENT (STANDARD or PW), based on the config's optional "env"
+# field (PW, AWS, or ALL; defaults to ALL when absent).
 #
-# Behavior:
-#   - Checks `origin` for refs/heads/main first, then refs/heads/master.
-#   - On success, echoes the found branch name and returns 0.
-#   - If neither exists, prints a clear error (to STDERR) and returns 1.
+# Rules:
+#   -e PW       -> repo processed only if env is PW or ALL
+#   -e STANDARD -> repo processed only if env is AWS or ALL
+#
+# Arguments:
+#   $1 - The repo's env value (already uppercased; "ALL" if unset)
 #
 # Returns:
-#   0 with "main" or "master" on stdout; 1 if neither exists.
+#   0 if the repo should be processed under the current environment, 1 otherwise.
 #-----------------------------------------
-# determine_release_branch() {
-#   if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
-#     echo "main"
-#     return 0
-#   fi
-#   if git ls-remote --exit-code --heads origin master >/dev/null 2>&1; then
-#     echo "master"
-#     return 0
-#   fi
-#
-#   # Neither found
-#   echo -e "${RED}Error: Neither 'main' nor 'master' branch exists on remote 'origin' for repo $(git rev-parse --show-toplevel 2>/dev/null || echo "(unknown repo)")${NC}" >&2
-#
-#   return 1
-# }
+repo_env_applies() {
+  local repo_env="$1"
+  case "$BRANCH_ENVIRONMENT" in
+    PW)
+      [[ "$repo_env" == "PW" || "$repo_env" == "ALL" ]]
+      ;;
+    STANDARD)
+      [[ "$repo_env" == "AWS" || "$repo_env" == "ALL" ]]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
 
 #-----------------------------------------
 # Function: create_merge_request
@@ -182,6 +231,7 @@ create_merge_request() {
   local source_branch="$1"
   local target_branch="$2"
   local title="$3"
+  local pr_num
 
   echo
   echo -e "Creating pull request from ${GREEN}$source_branch${NC} to ${GREEN}$target_branch${NC}" >&2
@@ -246,20 +296,23 @@ trigger_merge() {
 
 
   # 1) Try to merge immediately (non-auto). Deletes source branch on success.
-  if run_gh pr merge "$pr_number" --merge "${delete_flag[@]}" >/dev/null 2>&1; then
+  local merge_output auto_output
+  if merge_output=$(run_gh pr merge "$pr_number" --merge "${delete_flag[@]}" 2>&1); then
     echo "Merge triggered successfully."
     echo
     return 0
   fi
 
   # 2) Fall back to auto-merge (queues merge once requirements are met).
-  if run_gh pr merge "$pr_number" --merge --auto "${delete_flag[@]}" >/dev/null 2>&1; then
+  if auto_output=$(run_gh pr merge "$pr_number" --merge --auto "${delete_flag[@]}" 2>&1); then
     echo "Auto-merge enabled (will merge when requirements are met)."
     echo
     return 0
   fi
 
   echo -e "${RED}Error triggering merge for PR $pr_number.${NC}"
+  echo -e "${YELLOW}  Direct merge attempt said:${NC} $merge_output"
+  echo -e "${YELLOW}  Auto-merge attempt said:${NC} $auto_output"
   return 1
 }
 
@@ -269,15 +322,20 @@ trigger_merge() {
 #
 # Arguments:
 #   $1 - Pull request number
+#   $2 - Maximum wait time in seconds
 #
 # Behavior:
 #   Continuously queries the pull request state and displays progress until the state
-#   is either "MERGED" or "CLOSED".
+#   is either "MERGED" or "CLOSED", or until max_wait is exceeded — at which point
+#   this gives up and returns failure rather than waiting indefinitely (e.g. a PR
+#   queued via auto-merge whose required check never reports).
 #-----------------------------------------
 poll_merge_status() {
   local pr_number="$1"
+  local max_wait="${2:-300}"
+  local elapsed=0
 
-  echo "Waiting for pull request $pr_number to complete..."
+  echo "Waiting up to $max_wait seconds for pull request $pr_number to complete..."
   while true; do
     local state
     # We suppress gh's own stderr here to keep logs tidy; the wrapper's
@@ -285,14 +343,20 @@ poll_merge_status() {
     state=$(run_gh pr view "$pr_number" --json state -q '.state' 2>/dev/null || echo "")
     if [[ "$state" == "MERGED" ]]; then
       echo "Merge is complete."
-      break
+      return 0
     elif [[ "$state" == "CLOSED" ]]; then
-      echo "Pull request closed without merging."
-      break
-    else
-      echo "Current pull request state: ${state:-unknown}. Waiting 10 seconds..."
-      sleep 10
+      echo -e "${RED}Pull request closed without merging.${NC}"
+      return 1
     fi
+
+    if (( elapsed >= max_wait )); then
+      echo -e "${RED}Gave up waiting for pull request $pr_number to complete after ${max_wait}s (last state: ${state:-unknown}).${NC}"
+      return 1
+    fi
+
+    echo "Current pull request state: ${state:-unknown}. Waiting 10 seconds..."
+    sleep 10
+    elapsed=$((elapsed + 10))
   done
 }
 
@@ -349,7 +413,7 @@ wait_until_mergeable() {
   while true; do
     # Query both draft state and merge state from GitHub
     local checks_state
-    checks_state=$(gh pr view "$pr_number" --json isDraft,mergeStateStatus \
+    checks_state=$(run_gh pr view "$pr_number" --json isDraft,mergeStateStatus \
                      -q '[.isDraft, .mergeStateStatus]' 2>/dev/null || echo '["",""]')
     local is_draft state
     is_draft=$(echo "$checks_state" | jq -r '.[0]')
@@ -364,6 +428,10 @@ wait_until_mergeable() {
     fi
 
     if (( elapsed >= max_wait )); then
+      if [ ! -t 0 ]; then
+        echo -e "${RED}PR $pr_number still not mergeable after ${max_wait}s (state: ${state:-unknown}); stdin isn't a terminal, so skipping instead of prompting.${NC}"
+        return 1
+      fi
       while true; do
         read -n 1 -s -r -p "Pull Request $pr_number not ready (state: ${state:-unknown}). (C)ontinue waiting, (S)kip: " choice
         echo
@@ -405,8 +473,8 @@ create_release() {
   local release_notes="$3"
   local ref_branch="$4"
 
-  local prerelease_flag=""
-  [[ "$RELEASE_TYPE" == "RC" ]] && prerelease_flag="--prerelease"
+  local prerelease_flag=()
+  [[ "$RELEASE_TYPE" == "RC" ]] && prerelease_flag=(--prerelease)
 
   # Capture stdout from gh (which is the release URL on success). Our run_gh
   # prints the "Executing:" line to STDERR, so it won't pollute this capture.
@@ -415,7 +483,7 @@ create_release() {
         --title "$release_name" \
         --notes "$release_notes" \
         --target "$ref_branch" \
-        $prerelease_flag); then
+        "${prerelease_flag[@]}"); then
     # Print with context so the URL isn't a naked line in logs
     echo -e "Release ${GREEN}$release_url${NC} created successfully."
     return 0
@@ -435,6 +503,7 @@ create_release() {
 #   $2 - Target branch
 #   $3 - Title for the pull request
 #   $4 - Wait time (seconds)
+#   $5 - (Optional) delete source branch after merge: true or false (default: false)
 #
 # Behavior:
 #   - Checks if the source branch has changes compared to the target.
@@ -449,6 +518,7 @@ execute_merge_request() {
   local target_branch="$2"
   local title="$3"
   local wait_time="$4"
+  local delete_source_branch="${5:-false}"
 
   local branch_created=0  # Flag to track if the target branch was just created
   local previous_branch
@@ -462,9 +532,16 @@ execute_merge_request() {
     ###
     echo -e "${YELLOW}Target branch $target_branch does not exist. Creating it from $source_branch...${NC}"
 
-    # Create the target branch locally from the source branch
-    git checkout --quiet "$source_branch"
-    git checkout --quiet -b "$target_branch"
+    # Create the target branch directly from the current remote source branch.
+    if ! git fetch --quiet origin "$source_branch"; then
+      echo -e "${RED}Unable to fetch source branch $source_branch.${NC}"
+      return 1
+    fi
+    git branch --quiet -D "$target_branch" >/dev/null 2>&1 || true
+    if ! git checkout --quiet -b "$target_branch" "origin/$source_branch"; then
+      echo -e "${RED}Unable to create local branch $target_branch from origin/$source_branch.${NC}"
+      return 1
+    fi
     git_push --set-upstream origin "$target_branch" || return 1
 
     echo -e "${GREEN}Successfully created and pushed branch $target_branch from $source_branch.${NC}"
@@ -482,9 +559,10 @@ execute_merge_request() {
   echo -e "${YELLOW}Checking merge viability between $source_branch and $target_branch...${NC}"
 
   # Ensure we have the latest updates for source and target branches
-  git checkout --quiet "$source_branch"
-  git pull --quiet
-  git fetch --quiet origin "$target_branch"    # <- ensure target is up-to-date
+  if ! git fetch --quiet origin "$source_branch" "$target_branch"; then
+    echo -e "${RED}Unable to fetch $source_branch and $target_branch from origin.${NC}"
+    return 1
+  fi
 
   # Definitive check: is source actually ahead of target?
   # Format: "behind ahead" (target behind source, source ahead of target)
@@ -521,20 +599,29 @@ execute_merge_request() {
       git branch --quiet -D "$temp_merge_branch"
       return 1
     else
-      echo -e "${GREEN}Only submodule pointer conflicts detected. Safe to ignore due to .gitattributes.${NC}"
+      echo -e "${GREEN}Only submodule pointer conflicts detected. The pull request will be allowed to resolve them according to repository rules.${NC}"
     fi
   fi
 
-  echo -e "${GREEN}Local merge test successful. Proceeding with create pull request...${NC}"
+  # A --no-commit test merge leaves MERGE_HEAD in place even when it succeeds.
+  # Always abort the test merge before restoring the user's original branch.
+  git merge --abort >/dev/null 2>&1 || true
+
+  echo -e "${GREEN}Local merge test completed. Proceeding with pull request creation...${NC}"
   echo
-  git checkout --quiet "$previous_branch"
-  git branch --quiet -D "$temp_merge_branch"
+  if ! git checkout --quiet "$previous_branch"; then
+    echo -e "${RED}Unable to restore branch $previous_branch after the merge test.${NC}"
+    return 1
+  fi
+  git branch --quiet -D "$temp_merge_branch" >/dev/null 2>&1 || true
 
   # Now, create the pull request
   local pr_number
-  pr_number=$(create_merge_request "$source_branch" "$target_branch" "$title" | tr -d '\n')
-  # Our return code check isn't always working, so also check if we have a pr_number
-  if [ $? -ne 0 ] || [ -z "$pr_number" ]; then
+  if ! pr_number=$(create_merge_request "$source_branch" "$target_branch" "$title" | tr -d '\n'); then
+    echo -e "${RED}Error: Pull Request creation failed for merging $source_branch into $target_branch.${NC}"
+    return 1
+  fi
+  if [[ -z "$pr_number" ]]; then
     echo -e "${RED}Error: Pull Request creation failed for merging $source_branch into $target_branch.${NC}"
     return 1
   fi
@@ -549,18 +636,16 @@ execute_merge_request() {
     return 1
   fi
 
-  # Decide whether to delete the source branch
-  if [[ "$source_branch" == "$RELEASE_CANDIDATE_BRANCH" || "$source_branch" == "$RELEASE_BRANCH" ]]; then
-    trigger_merge "$pr_number" false
-  else
-    trigger_merge "$pr_number" true
-  fi
+  # Long-lived release branches are preserved. Temporary automation branches may be deleted.
+  trigger_merge "$pr_number" "$delete_source_branch"
   if [ $? -ne 0 ]; then
     echo -e "${RED}Merge trigger failed for PR $pr_number.${NC}"
     return 1
   fi
 
-  poll_merge_status "$pr_number"
+  if ! poll_merge_status "$pr_number" "$wait_time"; then
+    return 1
+  fi
   return 0
 }
 
@@ -582,23 +667,30 @@ execute_merge_request() {
 #-----------------------------------------
 get_next_rc_number() {
   local release_number="$1"  # e.g., "10.2"
+  local tag_suffix=""
+  local tag_regex
+  local sed_expression
 
-  # Update our local tags
-  git fetch --tags --prune --prune-tags
-
-  # List tags, filter for those matching "<release_number>-rcX", extract the X part
-  local highest_rc
-  highest_rc=$(git tag | grep -E "^${release_number}-rc[0-9]+$" | sed -E "s/^${release_number}-rc([0-9]+)$/\1/" | sort -nr | head -n1)
-
-  # Determine the next rc number
-  if [[ -z "$highest_rc" ]]; then
-    echo "${release_number}-rc1"
+  if [[ "$BRANCH_ENVIRONMENT" == "PW" ]]; then
+    tag_suffix="-pw"
+    tag_regex="^${release_number}-rc[0-9]+-pw$"
+    sed_expression="s/^${release_number}-rc([0-9]+)-pw$/\1/"
   else
-    local next_rc=$((highest_rc + 1))
-    echo "${release_number}-rc${next_rc}"
+    tag_regex="^${release_number}-rc[0-9]+$"
+    sed_expression="s/^${release_number}-rc([0-9]+)$/\1/"
+  fi
+
+  git fetch --tags --prune --prune-tags || return 1
+
+  local highest_rc
+  highest_rc=$(git tag | grep -E "$tag_regex" | sed -E "$sed_expression" | sort -nr | head -n1)
+
+  if [[ -z "$highest_rc" ]]; then
+    echo "${release_number}-rc1${tag_suffix}"
+  else
+    echo "${release_number}-rc$((highest_rc + 1))${tag_suffix}"
   fi
 }
-
 #-----------------------------------------
 # Function: generate_changelog
 # Generates a changelog for the upcoming release by listing commit
@@ -615,12 +707,19 @@ get_next_rc_number() {
 #   - Outputs the changelog to "changelogs/<last_part_of_repo_project>_<RELEASE_NUMBER>_changelog.txt".
 #
 # Returns:
-#   0 on success.
+#   0 on success. Also sets the global variable GENERATED_CHANGELOG_COMMITS
+#   to the commit list (the same content written to the changelog file,
+#   minus the header) so callers can fold it into other output (e.g. GitHub
+#   release notes) without it ever going to stdout/terminal/log.
 #-----------------------------------------
 generate_changelog() {
-  # Find the most recent official release tag (numbers and dots only, no rc/beta/etc.)
+  # Find the most recent official tag for the selected environment.
   local previous_tag
-  previous_tag=$(git tag | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+  if [[ "$BRANCH_ENVIRONMENT" == "PW" ]]; then
+    previous_tag=$(git tag | grep -E '^[0-9]+(\.[0-9]+)+-pw$' | sort -V | tail -n1)
+  else
+    previous_tag=$(git tag | grep -E '^[0-9]+(\.[0-9]+)+$' | sort -V | tail -n1)
+  fi
 
   local commit_range
   if [ -n "$previous_tag" ]; then
@@ -647,8 +746,14 @@ generate_changelog() {
   # Print header for the upcoming release into the changelog file (single line)
   printf "## Changelog for %s %s (%s)\n\n" "$REPO_PROJECT" "$RELEASE_NUMBER" "$head_date" > "$changelog_file"
 
-  # Append the commit messages (excluding merge commits) to the changelog file
-  git log $commit_range --oneline --reverse | grep -v Merge >> "$changelog_file"
+  # Capture the commit messages (excluding merge commits) once, so the same
+  # list can be written to the changelog file and also handed to the caller
+  # via a global variable — not stdout, so it never prints to the terminal
+  # or the log unless something explicitly echoes it.
+  local commit_log
+  commit_log=$(git log "$commit_range" --oneline --reverse --no-merges)
+  echo "$commit_log" >> "$changelog_file"
+  GENERATED_CHANGELOG_COMMITS="$commit_log"
 
   echo -e "${GREEN}Changelog saved to $changelog_file${NC}"
   return 0
@@ -656,62 +761,238 @@ generate_changelog() {
 
 #-----------------------------------------
 # Function: process_submodules
-# Processes all submodules in the repository.
+# Updates the parent repository's submodule pointers to the latest commits on
+# the branch that matches the parent target branch.
 #
 # Arguments:
-#   $1 - Target branch (e.g., "$RELEASE_CANDIDATE_BRANCH", "development", or "$RELEASE_BRANCH")
+#   $1 - Parent target branch (for example: ngwpc-candidate, ngwpc-release,
+#        or the selected development branch)
 #
 # Behavior:
-#   - Iterates over all submodules.
-#   - Uses the same branch as the parent's target branch.
-#   - Checks out each valid submodule to that branch and updates it.
-#   - Creates a temporary branch in the parent repository for submodule updates and triggers a merge request.
+#   - Creates a temporary parent branch from origin/<target_branch>.
+#   - Initializes and synchronizes all configured submodules.
+#   - Fetches origin/<target_branch> in each top-level submodule.
+#   - Checks out the exact commit at origin/<target_branch> in detached-HEAD mode.
+#   - Commits changed gitlink pointers in the parent repository.
+#   - Pushes the temporary branch and merges it into <target_branch> through a PR.
+#   - Leaves the parent checked out on the updated target branch with submodules
+#     synchronized to the committed pointers.
+#
+# Safety:
+#   - Fails without committing if any submodule does not have the requested branch.
+#   - Does not create commits inside submodule repositories.
+#   - Nested submodules are initialized recursively, but only top-level gitlink
+#     pointers recorded directly by this parent repository are changed.
 #-----------------------------------------
 process_submodules() {
   local target_branch="$1"
+  local previous_branch temp_branch
+  local -a submodule_paths=()
 
-  echo -e "${GREEN}Processing all submodules for target branch: $target_branch${NC}"
+  echo -e "${GREEN}Updating submodule pointers for parent branch: $target_branch${NC}"
 
-  echo "------------------------------------------------------------"
-  echo " Submodule Processing Required "
-  echo "------------------------------------------------------------"
+  if [[ ! -f .gitmodules ]]; then
+    echo -e "${YELLOW}has_submodules=true, but this repository has no .gitmodules file. Nothing to update.${NC}"
+    return 0
+  fi
+
+  mapfile -t submodule_paths < <(
+    git config --file .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null | awk '{print $2}'
+  )
+
+  if (( ${#submodule_paths[@]} == 0 )); then
+    echo -e "${YELLOW}No submodule paths were found in .gitmodules. Nothing to update.${NC}"
+    return 0
+  fi
+
+  previous_branch=$(git rev-parse --abbrev-ref HEAD)
+  temp_branch="update_submodules_${target_branch//\//_}_${RELEASE_NUMBER//\//_}"
+
+  if ! git fetch --quiet origin "$target_branch"; then
+    echo -e "${RED}Unable to fetch parent target branch origin/$target_branch.${NC}"
+    return 1
+  fi
+
+  # Always recreate the temporary branch from the current remote target branch.
+  git merge --abort >/dev/null 2>&1 || true
+  git branch --quiet -D "$temp_branch" >/dev/null 2>&1 || true
+  if ! git checkout --quiet -b "$temp_branch" "origin/$target_branch"; then
+    echo -e "${RED}Unable to create temporary branch $temp_branch from origin/$target_branch.${NC}"
+    return 1
+  fi
+  TEMP_BRANCHES+=("$temp_branch")
+
+  if ! git submodule sync --recursive; then
+    echo -e "${RED}Unable to synchronize submodule URLs.${NC}"
+    git checkout --quiet "$previous_branch" || true
+    return 1
+  fi
+
+  if ! git submodule update --init --recursive; then
+    echo -e "${RED}Unable to initialize the repository submodules.${NC}"
+    git checkout --quiet "$previous_branch" || true
+    return 1
+  fi
+
+  local path
+  for path in "${submodule_paths[@]}"; do
+    echo -e "Updating ${GREEN}$path${NC} to origin/${GREEN}$target_branch${NC}..."
+
+    if [[ ! -d "$path" ]]; then
+      echo -e "${RED}Submodule directory does not exist after initialization: $path${NC}"
+      git checkout --quiet "$previous_branch" || true
+      return 1
+    fi
+
+    if ! git -C "$path" fetch --quiet origin "$target_branch"; then
+      echo -e "${RED}Unable to fetch origin/$target_branch for submodule $path.${NC}"
+      git checkout --quiet "$previous_branch" || true
+      return 1
+    fi
+
+    if ! git -C "$path" rev-parse --verify --quiet "refs/remotes/origin/$target_branch^{commit}" >/dev/null; then
+      echo -e "${RED}Submodule $path does not have an origin/$target_branch branch.${NC}"
+      git checkout --quiet "$previous_branch" || true
+      return 1
+    fi
+
+    if ! git -C "$path" checkout --quiet --detach "origin/$target_branch"; then
+      echo -e "${RED}Unable to check out origin/$target_branch in submodule $path.${NC}"
+      git checkout --quiet "$previous_branch" || true
+      return 1
+    fi
+
+    echo "  $path -> $(git -C "$path" rev-parse --short HEAD)"
+  done
+
+  # Stage only the top-level submodule gitlinks listed in .gitmodules.
+  if ! git add -- "${submodule_paths[@]}"; then
+    echo -e "${RED}Unable to stage updated submodule pointers.${NC}"
+    git checkout --quiet "$previous_branch" || true
+    return 1
+  fi
+
+  if git diff --cached --quiet; then
+    echo -e "${YELLOW}All submodule pointers already match origin/$target_branch. No parent commit is required.${NC}"
+    if ! git checkout --quiet "$target_branch"; then
+      git checkout --quiet -B "$target_branch" "origin/$target_branch" || return 1
+    fi
+    git branch --quiet -D "$temp_branch" >/dev/null 2>&1 || true
+    git submodule update --init --recursive
+    return 0
+  fi
+
+  echo "Submodule pointer changes:"
+  git diff --cached --submodule=short
+
+  if ! git commit -m "Update submodules for $target_branch release $RELEASE_NUMBER"; then
+    echo -e "${RED}Unable to commit updated submodule pointers.${NC}"
+    git checkout --quiet "$previous_branch" || true
+    return 1
+  fi
+
+  if ! git_push --set-upstream origin "$temp_branch"; then
+    git checkout --quiet "$previous_branch" || true
+    return 1
+  fi
+
+  if ! execute_merge_request "$temp_branch" "$target_branch" \
+       "Update submodule pointers on $target_branch for release $RELEASE_NUMBER" \
+       "$WAIT_TIME" true; then
+    echo -e "${RED}Unable to merge updated submodule pointers into $target_branch.${NC}"
+    git checkout --quiet "$previous_branch" || true
+    return 1
+  fi
+
+  if ! git fetch --quiet origin "$target_branch"; then
+    echo -e "${RED}Submodule pointer PR merged, but origin/$target_branch could not be fetched.${NC}"
+    return 1
+  fi
+
+  # Refresh the local parent target branch to the merged remote state.
+  if git show-ref --verify --quiet "refs/heads/$target_branch"; then
+    if ! git checkout --quiet "$target_branch" || ! git reset --quiet --hard "origin/$target_branch"; then
+      echo -e "${RED}Unable to refresh local branch $target_branch after the submodule pointer merge.${NC}"
+      return 1
+    fi
+  else
+    if ! git checkout --quiet -b "$target_branch" "origin/$target_branch"; then
+      echo -e "${RED}Unable to create local branch $target_branch after the submodule pointer merge.${NC}"
+      return 1
+    fi
+  fi
+
+  if ! git submodule update --init --recursive; then
+    echo -e "${RED}Parent branch was updated, but its submodules could not be synchronized to the committed pointers.${NC}"
+    return 1
+  fi
+
+  echo -e "${GREEN}Submodule pointers on $target_branch were updated successfully.${NC}"
+  return 0
+}
+
+#-----------------------------------------
+# Function: manual_submodule_pause
+# Used instead of process_submodules unless --automatic-submodules is set
+# (manual is the default). Rather than updating submodule pointers
+# automatically, this pauses so the user can update them by hand — via a
+# feature branch and PR, since the target branch is protected — then continue.
+#
+# Arguments:
+#   $1 - Branch the repo is currently checked out on (the one whose submodule
+#        pointers need updating — e.g. ngwpc-candidate, ngwpc-release, or the
+#        selected development branch)
+#
+# Behavior:
+#   - No-ops, like process_submodules, if there's no .gitmodules file.
+#   - Otherwise blocks with no timeout (this is a real manual task) until the
+#     user presses Enter/C to continue, or chooses (S)kip or (Q)uit, matching
+#     the same convention used by the per-repo Continue/Skip/Quit prompt.
+#
+# Returns: 0 to continue, 1 to skip this repo, 2 if the user chose Quit.
+#-----------------------------------------
+manual_submodule_pause() {
+  local branch="$1"
+
+  if [[ ! -f .gitmodules ]]; then
+    echo -e "${YELLOW}has_submodules=true, but this repository has no .gitmodules file. Nothing to update.${NC}"
+    return 0
+  fi
+
   echo
-  echo "This repository has submodules that must be updated, committed,"
-  echo "and pushed before proceeding with the release process."
-  echo
-  echo "Please perform the following manually:"
-  echo "  1. Enter each submodule directory."
-  echo "  2. Checkout or update to the correct branch/tag."
-  echo "  3. Commit any changes in the submodule."
-  echo "  4. Push those commits to the remote."
-  echo "  5. Update the submodule reference in the parent repo and commit it."
-  echo
-  echo "When all submodules are ready and committed in the parent repo,"
-  echo "return here to continue."
+  echo -e "${YELLOW}Manual submodule update (pass --automatic-submodules to update pointers automatically instead):${NC}"
+  echo -e "This repository is currently checked out on ${GREEN}$branch${NC}."
+  echo "'$branch' is protected, so you can't push to it directly. Instead:"
+  echo "  1. Create a new branch from here, e.g.: git checkout -b update-submodules-$branch"
+  echo "  2. Update each submodule to the commit it should point to, then commit that change."
+  echo "  3. Push the new branch, then open and merge a pull request into '$branch'."
+  echo "  4. Check '$branch' back out (git checkout $branch && git pull) before continuing below."
   echo
 
-  # Wait for user confirmation
   while true; do
-    read -r -p "Have you finished handling all submodules? (Y to continue, N to abort): " ans
-    case "$ans" in
-      [Yy]* )
-        echo "Continuing with release process..."
-        echo "Running recursive submodule update to ensure all submodules are in sync..."
-        git submodule update --init --recursive
-        echo -e "${GREEN}Submodules updated successfully.${NC}"
+    echo -e "${YELLOW}(C)ontinue once done, (S)kip this repository, (Q)uit:${NC}"
+    read -n 1 -s -r user_input
+    echo
+    user_input="${user_input:-C}"
+    user_input=$(echo "$user_input" | tr '[:lower:]' '[:upper:]')
+    case "$user_input" in
+      C)
+        echo -e "${GREEN}Continuing.${NC}"
         return 0
         ;;
-      [Nn]* )
-        echo "Aborting as requested."
+      S)
+        echo -e "${YELLOW}Skipping this repository.${NC}"
         return 1
         ;;
-      * )
-        echo "Please answer Y or N."
+      Q)
+        echo -e "${YELLOW}Quit requested. No further repositories will be processed.${NC}"
+        return 2
+        ;;
+      *)
+        echo "Please press C, S, or Q."
         ;;
     esac
   done
-
-
 }
 
 #-----------------------------------------
@@ -729,12 +1010,15 @@ process_submodules() {
 #   $2 - Base release number (e.g., "1.2")
 #   $3 - Release notes
 #   $4 - (Optional) has_submodules flag
+#   $5 - (Optional) commit_summary — appended to the release notes as a
+#        "Commit Summary" section, but only for OFFICIAL releases.
 #-----------------------------------------
 process_repo() {
   local repo_directory="$1"
   local base_release_number="$2"
   local release_notes="$3"
   local has_submodules="$4"
+  local commit_summary="$5"
 
   local start_time
   start_time=$(date +"%Y-%m-%d %H:%M:%S")
@@ -764,7 +1048,7 @@ process_repo() {
   if [[ ! -d "$repo_directory" ]]; then
     echo -e "${RED}Path does not exist:${NC} $repo_directory"
     # Record a failed entry so the summary table isn't empty
-    repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (no repo)"
+    repo_status["$repo_directory_short"]="$base_release_number | FAILED | 0s | (no repo)"
     repo_order+=("$repo_directory_short")
     return 1
   fi
@@ -773,14 +1057,19 @@ process_repo() {
   if ! cd "$repo_directory"; then
     echo "Cannot cd to $repo_directory"
     # Record a failed entry so the summary table isn't empty
-    repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (cd failed)"
+    repo_status["$repo_directory_short"]="$base_release_number | FAILED | 0s | (cd failed)"
     repo_order+=("$repo_directory_short")
     return 1
   fi
 
   # Set the global RELEASE_NUMBER based on RELEASE_TYPE
-  if [ "$RELEASE_TYPE" = "RC" ]; then
-    RELEASE_NUMBER=$(get_next_rc_number "$base_release_number")
+  if [[ "$RELEASE_TYPE" == "RC" ]]; then
+    if ! RELEASE_NUMBER=$(get_next_rc_number "$base_release_number"); then
+      echo -e "${RED}Unable to determine the next RC tag for $base_release_number.${NC}"
+      return 1
+    fi
+  elif [[ "$BRANCH_ENVIRONMENT" == "PW" && "$RELEASE_TYPE" == "OFFICIAL" ]]; then
+    RELEASE_NUMBER="${base_release_number}-pw"
   else
     RELEASE_NUMBER="$base_release_number"
   fi
@@ -790,11 +1079,14 @@ process_repo() {
   echo -e "$start_time ${GREEN}Processing repository: $repo_directory (Release: $RELEASE_NUMBER)${NC}"
   echo
 
-  # --- PR MODE: create a branch ngwpc-<release> based on $RELEASE_BRANCH and exit ---
-  if [ "$RELEASE_TYPE" = "PR" ]; then
+  # --- OWP MODE: create ngwpc-<release> (or ngwpc-<release>-pw) branch from $RELEASE_BRANCH and exit ---
+  if [ "$RELEASE_TYPE" = "OWP" ]; then
     local new_branch="ngwpc-$base_release_number"
+    if [[ "$BRANCH_ENVIRONMENT" == "PW" ]]; then
+      new_branch+="-pw"
+    fi
 
-    echo -e "${GREEN}PR mode: Creating branch $new_branch from $RELEASE_BRANCH...${NC}"
+    echo -e "${GREEN}OWP mode: Creating branch $new_branch from $RELEASE_BRANCH...${NC}"
 
     git fetch --quiet origin "$RELEASE_BRANCH"
     git checkout --quiet -b "$new_branch" "origin/$RELEASE_BRANCH"
@@ -806,7 +1098,7 @@ process_repo() {
       return 1
     fi
 
-    # Nothing else to do for PR mode
+    # Nothing else to do for OWP mode
     return 0
   fi
 
@@ -821,8 +1113,10 @@ process_repo() {
 
   case "$user_input" in
     Q)
-      echo -e "${RED}Quit requested. Will exit after summary.${NC}"
+      echo -e "${YELLOW}Quit requested. No release actions will be performed for this repository.${NC}"
+      return_code=2
       quit_requested=true
+      return
       ;;
     S)
       echo -e "${YELLOW}Skipping this repository.${NC}"
@@ -846,7 +1140,7 @@ process_repo() {
 
 
   # Ensure gh is operating on this repo (sanity)
-  if ! run_gh repo view >/dev/null 2>&1; then
+  if ! run_gh repo view "$REPO_PROJECT" >/dev/null 2>&1; then
     echo -e "${RED}gh cannot determine repository context in $repo_directory. Is this a GitHub repo and are you authenticated?${NC}"
     return_code=1
     return
@@ -864,7 +1158,7 @@ process_repo() {
   # Determine source and target branches *before* handling submodules
   local SOURCE_BRANCH TARGET_BRANCH
   if [ "$RELEASE_TYPE" = "RC" ]; then
-    SOURCE_BRANCH="development"
+    SOURCE_BRANCH="$DEVELOPMENT_BRANCH"
     TARGET_BRANCH="$RELEASE_CANDIDATE_BRANCH"
   else
     SOURCE_BRANCH="$RELEASE_CANDIDATE_BRANCH"
@@ -875,10 +1169,14 @@ process_repo() {
   echo -e "Target branch: ${GREEN}$TARGET_BRANCH${NC}"
 
   echo -e "Pulling latest updates for branch ${GREEN}${SOURCE_BRANCH}${NC}..."
-  git checkout --quiet "$SOURCE_BRANCH" && git pull --quiet
+  if ! git checkout --quiet "$SOURCE_BRANCH" || ! git pull --quiet --ff-only; then
+    echo -e "${RED}Unable to update source branch $SOURCE_BRANCH.${NC}"
+    return_code=1
+    return
+  fi
 
   # Perform the merge request for the initial RC1 or Official release
-  if [ "$RELEASE_TYPE" = "OFFICIAL" ] || [[ "$RELEASE_NUMBER" =~ -rc1$ ]]; then
+  if [ "$RELEASE_TYPE" = "OFFICIAL" ] || [[ "$RELEASE_NUMBER" =~ -rc1(-pw)?$ ]]; then
     if ! execute_merge_request "$SOURCE_BRANCH" "$TARGET_BRANCH" \
          "Merge $SOURCE_BRANCH into $TARGET_BRANCH for release $RELEASE_NUMBER" "$WAIT_TIME"; then
       return_code=1
@@ -891,50 +1189,113 @@ process_repo() {
 
   # Pull the latest updates for the target branch.
   echo -e "Pulling latest updates for branch ${GREEN}$TARGET_BRANCH${NC}..."
-  git checkout --quiet "$TARGET_BRANCH" && git pull --quiet
+  if ! git checkout --quiet "$TARGET_BRANCH" || ! git pull --quiet --ff-only; then
+    echo -e "${RED}Unable to update target branch $TARGET_BRANCH.${NC}"
+    return_code=1
+    return
+  fi
   echo
 
   if [ "$has_submodules" = "true" ]; then
-    echo Calling process_submodules for $TARGET_BRANCH
-    process_submodules "$TARGET_BRANCH"
+    if [ "$AUTOMATIC_SUBMODULES" = "true" ]; then
+      echo "Calling process_submodules for $TARGET_BRANCH"
+      if ! process_submodules "$TARGET_BRANCH"; then
+        return_code=1
+        return
+      fi
+    else
+      manual_submodule_pause "$TARGET_BRANCH"
+      local pause_rc=$?
+      if [ "$pause_rc" -eq 2 ]; then
+        quit_requested=true
+        return_code=2
+        return
+      elif [ "$pause_rc" -ne 0 ]; then
+        return_code=1
+        return
+      fi
+    fi
   fi
 
   # Create changelog for OFFICIAL releases
+  local commit_log=""
+  GENERATED_CHANGELOG_COMMITS=""
   if [ "$RELEASE_TYPE" = "OFFICIAL" ]; then
     echo
     # Generate the changelog for the current release tag.
     echo "Generating changelog for tag $RELEASE_NUMBER:"
     generate_changelog
+    commit_log="$GENERATED_CHANGELOG_COMMITS"
+  fi
+
+  # For OFFICIAL releases only, append a "Commit Summary" section (if the
+  # config provided one) followed by a "Change Log" section (the commit list
+  # generate_changelog just produced).
+  local final_release_notes="$release_notes"
+  if [ "$RELEASE_TYPE" = "OFFICIAL" ]; then
+    if [ -n "$commit_summary" ]; then
+      final_release_notes="${final_release_notes}
+
+Commit Summary
+
+${commit_summary}"
+    fi
+    if [ -n "$commit_log" ]; then
+      final_release_notes="${final_release_notes}
+
+Change Log
+
+${commit_log}"
+    fi
   fi
 
   # Create GitHub release
   echo -e "${GREEN}Creating GitHub release for $REPO_PROJECT $RELEASE_NUMBER...${NC}"
-  if ! create_release "$RELEASE_NUMBER" "Release $RELEASE_NUMBER" "$release_notes" "$TARGET_BRANCH"; then
+  if ! create_release "$RELEASE_NUMBER" "Release $RELEASE_NUMBER" "$final_release_notes" "$TARGET_BRANCH"; then
     echo -e "${RED}Error: GitHub release creation for $REPO_PROJECT $RELEASE_NUMBER failed.${NC}"
     return_code=1
     return
   fi
 
-  # Merge the target branch back to development only for RC releases that are not -rc1
-  if [[ "$RELEASE_TYPE" == "RC" && ! "$RELEASE_NUMBER" =~ -rc1$ ]]; then
-    # Even if merge request fails, we continue
-    execute_merge_request "$TARGET_BRANCH" "development" \
-      "Merge $TARGET_BRANCH into development for release $RELEASE_NUMBER" "$WAIT_TIME"
+  # Merge the completed release branch back into the selected development branch.
+  if [[ "$RELEASE_TYPE" == "OFFICIAL" || ( "$RELEASE_TYPE" == "RC" && ! "$RELEASE_NUMBER" =~ -rc1(-pw)?$ ) ]]; then
+    if ! execute_merge_request "$TARGET_BRANCH" "$DEVELOPMENT_BRANCH" \
+      "Merge $TARGET_BRANCH into $DEVELOPMENT_BRANCH for release $RELEASE_NUMBER" "$WAIT_TIME"; then
+      echo -e "${RED}Release was created, but merge-back into $DEVELOPMENT_BRANCH failed.${NC}"
+      return_code=1
+      return
+    fi
   fi
 
-  # If submodules exist, set all submodules to development
+  # If submodules exist, update their pointers for the selected development branch
   if [ "$has_submodules" = "true" ]; then
-    echo Setting submodules to development
-    process_submodules "development"
+    if [ "$AUTOMATIC_SUBMODULES" = "true" ]; then
+      echo "Setting submodules to $DEVELOPMENT_BRANCH"
+      if ! process_submodules "$DEVELOPMENT_BRANCH"; then
+        return_code=1
+        return
+      fi
+    else
+      manual_submodule_pause "$DEVELOPMENT_BRANCH"
+      local pause_rc=$?
+      if [ "$pause_rc" -eq 2 ]; then
+        quit_requested=true
+        return_code=2
+        return
+      elif [ "$pause_rc" -ne 0 ]; then
+        return_code=1
+        return
+      fi
+    fi
   fi
 
   echo -e "Pulling latest updates for branch ${GREEN}${SOURCE_BRANCH}${NC}"
   git checkout --quiet "$SOURCE_BRANCH" && git pull --quiet
   echo
 
-  if [ "$SOURCE_BRANCH" != "development" ]; then
-    echo -e "Pulling latest updates for branch ${GREEN}development${NC}..."
-    git checkout --quiet development && git pull --quiet
+  if [ "$SOURCE_BRANCH" != "$DEVELOPMENT_BRANCH" ]; then
+    echo -e "Pulling latest updates for branch ${GREEN}$DEVELOPMENT_BRANCH${NC}..."
+    git checkout --quiet "$DEVELOPMENT_BRANCH" && git pull --quiet
     echo
   fi
 
@@ -950,7 +1311,7 @@ process_repo() {
 # Cleans up temporary branches and logs the processing status for the current repository.
 #
 # Behavior:
-#   - Checks out the 'development' branch and pulls the latest changes.
+#   - Checks out the selected development branch and pulls the latest changes.
 #   - Retrieves the latest commit hash for the repository.
 #   - Records the release number, processing status (SUCCESS or FAILED), elapsed time,
 #     and commit hash in a global associative array.
@@ -968,17 +1329,21 @@ cleanup_repo() {
   end_time=$(date +"%Y-%m-%d %H:%M:%S")
   local elapsed_seconds=$(( SECONDS - start_seconds ))
 
-  # Park on development to avoid detached state surprises
-  git checkout --quiet development && git pull --quiet
+  # Park on the selected development branch when possible, but do not let cleanup overwrite the release result.
+  git merge --abort >/dev/null 2>&1 || true
+  git checkout --quiet "$DEVELOPMENT_BRANCH" >/dev/null 2>&1 || true
+  git pull --quiet --ff-only >/dev/null 2>&1 || true
 
-  # Retrieve the latest commit hash for the release
+  # Retrieve the latest commit hash when the directory is still a valid repository.
   local latest_commit_hash
-  latest_commit_hash=$(git rev-parse HEAD)
+  latest_commit_hash=$(git rev-parse HEAD 2>/dev/null || echo "(unavailable)")
 
   # Store status, elapsed time, and commit hash in the global array
   local status="FAILED"
   if [ "$return_code" -eq 0 ]; then
     status="SUCCESS"
+  elif [ "$return_code" -eq 2 ]; then
+    status="QUIT"
   fi
 
   # Key by the short path you passed in
@@ -1003,7 +1368,12 @@ cleanup_repo() {
   echo -e "$end_time ${GREEN}Finished processing: $repo_project ($repo_short)${NC} (Elapsed time: $elapsed_seconds seconds)"
 
   # Simply returning the return code doesn't see to work.  Need to use a global variable.  It might be Trap that is getting in the way
-  GLOBAL_RETURN_CODE=$exit_code  # Set the global return code instead of returning
+  # Only latch this repo's code in when it actually failed/quit — otherwise a
+  # later repo succeeding would silently clear an earlier repo's failure and
+  # the script's final exit code would say everything was fine.
+  if [ "$exit_code" -ne 0 ]; then
+    GLOBAL_RETURN_CODE=$exit_code
+  fi
 }
 
 # Summary function to print repo statuses
@@ -1065,35 +1435,110 @@ main() {
   # Remember where we were executed from
   SCRIPT_DIR="$(pwd)"
 
-  # Check for help option
-  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "?" ]]; then
-    usage
-  fi
+  RELEASE_TYPE=""
+  json_file="createReleaseConfig.json"
+  WAIT_TIME="60"
+  BRANCH_ENVIRONMENT="STANDARD"
+  AUTOMATIC_SUBMODULES=false
 
-  # Parse other command line arguments
-  if [ -n "$1" ]; then
-    RELEASE_TYPE="$1"
-    RELEASE_TYPE=$(echo "$RELEASE_TYPE" | tr '[:lower:]' '[:upper:]')
-  else
-    echo "Enter release type (OFFICIAL or RC):"
-    read -r RELEASE_TYPE
-    RELEASE_TYPE=$(echo "$RELEASE_TYPE" | tr '[:lower:]' '[:upper:]')
-  fi
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -r|--release-type)
+        [[ $# -ge 2 ]] || { echo -e "${RED}Missing value for $1.${NC}"; exit 1; }
+        RELEASE_TYPE="$2"
+        shift 2
+        ;;
+      -c|--config)
+        [[ $# -ge 2 ]] || { echo -e "${RED}Missing value for $1.${NC}"; exit 1; }
+        json_file="$2"
+        shift 2
+        ;;
+      -v|--verbose)
+        DEBUG_GH=true
+        shift 1
+        ;;
+      -w|--wait-time)
+        [[ $# -ge 2 ]] || { echo -e "${RED}Missing value for $1.${NC}"; exit 1; }
+        WAIT_TIME="$2"
+        shift 2
+        ;;
+      -e|--environment)
+        [[ $# -ge 2 ]] || { echo -e "${RED}Missing value for $1.${NC}"; exit 1; }
+        BRANCH_ENVIRONMENT="$2"
+        shift 2
+        ;;
+      -a|--automatic-submodules)
+        AUTOMATIC_SUBMODULES=true
+        shift 1
+        ;;
+      -h|--help|?)
+        usage
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        echo -e "${RED}Unknown option: $1${NC}"
+        echo
+        usage 1
+        ;;
+      *)
+        echo -e "${RED}Unexpected argument: $1${NC}"
+        echo
+        usage 1
+        ;;
+    esac
+  done
 
-  if [[ "$RELEASE_TYPE" != "OFFICIAL" && "$RELEASE_TYPE" != "RC" && "$RELEASE_TYPE" != "PR" ]]; then
-    echo -e "${RED}Invalid release type. Must be either OFFICIAL or RC.${NC}"
+  # Start logging everything to a file
+  LOGFILE="createRelease_$(date +%Y%m%d_%H%M%S).log"
+  exec > >(tee >(sed -r "s/\x1B\[[0-9;]*[mK]//g" >> "$LOGFILE")) 2>&1
+  echo "All output will be logged to: $LOGFILE"
+
+  if [[ -z "$RELEASE_TYPE" ]]; then
+    echo -e "${RED}--release-type is required.${NC}"
     echo
-    usage
+    usage 1
+  fi
+
+  RELEASE_TYPE=$(echo "$RELEASE_TYPE" | tr '[:lower:]' '[:upper:]')
+  if [[ "$RELEASE_TYPE" != "OFFICIAL" && "$RELEASE_TYPE" != "RC" && "$RELEASE_TYPE" != "OWP" ]]; then
+    echo -e "${RED}Invalid release type. Use RC, OFFICIAL, or OWP.${NC}"
     exit 1
   fi
 
-  # Second argument: JSON file name (default if not provided)
-  json_file="${2:-createReleaseConfig.json}"
+  if ! command -v git >/dev/null 2>&1; then
+    echo -e "${RED}Required git command missing. Ensure git is installed.${NC}"
+    exit 1
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo -e "${RED}Required jq command missing. Ensure jq installed.${NC}"
+    exit 1
+  fi
+
+  if ! command -v sed >/dev/null 2>&1; then
+    echo -e "${RED}Required commands sed missing. Ensure sed installed.${NC}"
+    exit 1
+  fi
+
+  # Ensure gh is installed/authed
+  if ! command -v gh >/dev/null 2>&1; then
+    echo -e "${RED}The GitHub CLI (gh) is not installed. Please install and run 'gh auth login'.${NC}"
+    exit 1
+  fi
+  
+  # Status is informational; use wrapper for consistent "Executing:" line (may be redirected away).
+  if ! run_gh auth status; then
+    echo -e "${RED}GitHub CLI authentication is not valid. Run 'gh auth login' and try again.${NC}"
+    exit 1
+  fi
+
   if [ ! -f "$json_file" ]; then
     echo -e "${RED}JSON file $json_file not found.${NC}"
     echo
-    usage
-    exit 1
+    usage 1
   fi
 
   # Validate JSON before doing anything else
@@ -1102,22 +1547,65 @@ main() {
     echo -e "${YELLOW} jq reported a syntax error. Fix the JSON and try again.${NC}"
     exit 1
   fi
+  if [[ "$(jq -r 'type' "$json_file")" != "array" ]]; then
+    echo -e "${RED}Error: JSON configuration must contain a top-level array.${NC}"
+    exit 1
+  fi
 
+  # Validate the optional per-repo "env" field: must be PW, AWS, ALL, or absent
+  # (absent defaults to ALL, so existing configs without this field keep working
+  # under every -e environment).
+  validation_repo_count=$(jq length "$json_file")
+  for (( vi=0; vi<validation_repo_count; vi++ )); do
+    repo_env_check=$(jq -r ".[$vi].env // \"ALL\"" "$json_file" | tr '[:lower:]' '[:upper:]')
+    case "$repo_env_check" in
+      PW|AWS|ALL) ;;
+      *)
+        bad_repo_dir=$(jq -r ".[$vi].repo_directory" "$json_file")
+        echo -e "${RED}Error: invalid \"env\" value '$repo_env_check' for repo_directory '$bad_repo_dir' (entry $vi). Must be PW, AWS, or ALL.${NC}"
+        exit 1
+        ;;
+    esac
+  done
 
-  # Third argument: wait time for mergeable check (default to 1 minute)
-  WAIT_TIME="${3:-60}"
+  if [[ ! "$WAIT_TIME" =~ ^[1-9][0-9]*$ ]]; then
+    echo -e "${RED}WAIT_TIME must be a positive integer number of seconds.${NC}"
+    exit 1
+  fi
   echo "Wait time for merges is $WAIT_TIME seconds"
+  if [ "$AUTOMATIC_SUBMODULES" = "true" ]; then
+    echo -e "${YELLOW}Submodule updates: automatic${NC}"
+  else
+    echo -e "${YELLOW}Submodule updates: manual (pass --automatic-submodules to update pointers automatically instead)${NC}"
+  fi
+
+  BRANCH_ENVIRONMENT=$(echo "$BRANCH_ENVIRONMENT" | tr '[:lower:]' '[:upper:]')
+  case "$BRANCH_ENVIRONMENT" in
+    DEFAULT|STANDARD|AWS)
+      BRANCH_ENVIRONMENT="STANDARD"
+      DEVELOPMENT_BRANCH="development"
+      RELEASE_CANDIDATE_BRANCH="ngwpc-candidate"
+      RELEASE_BRANCH="ngwpc-release"
+      ;;
+    PW|PARALLEL-WORKS|PARALLEL_WORKS)
+      BRANCH_ENVIRONMENT="PW"
+      DEVELOPMENT_BRANCH="development-pw"
+      RELEASE_CANDIDATE_BRANCH="ngwpc-candidate-pw"
+      RELEASE_BRANCH="ngwpc-release-pw"
+      ;;
+    *)
+      echo -e "${RED}Invalid environment '$BRANCH_ENVIRONMENT'. Use STANDARD or PW.${NC}"
+      exit 1
+      ;;
+  esac
+
+  echo "Branch environment: $BRANCH_ENVIRONMENT"
+  echo "  Development branch:       $DEVELOPMENT_BRANCH"
+  echo "  Release candidate branch: $RELEASE_CANDIDATE_BRANCH"
+  echo "  Release branch:           $RELEASE_BRANCH"
 
   echo -e "${GREEN}Reading from $json_file${NC}"
   echo
-
-  # Ensure gh is installed/authed
-  if ! command -v gh >/dev/null 2>&1; then
-    echo -e "${RED}The GitHub CLI (gh) is not installed. Please install and run 'gh auth login'.${NC}"
-    exit 1
-  fi
-  # Status is informational; use wrapper for consistent "Executing:" line (may be redirected away).
-  run_gh auth status || true
 
   # Read JSON data once and display the list of repos that will be processed
   json_data=$(cat "$json_file")
@@ -1129,6 +1617,8 @@ main() {
     release=$(echo "$json_data" | jq -r ".[$i].release")
     # Read the skip flag (default to false)
     skip=$(echo "$json_data" | jq -r ".[$i].skip // false")
+    # Read the env field (default to ALL, so configs without it run everywhere)
+    repo_env=$(echo "$json_data" | jq -r ".[$i].env // \"ALL\"" | tr '[:lower:]' '[:upper:]')
 
     display_dir="$repo_directory"
     resolved_dir="$repo_directory"
@@ -1142,6 +1632,8 @@ main() {
 
     if [ "$skip" = "true" ]; then
       echo -e "${YELLOW}Repo: $display_dir (Release: $release) (skipping)${NC}${exists_note}"
+    elif ! repo_env_applies "$repo_env"; then
+      echo -e "${YELLOW}Repo: $display_dir (Release: $release) (skipping: env=$repo_env doesn't apply under -e $BRANCH_ENVIRONMENT)${NC}${exists_note}"
     else
       echo -e "${GREEN}Repo: $display_dir (Release: $release)${NC}${exists_note}"
     fi
@@ -1162,9 +1654,11 @@ main() {
     repo_directory=$(echo "$json_data" | jq -r ".[$i].repo_directory")
     release=$(echo "$json_data" | jq -r ".[$i].release")
 
-    release_notes=$(echo "$json_data" | jq -r ".[$i].release_notes")
+    release_notes=$(echo "$json_data" | jq -r ".[$i].release_notes // \"\"")
+    commit_summary=$(echo "$json_data" | jq -r ".[$i].commit_summary // \"\"")
     has_submodules=$(echo "$json_data" | jq -r ".[$i].has_submodules // false")  # Default to false
     skip=$(echo "$json_data" | jq -r ".[$i].skip // false")  # Default to false
+    repo_env=$(echo "$json_data" | jq -r ".[$i].env // \"ALL\"" | tr '[:lower:]' '[:upper:]')  # Default to ALL
 
     # Expand tilde if present.
     if [[ $repo_directory == ~* ]]; then
@@ -1176,7 +1670,12 @@ main() {
       continue
     fi
 
-    process_repo "$repo_directory" "$release" "$release_notes" "$has_submodules"
+    if ! repo_env_applies "$repo_env"; then
+      echo -e "${YELLOW}Skipping repository: $repo_directory (Release: $release) — env=$repo_env doesn't apply under -e $BRANCH_ENVIRONMENT${NC}"
+      continue
+    fi
+
+    process_repo "$repo_directory" "$release" "$release_notes" "$has_submodules" "$commit_summary"
 
     # If user selected Quit, exit the loop
     if [ "${GLOBAL_RETURN_CODE:-0}" -eq 2 ]; then
@@ -1186,7 +1685,7 @@ main() {
   done
 
   print_summary
+  exit "${GLOBAL_RETURN_CODE:-0}"
 }
 
 main "$@"
-
