@@ -42,8 +42,8 @@ ext_ana_time2=$(date -d "19:10" +%s)
 sudo systemctl start docker 
 
 workdir=$(pwd)
-#cd ../ush/nwm-rte
-#./ngen_rte_build.sh
+cd ../ush/nwm-rte
+./ngen_rte_build.sh
 
 #
 # Extended AnA starts at 18:30z. It'll use the same CPU set as this test. 
