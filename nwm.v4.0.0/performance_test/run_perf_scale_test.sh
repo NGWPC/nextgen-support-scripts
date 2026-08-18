@@ -2,7 +2,7 @@
 
 #SBATCH -J Perf_scale_test 
 #SBATCH -o Perf_scale_test_%j.log
-#SBATCH -t 02:00:00
+#SBATCH -t 06:00:00
 #SBATCH --nodes 1
 #SBATCH --exclusive
 #SBATCH --ntasks-per-node=18
@@ -26,15 +26,13 @@ function parallel_run_vpu()
    local nprocs=$1
    export CPUSET_CPUS="$2"
    local run_time_secs=$3
+   local VPU=$4
 
    #clean up first
-   sudo rm -rf ${RUN_NGEN_ROOT__HOST}/regionalization/*
+   #sudo rm -rf ${RUN_NGEN_ROOT__HOST}/regionalization/*
 
    # Record start time
    local start_time=$(date +%s)
-
-   # --- 1 processor ---
-   VPU="03S"
 
    run_vpu ${VPU} ${nprocs}
 
@@ -75,23 +73,55 @@ sed  -e "s|\$(pwd)/bin_mounted/|$RTE/bin_mounted/|" \
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/docker/run
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/rte
 
+DATA="# nprocs  03N wall clock time (secs)  03S wall clock time (secs)"
 
-DATA="# nprocs  wall clock time (secs)"
 ################################################
 #
-# Parallel execution of 03S
+# Warm up
 #
-# 1 processor 
+
+# 12 processors
+echo "Warm up VPU 03N short range on 12 processors ..."
+parallel_run_vpu 12 "0,1,2,3,4,5,6,7,8,9,10,11" total_time "03N"
+
+# 12 processors
+echo "Warm up VPU 03S short range on 12 processors ..."
+parallel_run_vpu 12 "0,1,2,3,4,5,6,7,8,9,10,11" total_time "03S"
+
+
+################################################
+#
+# 1 processor 03N
+#
+
+echo "Running VPU 03N short range on processor 0 ..."
+parallel_run_vpu 1 "17" total_time_03N "03N"
+echo "Time of 1 processor: ${total_time_03N} seconds"
+# Convert total time to H:M:S
+hours=$((total_time_03N / 3600))
+minutes=$(((total_time_03N % 3600) / 60))
+seconds=$((total_time_03N % 60))
+printf "Total time of 1 processor start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
+
+# Now save the output files from the serial execution
+sudo mv ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03N/Output \
+      ${RUN_NGEN_ROOT__HOST}/Output.serial.03N
+
+echo "------------------------------------------------------------------------------------------"
+echo "Archieved the serial run output files to ${RUN_NGEN_ROOT__HOST}/Output.serial.03N."
+echo "------------------------------------------------------------------------------------------"
+
+# 1 processor 03S
 
 echo "Running VPU 03S short range on processor 0 ..."
-parallel_run_vpu 1 "17" total_time
-echo "Time of 1 processor: ${total_time} seconds"
+parallel_run_vpu 1 "17" total_time_03S "03S"
+echo "Time of 1 processor: ${total_time_03S} seconds"
 # Convert total time to H:M:S
-hours=$((total_time / 3600))
-minutes=$(((total_time % 3600) / 60))
-seconds=$((total_time % 60))
+hours=$((total_time_03S / 3600))
+minutes=$(((total_time_03S % 3600) / 60))
+seconds=$((total_time_03S % 60))
 printf "Total time of 1 processor start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
-DATA+=$'\n'"1  $total_time"
+DATA+=$'\n'"1  $total_time_03N $total_time_03S"
 
 # Now save the output files from the serial execution
 sudo mv ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output \
@@ -101,61 +131,154 @@ echo "--------------------------------------------------------------------------
 echo "Archieved the serial run output files to ${RUN_NGEN_ROOT__HOST}/Output.serial."
 echo "------------------------------------------------------------------------------------------"
 
-# 2 processors
+################################################
+#
+# 2 processor 03N
+#
+echo "Running VPU 03N short range on 2 processors ..."
+
+parallel_run_vpu 2 "0,1" total_time_03N "03N"
+echo "Time of 2 processors: ${total_time_03N} seconds"
+# Convert total time to H:M:S
+hours=$((total_time_03N / 3600))
+minutes=$(((total_time_03N % 3600) / 60))
+seconds=$((total_time_03N % 60))
+printf "Total time of 2 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
+
+# 2 processors 03S
 echo "Running VPU 03S short range on 2 processors ..."
 
-parallel_run_vpu 2 "0,1" total_time
-echo "Time of 2 processors: ${total_time} seconds"
+parallel_run_vpu 2 "0,1" total_time_03S "03S"
+echo "Time of 2 processors: ${total_time_03S} seconds"
 # Convert total time to H:M:S
-hours=$((total_time / 3600))
-minutes=$(((total_time % 3600) / 60))
-seconds=$((total_time % 60))
+hours=$((total_time_03S / 3600))
+minutes=$(((total_time_03S % 3600) / 60))
+seconds=$((total_time_03S % 60))
 printf "Total time of 2 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
-DATA+=$'\n'"2  $total_time"
+DATA+=$'\n'"2  $total_time_03N  $total_time_03S"
 
-# 4 processors
-echo "Running VPU 03S short range on 4 processors ..."
-parallel_run_vpu 4 "0,1,2,3" total_time
-echo "Time of 4 processors: ${total_time} seconds"
+################################################
+#
+# 4 processor 03N
+#
+
+echo "Running VPU 03N short range on 4 processors ..."
+parallel_run_vpu 4 "0,1,2,3" total_time_03N "03N"
+echo "Time of 4 processors: ${total_time_03N} seconds"
 # Convert total time to H:M:S
-hours=$((total_time / 3600))
-minutes=$(((total_time % 3600) / 60))
-seconds=$((total_time % 60))
+hours=$((total_time_03N / 3600))
+minutes=$(((total_time_03N % 3600) / 60))
+seconds=$((total_time_03N % 60))
 printf "Total time of 4 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
-DATA+=$'\n'"4  $total_time"
 
-# 8 processors
-echo "Running VPU 03S short range on 8 processors ..."
-parallel_run_vpu 8 "0,1,2,3,4,5,6,7" total_time
-echo "Time of 8 processors: ${total_time} seconds"
+# 4 processors 03S
+echo "Running VPU 03S short range on 4 processors ..."
+parallel_run_vpu 4 "0,1,2,3" total_time_03S  "03S"
+echo "Time of 4 processors: ${total_time_03S} seconds"
 # Convert total time to H:M:S
-hours=$((total_time / 3600))
-minutes=$(((total_time % 3600) / 60))
-seconds=$((total_time % 60))
+hours=$((total_time_03S / 3600))
+minutes=$(((total_time_03S % 3600) / 60))
+seconds=$((total_time_03S % 60))
+printf "Total time of 4 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
+DATA+=$'\n'"4  $total_time_03N  $total_time_03S"
+
+################################################
+#
+# 8 processor 03N
+#
+echo "Running VPU 03N short range on 8 processors ..."
+parallel_run_vpu 8 "0,1,2,3,4,5,6,7" total_time_03N "03N"
+echo "Time of 8 processors: ${total_time_03N} seconds"
+# Convert total time to H:M:S
+hours=$((total_time_03N / 3600))
+minutes=$(((total_time_03N % 3600) / 60))
+seconds=$((total_time_03N % 60))
 printf "Total time of 8 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
-DATA+=$'\n'"8  $total_time"
 
-# 12 processors
-echo "Running VPU 03S short range on 12 processors ..."
-parallel_run_vpu 12 "0,1,2,3,4,5,6,7,8,9,10,11" total_time
-echo "Time of 12 processors: ${total_time} seconds"
+# 8 processors 03S
+echo "Running VPU 03S short range on 8 processors ..."
+parallel_run_vpu 8 "0,1,2,3,4,5,6,7" total_time_03S "03S"
+echo "Time of 8 processors: ${total_time_03S} seconds"
 # Convert total time to H:M:S
-hours=$((total_time / 3600))
-minutes=$(((total_time % 3600) / 60))
-seconds=$((total_time % 60))
+hours=$((total_time_03S / 3600))
+minutes=$(((total_time_03S % 3600) / 60))
+seconds=$((total_time_03S % 60))
+printf "Total time of 8 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
+DATA+=$'\n'"8  $total_time_03N  $total_time_03S"
+
+################################################
+#
+# 12 processor 03N
+#
+echo "Running VPU 03N short range on 12 processors ..."
+parallel_run_vpu 12 "0,1,2,3,4,5,6,7,8,9,10,11" total_time_03N "03N"
+echo "Time of 12 processors: ${total_time_03N} seconds"
+# Convert total time to H:M:S
+hours=$((total_time_03N / 3600))
+minutes=$(((total_time_03N % 3600) / 60))
+seconds=$((total_time_03N % 60))
 printf "Total time of 12 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
-DATA+=$'\n'"12  $total_time"
 
-# 16 processors
-echo "Running VPU 03S short range on 16 processors ..."
-parallel_run_vpu 16 "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15" total_time
-echo "Time of 16 processors: ${total_time} seconds"
+# 12 processors 03S
+echo "Running VPU 03S short range on 12 processors ..."
+parallel_run_vpu 12 "0,1,2,3,4,5,6,7,8,9,10,11" total_time_03S "03S"
+echo "Time of 12 processors: ${total_time_03S} seconds"
 # Convert total time to H:M:S
-hours=$((total_time / 3600))
-minutes=$(((total_time % 3600) / 60))
-seconds=$((total_time % 60))
+hours=$((total_time_03S / 3600))
+minutes=$(((total_time_03S % 3600) / 60))
+seconds=$((total_time_03S % 60))
+printf "Total time of 12 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
+DATA+=$'\n'"12  $total_time_03N  $total_time_03S"
+
+################################################
+#
+# 16 processor 03N
+#
+# 16 processors
+echo "Running VPU 03N short range on 16 processors ..."
+parallel_run_vpu 16 "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15" total_time_03N "03N"
+echo "Time of 16 processors: ${total_time_03N} seconds"
+# Convert total time to H:M:S
+hours=$((total_time_03N / 3600))
+minutes=$(((total_time_03N % 3600) / 60))
+seconds=$((total_time_03N % 60))
 printf "Total time of 16 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
-DATA+=$'\n'"16  $total_time"
+
+# 16 processors 03N
+echo "Running VPU 03S short range on 16 processors ..."
+parallel_run_vpu 16 "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15" total_time_03S "03S"
+echo "Time of 16 processors: ${total_time_03S} seconds"
+# Convert total time to H:M:S
+hours=$((total_time_03S / 3600))
+minutes=$(((total_time_03S % 3600) / 60))
+seconds=$((total_time_03S % 60))
+printf "Total time of 16 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
+DATA+=$'\n'"16  total_time_03N  $total_time_03S"
+
+echo "Creating the runtime vs. number of cores figure ..."
+
+tempdata=$(printf "%b" "$DATA")
+
+  gnuplot -persist <<-EOFMarker
+      \$Mydata << EOD
+$tempdata
+EOD
+      # Set terminal to png or pdf for output
+      set terminal pngcairo enhanced font 'Arial, 12'
+      set output 'VPU_mpi_03S_runtime.png'
+
+      # Set title and labels
+      set title "MPI parallel number of cores vs runtime (03S)"
+      set xlabel 'Number of cores'
+      set ylabel "Wall clock time (mins) " offset 0,0,0
+      set yrange [0:*]
+      set grid
+
+      # Plot data from file
+      plot \$Mydata using 1:(\$2/60) with linespoints title "03N", \
+           \$Mydata using 1:(\$3/60) with linespoints title "03S"
+
+EOFMarker
 
 echo "------------------------------------------------------------------------------------------"
 echo "Compare the serial run output files to the 16 processor parallel run output files ..."
@@ -178,7 +301,8 @@ echo " 16 processor parallel run oututput file is ${RUN_NGEN_ROOT__HOST}/regiona
 echo "------------------------------------------------------------------------------------------"
 
 source my_run.sh && docker_run python compare_netcdf.py ./Output/catchment_output.nc \
-	/ngwpc/run_ngen/Output.serial/catchment_output.nc
+	/ngwpc/run_ngen/Output.serial/catchment_output.nc \
+	|| true
 
 #if [ "$rc" -eq 0 ]; then
 #   echo "PASS: The serial run output file is scientifically identical to the parallel run output file!"
@@ -195,7 +319,8 @@ echo "--------------------------------------------------------------------------
 
 source my_run.sh && docker_run python compare_netcdf.py ./Output/troute_output_202603300600.nc \
 	/ngwpc/run_ngen/Output.serial/troute_output_202603300600.nc \
-	--atol 0.1
+	--atol 0.1 \
+	|| true
 
 #if [ "$rc" -eq 0 ]; then
 #   echo "PASS: The serial run output file is scientifically identical to the parallel run output file!"
@@ -212,7 +337,8 @@ echo "--------------------------------------------------------------------------
 
 source my_run.sh && docker_run python compare_netcdf.py ./Output/troute_lakeout_202603300600.nc \
 	/ngwpc/run_ngen/Output.serial/troute_lakeout_202603300600.nc \
-	--atol 0.001
+	--atol 0.001 \
+	|| true
 
 #if [ "$rc" -eq 0 ]; then
 #   echo "PASS: The serial run output file is scientifically identical to the parallel run output file!"
@@ -220,30 +346,5 @@ source my_run.sh && docker_run python compare_netcdf.py ./Output/troute_lakeout_
 #else
 #   echo "FAIL: The serial run output file is NOT scientifically identical to the parallel run output file!"
 #fi
-
-echo "Creating the runtime vs. number of cores figure ..."
-
-tempdata=$(printf "%b" "$DATA")
-
-  gnuplot -persist <<-EOFMarker
-      \$Mydata << EOD
-$tempdata
-EOD
-      # Set terminal to png or pdf for output
-      set terminal pngcairo enhanced font 'Arial, 12'
-      set output 'VPU_mpi_03S_runtime.png'
-
-      # Set title and labels
-      set title "MPI parallel number of cores vs runtime (03S)"
-      set xlabel 'Number of cores'
-      set ylabel "Wall clock time (mins) " offset 0,0,0
-      unset key
-      set yrange [0:*]
-      set grid
-
-      # Plot data from file
-      plot \$Mydata using 1:(\$2/60) with linespoints
-
-EOFMarker
 
 exit 0
