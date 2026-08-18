@@ -2,7 +2,7 @@
 
 #SBATCH -J Perf_scale_test 
 #SBATCH -o Perf_scale_test_%j.log
-#SBATCH -t 06:00:00
+#SBATCH -t 10:00:00
 #SBATCH --nodes 1
 #SBATCH --exclusive
 #SBATCH --ntasks-per-node=18
