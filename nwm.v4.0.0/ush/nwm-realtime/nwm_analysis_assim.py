@@ -32,10 +32,11 @@ class AnalysisAssim(NWMForecast):
         if cyc == "18": # 18z = 19z - 1
             #uses the 16z restart from extended AnA
             ext_path = os.path.join(base_comout, "16", ext_ana_dir, self.run_id, f"state_save_{ts}")
-            if os.path.isdir(ext_path):
+            ext_ana_state_tar = f"{ext_path}.tar"
+            if os.path.isfile(ext_ana_state_tar):
                 return ext_path
             print(
-                f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states are missing "
+                f"WARNING: CONUS_EXT_ANALYSIS_ASSIM warm states {ext_ana_state_tar} are missing "
                 f"(cyc={cyc}, T0={self.t0:%Y-%m-%d %H:%M:%S}); "
                 f"using warm states from {ana_dir} case type instead.",
                 flush=True,
@@ -60,10 +61,11 @@ class AnalysisAssim(NWMForecast):
         primary_path = os.path.join(
             self.previous_day_comout, cyc, ext_ana_dir, self.run_id, f"state_save_{ts}"
         )
-        if os.path.isdir(primary_path):
+        ext_ana_state_tar = f"{primary_path}.tar"
+        if os.path.isfile(ext_ana_state_tar):
             return primary_path
         print(
-            f"WARNING: {ext_ana_dir} warm states are missing at "
+            f"WARNING: {ext_ana_dir} warm states {ext_ana_state_tar} are missing at "
             f"{self.start_time:%Y-%m-%d %H:%M:%S} (T0={self.t0:%Y-%m-%d %H:%M:%S}); "
             f"using warm states from {ana_dir} case type instead.",
             flush=True,
@@ -275,7 +277,7 @@ class AnalysisAssim(NWMForecast):
         previous_workdir = self._pre_workdir(ecfcon)
 
         # Run 1 initial states: load previous-cycle warm states if present, else cold start.
-        src_state_save=self._ana_state_save_src()
+        src_state_save=self._ext_ana_state_save_src()
         src_state_save_tar = f"{src_state_save}.tar"
         if os.path.isfile(src_state_save_tar):
             print(
