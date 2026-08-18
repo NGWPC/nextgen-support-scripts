@@ -18,7 +18,7 @@ function run_vpu()
 	     -n ${NPROCS} -fconfig "short_range" -dt "2026-03-30 06:00:00" \
 	     -rname "default_short" -nwmout  --vpu ${VPU} \
        	-faf "${TEST_FORM_ASSIGN_VPU}" \
-       	-cgf  "${TEST_CAT_GRP_VPU}" --output_format NetCDF --checkpoint_interval 1 
+       	-cgf  "${TEST_CAT_GRP_VPU}" --output_format NetCDF
 }
 
 function parallel_run_vpu()
