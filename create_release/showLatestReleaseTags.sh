@@ -27,7 +27,9 @@ Arguments:
                   Default: ${DEFAULT_CONFIG}
   release_type    Optional. "RC" (default) or "Official".
                   RC       → use the release tag if skip is true otherwise the highest release candidate tag (-rcX)
-                  Official → get the highest official release/hotfix tag that matches the configured release prefix
+                  Official → get the highest official release/hotfix tag that matches the configured release
+                             prefix, checked for both the standard tag and its "-pw" counterpart. If both
+                             exist, both are shown, comma-separated, in the Tag/Tag Date/Commit columns.
 
 Options:
   -h, --help      Show this help message and exit.
@@ -39,12 +41,15 @@ Tag behavior:
 
   Official:
     Uses the configured release as the base release and finds the highest
-    matching final/hotfix tag by the last numeric component.
+    matching final/hotfix tag by the last numeric component, separately for
+    the standard tag and the "-pw" tag. If only one of the two exists, only
+    that one is shown. If neither exists, "(not found)" is shown.
 
     Example:
-      release = 3.1.2.0.0
-      tags    = 3.1.2.0.0, 3.1.2.0.1, 3.1.2.0.2
-      result  = 3.1.2.0.2
+      release       = 3.1.2.0.0
+      standard tags = 3.1.2.0.0, 3.1.2.0.1, 3.1.2.0.2
+      pw tags       = 3.1.2.0.0-pw
+      result        = 3.1.2.0.2, 3.1.2.0.0-pw
 
 Minimal example JSON config:
 
@@ -82,14 +87,110 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-# Table header
-printf "\n%-25s | %-25s | %-20s | %-40s\n" \
-       "Repository" "Tag" "Tag Date" "Commit"
-printf "%-25s-+-%-25s-+-%-20s-+-%-40s\n" \
+# join_by <delim> <items...>
+# Joins arguments with the given delimiter. Used to combine standard/-pw
+# results into a single comma-separated cell. (Not implemented via IFS +
+# "$*" — that only honors the first character of a multi-character IFS.)
+join_by() {
+    local delim="$1"
+    shift
+    local result="" item first=true
+    for item in "$@"; do
+        if $first; then
+            result="$item"
+            first=false
+        else
+            result="${result}${delim}${item}"
+        fi
+    done
+    echo "$result"
+}
+
+# get_highest_official_tag <release_prefix> <suffix>
+# Finds the highest matching official/hotfix tag for the given prefix
+# (e.g. "3.1.2.0") whose last numeric component follows the prefix.
+# <suffix> is either "" (standard tags) or "-pw" (pw tags) — only tags
+# ending in that suffix (or, for "", NOT ending in "-pw") are considered.
+# Prints the winning tag name, or nothing if none match.
+get_highest_official_tag() {
+    local prefix="$1"
+    local suffix="$2"
+    local prefix_count
+    prefix_count=$(awk -F. '{print NF}' <<< "$prefix")
+
+    local best_patch=-1
+    local best_tag=""
+
+    while IFS= read -r t; do
+        [[ -z "$t" ]] && continue
+
+        local core="$t"
+        if [[ "$suffix" == "-pw" ]]; then
+            [[ "$t" == *-pw ]] || continue
+            core="${t%-pw}"
+        else
+            [[ "$t" == *-pw ]] && continue
+        fi
+
+        IFS='.' read -ra parts <<< "$core"
+        if (( ${#parts[@]} != prefix_count + 1 )); then
+            continue
+        fi
+
+        local core_prefix
+        core_prefix=$(IFS=. ; echo "${parts[*]:0:prefix_count}")
+        [[ "$core_prefix" == "$prefix" ]] || continue
+
+        local patch="${parts[$prefix_count]}"
+        [[ "$patch" =~ ^[0-9]+$ ]] || continue
+
+        if (( patch > best_patch )); then
+            best_patch=$patch
+            best_tag="$t"
+        fi
+    done < <(git tag --list "${prefix}.*")
+
+    echo "$best_tag"
+}
+
+# get_tag_date <tag>
+# Prints the annotated tag date, falling back to the commit date for
+# lightweight tags. Empty string if the tag can't be resolved.
+get_tag_date() {
+    local tag="$1"
+    local d
+    d="$(git for-each-ref --format='%(taggerdate:iso8601-strict)' "refs/tags/${tag}" 2>/dev/null || true)"
+    if [[ -z "$d" ]]; then
+        d="$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S' "$tag" 2>/dev/null || true)"
+    else
+        d="${d%+*}"
+        d="${d%Z}"
+    fi
+    echo "$d"
+}
+
+# get_tag_commit <tag>
+# Prints the commit hash the tag points to, or "-" if unresolvable.
+get_tag_commit() {
+    local tag="$1"
+    local c
+    c="$(git rev-list -n 1 "$tag" 2>/dev/null || true)"
+    [[ -n "$c" ]] || c="-"
+    echo "$c"
+}
+
+# Row separator, reused between each repo's block of line(s) instead of just
+# between header and body.
+ROW_SEP="$(printf "%-25s-+-%-25s-+-%-20s-+-%-40s" \
        "-------------------------" \
        "-------------------------" \
        "--------------------" \
-       "----------------------------------------"
+       "----------------------------------------")"
+
+# Table header
+printf "\n%-25s | %-25s | %-20s | %-40s\n" \
+       "Repository" "Tag" "Tag Date" "Commit"
+printf '%s\n' "$ROW_SEP"
 
 # IMPORTANT: Use process substitution to avoid subshell so we can print summary at the end
 while IFS= read -r entry; do
@@ -103,6 +204,7 @@ while IFS= read -r entry; do
     if [[ ! -d "$repo_dir/.git" ]]; then
         printf "%-25s | %-25s | %-20s | %-40s\n" \
                "$repo_name" "NOT A GIT REPO" "-" "-"
+        printf '%s\n' "$ROW_SEP"
         continue
     fi
 
@@ -111,7 +213,7 @@ while IFS= read -r entry; do
     # Update remote refs and tags
     git fetch --all --tags --prune --quiet
 
-    # --- NEW: Track latest tag in this repo (any tag), for end-of-run summary ---
+    # --- Track latest tag in this repo (any tag), for end-of-run summary ---
     # iso-strict compares cleanly as a string (YYYY-MM-DDTHH:MM:SS±HH:MM)
     latest_tag_line="$(
         git for-each-ref \
@@ -130,52 +232,46 @@ while IFS= read -r entry; do
             LATEST_TAG_NAME="$repo_latest_tag"
         fi
     fi
-    # --------------------------------------------------------------------------
+    # -------------------------------------------------------------------
 
-    tag=""
-    tag_date="-"
-    commit_hash="-"
+    # row_tags/row_dates/row_commits hold one entry per line to print for
+    # this repo. Normally one line; Official mode prints one line per tag
+    # found (standard and/or -pw) instead of comma-joining them.
+    row_tags=()
+    row_dates=()
+    row_commits=()
 
     if [[ "$RELEASE_TYPE" == "Official" ]]; then
         # Official release behavior:
         # Treat the configured release as the base release and find the highest
-        # matching final/hotfix tag by the last numeric component.
-        #
-        # Example:
-        #   release = 3.1.2.0.0
-        #   tags    = 3.1.2.0.0, 3.1.2.0.1, 3.1.2.0.2
-        #   result  = 3.1.2.0.2
+        # matching final/hotfix tag by the last numeric component — separately
+        # for the standard tag and the "-pw" tag. If both exist, each gets its
+        # own line below the repo name.
         release_prefix="${release%.*}"
 
-        latest_official="$(
-            git tag --list "${release_prefix}.*"               | awk -F. -v prefix="$release_prefix" '
-                    BEGIN {
-                        prefix_count = split(prefix, prefix_parts, ".")
-                    }
-                    NF == prefix_count + 1 {
-                        matches_prefix = 1
-                        for (i = 1; i <= prefix_count; i++) {
-                            if ($i != prefix_parts[i]) {
-                                matches_prefix = 0
-                                break
-                            }
-                        }
+        standard_tag="$(get_highest_official_tag "$release_prefix" "")"
+        pw_tag="$(get_highest_official_tag "$release_prefix" "-pw")"
 
-                        patch = $(prefix_count + 1)
-                        if (matches_prefix && patch ~ /^[0-9]+$/) {
-                            printf "%d|%s\n", patch, $0
-                        }
-                    }
-                '               | sort -t'|' -k1,1n               | tail -1               | cut -d'|' -f2-               || true
-        )"
+        found_tags=()
+        [[ -n "$standard_tag" ]] && found_tags+=("$standard_tag")
+        [[ -n "$pw_tag" ]] && found_tags+=("$pw_tag")
 
-        if [[ -n "$latest_official" ]]; then
-            tag="$latest_official"
+        if (( ${#found_tags[@]} == 0 )); then
+            row_tags+=("(not found)")
+            row_dates+=("-")
+            row_commits+=("-")
         else
-            tag="(not found)"
+            for t in "${found_tags[@]}"; do
+                d="$(get_tag_date "$t")"
+                [[ -n "$d" ]] || d="-"
+                row_tags+=("$t")
+                row_dates+=("$d")
+                row_commits+=("$(get_tag_commit "$t")")
+            done
         fi
     else
         # RC behavior
+        tag=""
         if [[ "$skip" == "true" ]]; then
             # Final release tag
             if git rev-parse -q --verify "refs/tags/${release}" >/dev/null; then
@@ -200,32 +296,46 @@ while IFS= read -r entry; do
                 tag="(none)"
             fi
         fi
-    fi
 
-    if [[ "$tag" != "(none)" && "$tag" != "(not found)" ]]; then
-        # Annotated tag date
-        tag_date="$(git for-each-ref --format='%(taggerdate:iso8601-strict)' "refs/tags/${tag}" || true)"
+        tag_date="-"
+        commit_hash="-"
+        if [[ "$tag" != "(none)" && "$tag" != "(not found)" ]]; then
+            # Annotated tag date
+            tag_date="$(git for-each-ref --format='%(taggerdate:iso8601-strict)' "refs/tags/${tag}" || true)"
 
-        # Fallback for lightweight tags → commit date
-        if [[ -z "$tag_date" ]]; then
-            tag_date="$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S' "$tag" || true)"
-        else
-            # Strip timezone from annotated tag date (keep behavior you had)
-            tag_date="${tag_date%+*}"
-            tag_date="${tag_date%Z}"
+            # Fallback for lightweight tags → commit date
+            if [[ -z "$tag_date" ]]; then
+                tag_date="$(git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M:%S' "$tag" || true)"
+            else
+                # Strip timezone from annotated tag date (keep behavior you had)
+                tag_date="${tag_date%+*}"
+                tag_date="${tag_date%Z}"
+            fi
+
+            commit_hash="$(git rev-list -n 1 "$tag" || true)"
+            [[ -n "$commit_hash" ]] || commit_hash="-"
         fi
 
-        commit_hash="$(git rev-list -n 1 "$tag" || true)"
-        [[ -n "$commit_hash" ]] || commit_hash="-"
+        row_tags+=("$tag")
+        row_dates+=("$tag_date")
+        row_commits+=("$commit_hash")
     fi
 
-    printf "%-25s | %-25s | %-20s | %-40s\n" \
-           "$repo_name" "$tag" "$tag_date" "$commit_hash"
+    for (( r=0; r<${#row_tags[@]}; r++ )); do
+        if (( r == 0 )); then
+            printf "%-25s | %-25s | %-20s | %-40s\n" \
+                   "$repo_name" "${row_tags[$r]}" "${row_dates[$r]}" "${row_commits[$r]}"
+        else
+            printf "%-25s | %-25s | %-20s | %-40s\n" \
+                   "" "${row_tags[$r]}" "${row_dates[$r]}" "${row_commits[$r]}"
+        fi
+    done
+    printf '%s\n' "$ROW_SEP"
 
     popd >/dev/null
 done < <(jq -c '.[]' "$CONFIG_FILE")
 
-# --- NEW: Print latest tag date across all scanned repos ---
+# --- Print latest tag date across all scanned repos ---
 printf "\nLatest tag date (across scanned repos)\n"
 printf "=============================================================\n"
 if [[ -n "$LATEST_TAG_DATE" ]]; then
