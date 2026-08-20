@@ -18,14 +18,14 @@ function run_vpu()
 
   if [[ ${is_parallel} == "YES" ]]; then
      echo "Parallel execution of VPU 03S and 03N ... " 
-     source my_run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
+     source my_vpu_run_${LOGNAME}.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
 	     -n ${NPROCS} -fconfig "short_range" -dt "2026-03-30 06:00:00" \
 	     -rname "default_short" -nwmout  --vpu ${VPU} \
        	-faf "${TEST_FORM_ASSIGN_VPU}" \
        	-cgf  "${TEST_CAT_GRP_VPU}" --output_format NetCDF & 
   else
      echo "Sequential execution of VPU 03S and 03N ... " 
-     source my_run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
+     source my_vpu_run_${LOGNAME}.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
 	     -n ${nprocs} -fconfig "short_range" -dt "2026-03-30 06:00:00" \
 	     -rname "default_short" -nwmout  --vpu ${VPU} \
        	-faf "${TEST_FORM_ASSIGN_VPU}" \
@@ -68,7 +68,7 @@ RTE=$(pwd)/../ush/nwm-rte
 sed  -e "s|\$(pwd)/bin_mounted/|$RTE/bin_mounted/|" \
 	-e "/^\s\+time sudo docker/a \ \ \ \ \ \$\{CPUSET_CPUS:+--cpuset-cpus=\"\$\{CPUSET_CPUS\}\"\}  \\\\" \
 	-e "s|\$(pwd)|$RUN_NGEN_ROOT__HOST|" \
-	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_run.sh
+	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_vpu_run_${LOGNAME}.sh
 
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/docker/run
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/rte

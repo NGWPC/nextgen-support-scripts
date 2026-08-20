@@ -14,7 +14,7 @@ function run_vpu()
   local TEST_FORM_ASSIGN_VPU="${INSTALLED_REGIONALIZATION_RESULTS}/vpu_${VPU}/formulation_assignment.csv"
   local TEST_CAT_GRP_VPU="${INSTALLED_REGIONALIZATION_RESULTS}/vpu_${VPU}/catchment_groups.csv"
 
-  source my_run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
+  source my_scale_run_${LOGNAME}.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
 	     -n ${NPROCS} -fconfig "short_range" -dt "2026-03-30 06:00:00" \
 	     -rname "default_short" -nwmout  --vpu ${VPU} \
        	-faf "${TEST_FORM_ASSIGN_VPU}" \
@@ -68,7 +68,7 @@ RTE=$(pwd)/../ush/nwm-rte
 sed  -e "s|\$(pwd)/bin_mounted/|$RTE/bin_mounted/|" \
 	-e "/^\s\+time sudo docker/a \ \ \ \ \ \$\{CPUSET_CPUS:+--cpuset-cpus=\"\$\{CPUSET_CPUS\}\"\}  \\\\" \
 	-e "s|\$(pwd)|$RUN_NGEN_ROOT__HOST|" \
-	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_run.sh
+	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_scale_run_${LOGNAME}.sh
 
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/docker/run
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/rte
@@ -253,7 +253,7 @@ hours=$((total_time_03S / 3600))
 minutes=$(((total_time_03S % 3600) / 60))
 seconds=$((total_time_03S % 60))
 printf "Total time of 16 processors start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
-DATA+=$'\n'"16  total_time_03N  $total_time_03S"
+DATA+=$'\n'"16  $total_time_03N  $total_time_03S"
 
 echo "Creating the runtime vs. number of cores figure ..."
 
@@ -292,7 +292,7 @@ sed  -e "s|\$(pwd)/bin_mounted/|$RTE/bin_mounted/|" \
 	-e "/^\s\+time sudo docker/a \ \ \ \ \ -v ${workdir}:${workdir}  \\\\" \
         -e "s|-w \"/ngen-app/bin\"|-w ${workdir}|" \
 	-e "s|\$(pwd)|$RUN_NGEN_ROOT__HOST|" \
-	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_run.sh
+	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_compare_run_${LOGNAME}.sh
 
 echo "------------------------------------------------------------------------------------------"
 echo "Comparing the catchment_output.nc files ..."
@@ -300,7 +300,8 @@ echo " Serial run oututput file is ${RUN_NGEN_ROOT__HOST}/Output.serial/catchmen
 echo " 16 processor parallel run oututput file is ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output/catchment_output.nc."
 echo "------------------------------------------------------------------------------------------"
 
-source my_run.sh && docker_run python compare_netcdf.py ./Output/catchment_output.nc \
+source my_compare_run_${LOGNAME}.sh && docker_run python compare_netcdf.py \
+	/ngwpc/run_ngen/regionalization/default_short/03S/Output/catchment_output.nc \
 	/ngwpc/run_ngen/Output.serial/catchment_output.nc \
 	|| true
 
@@ -317,9 +318,9 @@ echo " Serial run oututput file is ${RUN_NGEN_ROOT__HOST}/Output.serial/troute_o
 echo " 16 processor parallel run oututput file is ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output/troute_output_202603300600.nc."
 echo "------------------------------------------------------------------------------------------"
 
-source my_run.sh && docker_run python compare_netcdf.py ./Output/troute_output_202603300600.nc \
+source my_compare_run_${LOGNAME}.sh && docker_run python compare_netcdf.py  \
+	/ngwpc/run_ngen/regionalization/default_short/03S/Output/troute_output_202603300600.nc  \
 	/ngwpc/run_ngen/Output.serial/troute_output_202603300600.nc \
-	--atol 0.1 \
 	|| true
 
 #if [ "$rc" -eq 0 ]; then
@@ -335,9 +336,9 @@ echo " Serial run oututput file is ${RUN_NGEN_ROOT__HOST}/Output.serial/troute_l
 echo " 16 processor parallel run oututput file is ${RUN_NGEN_ROOT__HOST}/regionalization/default_short/03S/Output/troute_lakeout_202603300600.nc."
 echo "------------------------------------------------------------------------------------------"
 
-source my_run.sh && docker_run python compare_netcdf.py ./Output/troute_lakeout_202603300600.nc \
+source my_compare_run_${LOGNAME}.sh && docker_run python compare_netcdf.py \
+	/ngwpc/run_ngen/regionalization/default_short/03S/Output/troute_lakeout_202603300600.nc  \
 	/ngwpc/run_ngen/Output.serial/troute_lakeout_202603300600.nc \
-	--atol 0.001 \
 	|| true
 
 #if [ "$rc" -eq 0 ]; then
