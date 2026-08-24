@@ -4,6 +4,7 @@
 #SBATCH -o Perf_2_vpus_%j.log
 #SBATCH -t 02:00:00
 #SBATCH --nodes 1
+##SBATCH --nodelist zhengtaocui-opertestbed-00023-1-0001
 #SBATCH --exclusive
 #SBATCH --ntasks-per-node=18
 
@@ -17,18 +18,18 @@ function run_vpu()
 
   if [[ ${is_parallel} == "YES" ]]; then
      echo "Parallel execution of VPU 03S and 03N ... " 
-     source my_run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
+     source my_vpu_run_${LOGNAME}.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
 	     -n ${NPROCS} -fconfig "short_range" -dt "2026-03-30 06:00:00" \
 	     -rname "default_short" -nwmout  --vpu ${VPU} \
        	-faf "${TEST_FORM_ASSIGN_VPU}" \
-       	-cgf  "${TEST_CAT_GRP_VPU}" --output_format NetCDF --checkpoint_interval 1 & 
+       	-cgf  "${TEST_CAT_GRP_VPU}" --output_format NetCDF & 
   else
      echo "Sequential execution of VPU 03S and 03N ... " 
-     source my_run.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
+     source my_vpu_run_${LOGNAME}.sh && docker_run python -um "ngen_rte.run_regionalization_standalone" \
 	     -n ${nprocs} -fconfig "short_range" -dt "2026-03-30 06:00:00" \
 	     -rname "default_short" -nwmout  --vpu ${VPU} \
        	-faf "${TEST_FORM_ASSIGN_VPU}" \
-       	-cgf  "${TEST_CAT_GRP_VPU}" --output_format NetCDF --checkpoint_interval 1
+       	-cgf  "${TEST_CAT_GRP_VPU}" --output_format NetCDF
   fi
 }
 
@@ -67,7 +68,7 @@ RTE=$(pwd)/../ush/nwm-rte
 sed  -e "s|\$(pwd)/bin_mounted/|$RTE/bin_mounted/|" \
 	-e "/^\s\+time sudo docker/a \ \ \ \ \ \$\{CPUSET_CPUS:+--cpuset-cpus=\"\$\{CPUSET_CPUS\}\"\}  \\\\" \
 	-e "s|\$(pwd)|$RUN_NGEN_ROOT__HOST|" \
-	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_run.sh
+	-e "/source config.bashrc/d" ../ush/nwm-rte/run.sh > my_vpu_run_${LOGNAME}.sh
 
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/docker/run
 sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/rte
@@ -79,7 +80,25 @@ sudo mkdir -p $RUN_NGEN_ROOT__HOST/logs/rte
 #
 #
 #clean up first
-sudo rm -rf ${RUN_NGEN_ROOT__HOST}/regionalization/*
+#sudo rm -rf ${RUN_NGEN_ROOT__HOST}/regionalization/*
+
+#warm up
+
+# --- First VPU ---
+VPU="03S"
+nprocs=2
+export CPUSET_CPUS="16,17"
+
+#echo "Running VPU 03S short range on processors ${CPUSET_CPUS} ..."
+#run_vpu "NO" ${VPU} ${nprocs}
+
+# --- Second VPU ---
+VPU="03N"
+export CPUSET_CPUS="10,11,12,13,14,15"
+nprocs=6
+
+echo "Running VPU 03N short range on processors ${CPUSET_CPUS} ..."
+run_vpu "NO" ${VPU} ${nprocs}
 
 # Record start time
 start_time=$(date +%s)
@@ -89,7 +108,7 @@ VPU="03S"
 nprocs=2
 export CPUSET_CPUS="16,17"
 
-echo "Running VPU 03S short range on processors ${CPUSET_CPUS} ..."
+echo "Running VPU 03S short range on processors ${CPUSET_CPUS} without downloading data ..."
 run_vpu "NO" ${VPU} ${nprocs}
 
 # Record intermediate time
@@ -100,7 +119,7 @@ VPU="03N"
 export CPUSET_CPUS="10,11,12,13,14,15"
 nprocs=6
 
-echo "Running VPU 03N short range on processors ${CPUSET_CPUS} ..."
+echo "Running VPU 03N short range on processors ${CPUSET_CPUS} without downloading data ..."
 run_vpu "NO" ${VPU} ${nprocs}
 
 # Record end time
@@ -116,9 +135,9 @@ vpu1_minutes=$(((time_between % 3600) / 60))
 vpu1_seconds=$((time_between % 60))
 
 # Convert total time to H:M:S
-vpu2_hours=$(( (total_time - time_between) / 3600))
-vpu2_minutes=$((( (total_time - time_between) % 3600) / 60))
-vpu2_seconds=$(( (total_time - time_between) % 60))
+vpu2_hours=$(( (end_time - mid_time) / 3600))
+vpu2_minutes=$((( (end_time - mid_time) % 3600) / 60))
+vpu2_seconds=$(( (end_time - mid_time) % 60))
 
 # Convert total time to H:M:S
 hours=$((total_time / 3600))
@@ -140,7 +159,7 @@ printf "Check output files at $RUN_NGEN_ROOT__HOST/test/tmp/regionalization/defa
 #
 #
 #clean up first
-sudo rm -rf ${RUN_NGEN_ROOT__HOST}/regionalization/*
+#sudo rm -rf ${RUN_NGEN_ROOT__HOST}/regionalization/*
 
 # Record start time
 start_time=$(date +%s)
@@ -169,21 +188,16 @@ end_time=$(date +%s)
 total_time_parallel=$((end_time - start_time))
 
 # Convert total time to H:M:S
-vpu2_hours=$(( (total_time_parallel - time_between) / 3600))
-vpu2_minutes=$((( (total_time_parallel - time_between) % 3600) / 60))
-vpu2_seconds=$(( (total_time_parallel - time_between) % 60))
-
-# Convert total time to H:M:S
-hours=$((total_time / 3600))
-minutes=$(((total_time % 3600) / 60))
-seconds=$((total_time % 60))
+hours=$((total_time_parallel / 3600))
+minutes=$(((total_time_parallel % 3600) / 60))
+seconds=$((total_time_parallel % 60))
 
 printf "Total time of parallel execution from start to end: %02d:%02d:%02d (H:M:S)\n" "$hours" "$minutes" "$seconds"
 
 total_minutes=$(( total_time / 60 ))
 total_minutes_parallel=$(( total_time_parallel / 60 ))
 
-DATA="Sequential  $total_minutes\nParallel  $total_minutes_parallel\n"
+DATA="Sequential  $total_time\nParallel  $total_time_parallel\n"
 
 tempdata=$(printf "%b" "$DATA")
 
@@ -204,9 +218,9 @@ EOD
 
       # Set style of bars
       set style data histogram
-      set style histogram cluster gap 1
+      #set style histogram cluster gap 1
       #set style fill solid
-      set style fill pattern border -1
+      set style fill transparent solid 0.2 border -1
 
       # Adjust width of bars
       set boxwidth 0.8
@@ -215,8 +229,13 @@ EOD
       # Adjust xtics for labels
       set xtics rotate by -45
 
+      set arrow from -0.4,($total_time - $time_between)/60 to 0.4,($total_time- $time_between)/60 nohead filled lw 1 lc rgb "black"
+      set label 1 "03S" at 0,($total_time - ($time_between) / 2  ) / 60 center
+      set label 2 "03N" at 0,(($total_time - $time_between) / 60 / 2) center
+
       # Plot data from file
-      plot \$Mydata using 2:xtic(1) with boxes title 'Wall clock time' fillstyle pattern 2
+      plot \$Mydata using (\$2/60):xtic(1) with boxes title 'Wall clock time'
+
 EOFMarker
 
 
