@@ -35,13 +35,31 @@ OPTIONS
                               Default: createReleaseConfig.json
   -e, --environment ENV      Branch/release environment: STANDARD or PW.
                               Default: STANDARD
-  -o, --create-owp-branch     After a successful release, also create and
-                              push ngwpc-<release> (or ngwpc-<release>-pw
-                              under PW) from the release tag's exact commit.
-                              This is what gets submitted as a pull request
-                              to the upstream NOAA OWP parent repo; this
-                              script only prepares and pushes the branch, it
-                              does not open that PR for you.
+  -o, --create-owp-branch     STANDALONE step: create and push OWP branch(es)
+                              from ALREADY-EXISTING release tag(s). Does NOT
+                              create a release - run the script once first
+                              (without -o) to create the release/tag(s),
+                              then run it again with -o. This is what gets
+                              submitted as a pull request to the upstream
+                              NOAA OWP parent repo; this script only
+                              prepares and pushes the branch, it does not
+                              open that PR for you.
+
+                              If -e/--environment IS given, behaves as a
+                              single pass: only ngwpc-<release> (or
+                              ngwpc-<release>-pw under PW) is created, for
+                              repos whose "env" field applies under that
+                              -e value (same filtering as release mode).
+
+                              If -e/--environment is NOT given, each repo's
+                              own "env" field decides which branch(es) get
+                              created, independent of the command line:
+                                env=AWS -> ngwpc-<release>
+                                env=PW  -> ngwpc-<release>-pw
+                                env=ALL -> both
+                              Each branch is only created if its
+                              corresponding release tag already exists;
+                              repos with "skip": true are always skipped.
                               Default: false (off)
   -v, --verbose               Print the exact 'gh' commands being executed
                               Default: false
@@ -59,7 +77,12 @@ Examples:
   $(basename "$0")
   $(basename "$0") --config createReleaseConfig.json
   $(basename "$0") --environment PW --config createReleaseConfig_pass1_pw.json
-  $(basename "$0") --create-owp-branch
+  $(basename "$0") --create-owp-branch   # standalone, auto per-repo env:
+                                          # branch(es) only, no release
+                                          # (run once WITHOUT -o first to
+                                          # create the release/tag(s))
+  $(basename "$0") --environment PW --create-owp-branch   # standalone,
+                                          # single pass: PW branch only
 
 Per-repo config field "env" (optional; PW, AWS, or ALL; defaults to ALL):
   Controls which -e environment(s) a repo entry is processed under,
@@ -174,12 +197,16 @@ create_release() {
 #   $2 - Base release number (e.g., "10.2")
 #   $3 - Release notes
 #   $4 - Commit summary (optional; appended as a "Commit Summary" section)
+#   $5 - Run label (optional; e.g. "STANDARD"/"PW"). Used only to keep the
+#        status/summary rows distinct when this repo is processed more than
+#        once in a single invocation (auto per-repo-env OWP branch mode).
 #-----------------------------------------
 process_repo() {
   local repo_directory="$1"
   local base_release_number="$2"
   local release_notes="$3"
   local commit_summary="$4"
+  local run_label="$5"
 
   local start_time
   start_time=$(date +"%Y-%m-%d %H:%M:%S")
@@ -194,6 +221,10 @@ process_repo() {
     repo_directory_short="~${repo_directory#$HOME}"
   else
     repo_directory_short="$repo_directory"
+  fi
+
+  if [ -n "$run_label" ]; then
+    repo_directory_short="${repo_directory_short} [$run_label]"
   fi
 
   if [[ $repo_directory == ~* ]]; then
@@ -262,46 +293,22 @@ process_repo() {
     return 1
   fi
 
-  # Fetch remote tags and refuse to clobber an existing one.
-  local remote_tags
-  remote_tags=$(git ls-remote --tags origin | awk '{print $2}' | sed 's#refs/tags/##')
-  if echo "$remote_tags" | grep -Fxq "$RELEASE_NUMBER"; then
-    echo -e "${RED}Tag '$RELEASE_NUMBER' already exists in the remote repository. Skipping.${NC}"
-    repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (tag exists)"
-    repo_order+=("$repo_directory_short")
-    return 1
-  fi
+  if [ "$CREATE_OWP_BRANCH" = true ]; then
+    # --- STANDALONE OWP branch step ---
+    # Does NOT create a release. Requires that RELEASE_NUMBER already exists
+    # as a tag on origin (created by a prior, separate run of this script
+    # without -o). Creates ngwpc-<release>[-pw] from that tag's exact commit
+    # and pushes it. Never touches the development branch's working state
+    # beyond a temporary checkout/fetch.
+    local remote_tags
+    remote_tags=$(git ls-remote --tags origin | awk '{print $2}' | sed 's#refs/tags/##')
+    if ! echo "$remote_tags" | grep -Fxq "$RELEASE_NUMBER"; then
+      echo -e "${RED}Tag '$RELEASE_NUMBER' does not exist on origin. Create the release first (run without -o), then re-run with -o.${NC}"
+      repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (tag not found)"
+      repo_order+=("$repo_directory_short")
+      return 1
+    fi
 
-  echo -e "Pulling latest updates for branch ${GREEN}${DEVELOPMENT_BRANCH}${NC}..."
-  if ! git checkout --quiet "$DEVELOPMENT_BRANCH" || ! git pull --quiet --ff-only; then
-    echo -e "${RED}Unable to update branch $DEVELOPMENT_BRANCH.${NC}"
-    repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (pull failed)"
-    repo_order+=("$repo_directory_short")
-    return 1
-  fi
-
-  local final_release_notes="$release_notes"
-  if [ -n "$commit_summary" ]; then
-    final_release_notes="${final_release_notes}
-
-Commit Summary
-
-${commit_summary}"
-  fi
-
-  echo -e "${GREEN}Creating GitHub release for $REPO_PROJECT $RELEASE_NUMBER...${NC}"
-  if ! create_release "$RELEASE_NUMBER" "Release $RELEASE_NUMBER" "$final_release_notes" "$DEVELOPMENT_BRANCH"; then
-    echo -e "${RED}Error: GitHub release creation for $REPO_PROJECT $RELEASE_NUMBER failed.${NC}"
-    repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (release failed)"
-    repo_order+=("$repo_directory_short")
-    return_code=1
-  fi
-
-  # --- OWP branch: create ngwpc-<release>[-pw] from the release tag's exact
-  # commit (not the development branch HEAD, which may have moved on). Only
-  # runs when -o/--create-owp-branch was passed, and only after a successful
-  # release, so a failure here never rolls back the release itself.
-  if [ "$CREATE_OWP_BRANCH" = true ] && [ "$return_code" -eq 0 ]; then
     local owp_branch="ngwpc-${base_release_number}"
     if [[ "$BRANCH_ENVIRONMENT" == "PW" ]]; then
       owp_branch+="-pw"
@@ -316,6 +323,8 @@ ${commit_summary}"
       echo -e "${RED}Branch '$owp_branch' already exists on origin. Skipping OWP branch creation.${NC}"
       return_code=1
     else
+      local starting_ref
+      starting_ref=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$DEVELOPMENT_BRANCH")
       git branch --quiet -D "$owp_branch" >/dev/null 2>&1 || true
       if ! git checkout --quiet -b "$owp_branch" "refs/tags/${RELEASE_NUMBER}"; then
         echo -e "${RED}Unable to create branch $owp_branch from tag $RELEASE_NUMBER.${NC}"
@@ -326,7 +335,43 @@ ${commit_summary}"
       else
         echo -e "${GREEN}Created and pushed $owp_branch from tag $RELEASE_NUMBER.${NC}"
       fi
-      git checkout --quiet "$DEVELOPMENT_BRANCH" >/dev/null 2>&1 || true
+      git checkout --quiet "$starting_ref" >/dev/null 2>&1 || true
+    fi
+  else
+    # --- Release-creation step (no OWP branch involved) ---
+    # Fetch remote tags and refuse to clobber an existing one.
+    local remote_tags
+    remote_tags=$(git ls-remote --tags origin | awk '{print $2}' | sed 's#refs/tags/##')
+    if echo "$remote_tags" | grep -Fxq "$RELEASE_NUMBER"; then
+      echo -e "${RED}Tag '$RELEASE_NUMBER' already exists in the remote repository. Skipping.${NC}"
+      repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (tag exists)"
+      repo_order+=("$repo_directory_short")
+      return 1
+    fi
+
+    echo -e "Pulling latest updates for branch ${GREEN}${DEVELOPMENT_BRANCH}${NC}..."
+    if ! git checkout --quiet "$DEVELOPMENT_BRANCH" || ! git pull --quiet --ff-only; then
+      echo -e "${RED}Unable to update branch $DEVELOPMENT_BRANCH.${NC}"
+      repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (pull failed)"
+      repo_order+=("$repo_directory_short")
+      return 1
+    fi
+
+    local final_release_notes="$release_notes"
+    if [ -n "$commit_summary" ]; then
+      final_release_notes="${final_release_notes}
+
+Commit Summary
+
+${commit_summary}"
+    fi
+
+    echo -e "${GREEN}Creating GitHub release for $REPO_PROJECT $RELEASE_NUMBER...${NC}"
+    if ! create_release "$RELEASE_NUMBER" "Release $RELEASE_NUMBER" "$final_release_notes" "$DEVELOPMENT_BRANCH"; then
+      echo -e "${RED}Error: GitHub release creation for $REPO_PROJECT $RELEASE_NUMBER failed.${NC}"
+      repo_status["$repo_directory_short"]="$RELEASE_NUMBER | FAILED | 0s | (release failed)"
+      repo_order+=("$repo_directory_short")
+      return_code=1
     fi
   fi
 
@@ -396,6 +441,7 @@ main() {
 
   json_file="createReleaseConfig.json"
   CREATE_OWP_BRANCH=false
+  ENV_EXPLICITLY_SET=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -407,6 +453,7 @@ main() {
       -e|--environment)
         [[ $# -ge 2 ]] || { echo -e "${RED}Missing value for $1.${NC}"; exit 1; }
         BRANCH_ENVIRONMENT="$2"
+        ENV_EXPLICITLY_SET=true
         shift 2
         ;;
       -o|--create-owp-branch)
@@ -503,12 +550,33 @@ main() {
       ;;
   esac
 
-  echo "Branch environment: $BRANCH_ENVIRONMENT"
-  echo "  Development branch: $DEVELOPMENT_BRANCH"
-  echo -e "${YELLOW}This will tag and create an OFFICIAL GitHub release directly off $DEVELOPMENT_BRANCH.${NC}"
-  echo -e "${YELLOW}No branches are merged, no PRs are created, and submodule pointers are NOT updated.${NC}"
+  # AUTO_ENV_FROM_JSON: -o given without an explicit -e/--environment means
+  # each repo's own "env" field (not the command line) decides which OWP
+  # branch(es) get created for that repo. Handled per-repo in the main loop
+  # below rather than via the single global BRANCH_ENVIRONMENT.
+  AUTO_ENV_FROM_JSON=false
+  if [ "$CREATE_OWP_BRANCH" = true ] && [ "$ENV_EXPLICITLY_SET" = false ]; then
+    AUTO_ENV_FROM_JSON=true
+  fi
+
+  if [ "$AUTO_ENV_FROM_JSON" != true ]; then
+    echo "Branch environment: $BRANCH_ENVIRONMENT"
+    echo "  Development branch: $DEVELOPMENT_BRANCH"
+  fi
   if [ "$CREATE_OWP_BRANCH" = true ]; then
-    echo -e "${YELLOW}After each successful release, an OWP branch (ngwpc-<release>$( [[ "$BRANCH_ENVIRONMENT" == "PW" ]] && echo -pw )) will also be created and pushed from the release tag.${NC}"
+    if [ "$AUTO_ENV_FROM_JSON" = true ]; then
+      echo -e "${YELLOW}STANDALONE OWP BRANCH MODE (auto, per-repo env): no releases will be created.${NC}"
+      echo -e "${YELLOW}No -e/--environment was given, so each repo's own \"env\" field decides which OWP branch(es) get created:${NC}"
+      echo -e "${YELLOW}  env=AWS -> ngwpc-<release>      env=PW -> ngwpc-<release>-pw      env=ALL -> both${NC}"
+      echo -e "${YELLOW}Each branch is only created if its corresponding release tag already exists.${NC}"
+    else
+      echo -e "${YELLOW}STANDALONE OWP BRANCH MODE: no releases will be created.${NC}"
+      echo -e "${YELLOW}For each repo, this will create and push an OWP branch (ngwpc-<release>$( [[ "$BRANCH_ENVIRONMENT" == "PW" ]] && echo -pw )) from the EXISTING release tag's exact commit.${NC}"
+      echo -e "${YELLOW}The release/tag must already exist (from a prior run without -o), or that repo will fail.${NC}"
+    fi
+  else
+    echo -e "${YELLOW}This will tag and create an OFFICIAL GitHub release directly off $DEVELOPMENT_BRANCH.${NC}"
+    echo -e "${YELLOW}No branches are merged, no PRs are created, and submodule pointers are NOT updated.${NC}"
   fi
   echo
 
@@ -537,7 +605,14 @@ main() {
     fi
 
     if [ "$skip" = "true" ]; then
-      echo -e "${YELLOW}Repo: $display_dir (Release: $release) (skipping)${NC}${exists_note}"
+      echo -e "${YELLOW}Repo: $display_dir (Release: $release) (skipping: skip=true)${NC}${exists_note}"
+    elif [ "$CREATE_OWP_BRANCH" = true ] && [ "$AUTO_ENV_FROM_JSON" = true ]; then
+      case "$repo_env" in
+        ALL) branch_desc="ngwpc-$release and ngwpc-$release-pw" ;;
+        AWS) branch_desc="ngwpc-$release" ;;
+        PW)  branch_desc="ngwpc-$release-pw" ;;
+      esac
+      echo -e "${GREEN}Repo: $display_dir (env=$repo_env) -> will create $branch_desc (if tag exists)${NC}${exists_note}"
     elif ! repo_env_applies "$repo_env"; then
       echo -e "${YELLOW}Repo: $display_dir (Release: $release) (skipping: env=$repo_env doesn't apply under -e $BRANCH_ENVIRONMENT)${NC}${exists_note}"
     else
@@ -557,6 +632,7 @@ main() {
   declare -A repo_status
   repo_order=()
   GLOBAL_RETURN_CODE=0
+  QUIT_REQUESTED=false
 
   for (( i=0; i<repo_count; i++ )); do
     repo_directory=$(echo "$json_data" | jq -r ".[$i].repo_directory")
@@ -571,18 +647,48 @@ main() {
     fi
 
     if [ "$skip" = "true" ]; then
-      echo -e "${YELLOW}Skipping repository: $repo_directory (Release: $release)${NC}"
+      echo -e "${YELLOW}Skipping repository: $repo_directory (Release: $release) — skip=true${NC}"
       continue
     fi
 
-    if ! repo_env_applies "$repo_env"; then
-      echo -e "${YELLOW}Skipping repository: $repo_directory (Release: $release) — env=$repo_env doesn't apply under -e $BRANCH_ENVIRONMENT${NC}"
-      continue
+    if [ "$CREATE_OWP_BRANCH" = true ] && [ "$AUTO_ENV_FROM_JSON" = true ]; then
+      # Auto mode: this repo's own "env" field decides which branch(es) to
+      # create, independent of any command-line -e value.
+      envs_to_run=()
+      case "$repo_env" in
+        ALL) envs_to_run=(STANDARD PW) ;;
+        AWS) envs_to_run=(STANDARD) ;;
+        PW)  envs_to_run=(PW) ;;
+      esac
+
+      for env in "${envs_to_run[@]}"; do
+        BRANCH_ENVIRONMENT="$env"
+        if [ "$env" = "PW" ]; then
+          DEVELOPMENT_BRANCH="development-pw"
+        else
+          DEVELOPMENT_BRANCH="development"
+        fi
+        process_repo "$repo_directory" "$release" "$release_notes" "$commit_summary" "$env"
+
+        if [ "${GLOBAL_RETURN_CODE:-0}" -eq 2 ]; then
+          QUIT_REQUESTED=true
+          break
+        fi
+      done
+    else
+      if ! repo_env_applies "$repo_env"; then
+        echo -e "${YELLOW}Skipping repository: $repo_directory (Release: $release) — env=$repo_env doesn't apply under -e $BRANCH_ENVIRONMENT${NC}"
+        continue
+      fi
+
+      process_repo "$repo_directory" "$release" "$release_notes" "$commit_summary"
+
+      if [ "${GLOBAL_RETURN_CODE:-0}" -eq 2 ]; then
+        QUIT_REQUESTED=true
+      fi
     fi
 
-    process_repo "$repo_directory" "$release" "$release_notes" "$commit_summary"
-
-    if [ "${GLOBAL_RETURN_CODE:-0}" -eq 2 ]; then
+    if [ "$QUIT_REQUESTED" = true ]; then
       echo "User chose to quit. Exiting script."
       break
     fi
