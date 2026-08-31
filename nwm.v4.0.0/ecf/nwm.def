@@ -1,7 +1,7 @@
 # Definition of the suite 'nwm'
 suite nwm
-   edit ECF_HOME "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm-automation-scripts/nwm.v4.0.0/ecf"  # path to the package ecf directory
-   edit ECF_INCLUDE "/contrib/lfs/h1/owp/nwm/noscrub/SOMEBODY/test/packages/nwm-automation-scripts/nwm.v4.0.0/ecf"
+   edit ECF_HOME "/lfs/h1/owp/nwm/noscrub/NOBODY/test/packages/nwm-automation-scripts/nwm.v4.0.0/ecf"  # path to the package ecf directory
+   edit ECF_INCLUDE "/lfs/h1/owp/nwm/noscrub/NOBODY/test/packages/nwm-automation-scripts/nwm.v4.0.0/ecf"
    edit ECF_OUT "/home/Zhengtao.Cui/test/tmp"
    #
    #enable this for SLURM
@@ -46,12 +46,12 @@ suite nwm
        task jnwm_fetch_usgs
          edit CASETYPE FETCH_USGS 
          time +00:01
-       task jnwm_fetch_env_ca
-         edit CASETYPE FETCH_ENVCA 
-         cron 00:02 23:52 01:00
-       task jnwm_fetch_usace
-         edit CASETYPE FETCH_USACE 
-         cron 00:05 23:55 01:00
+#       task jnwm_fetch_env_ca
+#         edit CASETYPE FETCH_ENVCA 
+#         cron 00:02 23:52 01:00
+#       task jnwm_fetch_usace
+#         edit CASETYPE FETCH_USACE 
+#         cron 00:05 23:55 01:00
        task jnwm_fetch_rfc
          edit CASETYPE FETCH_RFC 
          cron 00:10 23:55 01:00
@@ -60,10 +60,12 @@ suite nwm
        cron 00:00 23:55 00:15
        # USGS and Env. Canada are preprocessed together so that their timeslices
        # can be merged in the same pass
-       task jnwm_preprocess_usgs_n_envca
+       task jnwm_preprocess_usgs
          edit CASETYPE PREPROCESS_USGS_N_ENVCA
-       task jnwm_preprocess_usace
-         edit CASETYPE PREPROCESS_USACE
+#       task jnwm_preprocess_usgs_n_envca
+#         edit CASETYPE PREPROCESS_USGS_N_ENVCA
+#       task jnwm_preprocess_usace
+#         edit CASETYPE PREPROCESS_USACE
        task jnwm_preprocess_rfc
          edit CASETYPE PREPROCESS_RFC
      endfamily
