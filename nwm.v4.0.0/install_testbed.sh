@@ -4,7 +4,7 @@ set -xa
 set -euo pipefail
 
 # Default values
-RTE_BRANCH="development-pw"
+RTE_BRANCH="development"
 export ECF_PORT=3141
 
 while getopts "p:b:" opt; do

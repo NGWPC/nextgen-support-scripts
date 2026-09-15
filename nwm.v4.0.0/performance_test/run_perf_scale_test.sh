@@ -268,7 +268,7 @@ EOD
       set output 'VPU_mpi_03S_runtime.png'
 
       # Set title and labels
-      set title "MPI parallel number of cores vs runtime (03S)"
+      set title "MPI parallel number of cores vs runtime (03S and 03N)"
       set xlabel 'Number of cores'
       set ylabel "Wall clock time (mins) " offset 0,0,0
       set yrange [0:*]
