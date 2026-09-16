@@ -16,6 +16,8 @@ By default, it uses the `/lfs/h1/ops/prod` directory for permanent storage and t
 
 This setup is intended for the operational testbed and requires Docker, ecFlow, and the [NWM runtime environment](https://github.com/NGWPC/nwm-rte). From the `development` branch of this repository:
 
+The data assimilation pre-processing workflows need FTP login credentials for the RFC reservoir forecasts and an API Key for downloading observed streamflow from the USGS Water Data server. The FTP credentials and API Key should be saved in a text file named `.env` in the same directory as the installation script, `nwm.v4.0.0/install_testbed.sh`, before the starting the installation procedures.
+
 First build the EcFlow server docker image,
 
 ```bash
