@@ -16,7 +16,7 @@ This repository contains development and operational scripts for the NextGen wat
 Clone the `development` branch, then open the guide for the area you need:
 
 ```bash
-git clone --branch development https://github.com/NGWPC/nextgen-support-scripts.git
+git clone --branch development https://github.com/[GH_ORG]/nextgen-support-scripts.git
 cd nextgen-support-scripts
 ```
 
