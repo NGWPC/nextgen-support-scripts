@@ -60,6 +60,7 @@ export RUN_NGEN_ROOT__HOST=/media/test/tmp/scale/${LOGNAME}
 cd ${workdir}
 #prepare RTE to run
 source ../ush/nwm-rte/config.bashrc
+resolve_installed_regionalization_results
 
 #
 # Update the run.sh script
