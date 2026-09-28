@@ -1,0 +1,303 @@
+[
+  {
+    "repo_directory": "~/ngwpc/repositories/ngencerf-server",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/ngencerf-server",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.4.0",
+    "release_notes": "Most of the work in this delivery is in configuration, documentation, and version pins. For configuration, this delivery added docs index to readme, softened postgres wording; and portable deployment doc, among other updates. Documentation work added supporting services doc for postgres and redis requirements, and included cleaned up readme install sections, among other updates. In version pins, the delivery also pinned python and go base images by digest, cicd inspects the pinned base; and requirements. It also added support for SQLLite, TOC, and changed env variables related to EDFS url, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/ngencerf-ui",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/ngencerf-ui",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.4.0",
+    "release_notes": "Most of the work in this delivery is in hindcasting and verification. For hindcasting, this delivery included Clear Advance Interval & Number of Intervals when returning to Calibration/Hindcast list and improved Hindcast storage management, among other updates. Verification work included clear logs/plots/intervals when mounting/unmounting Run/Status tab and don't redundantly check for current plot availability on iteration change, among other updates. It also enabled single click to de-select; make sure Refresh List always clears selections, removed development-pw lane from cicd, and unnecessary warning messages, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/ngen-forcing",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/ngen-forcing",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.5.0",
+    "release_notes": "Most of the work in this delivery is in code cleanup, forcing, and geospatial handling. For code cleanup, this delivery added TYPE_CHECKING guard for imports that are purely for type hints and type hints; rename vars, among other updates. Forcing work added support for coastal gridded forcing (edit run_bmi_model.py and new coastal gridded module), among other updates. In geospatial handling, the delivery also added defensiveness to esmf mesh creation logic; and length assertions for SuppPcpMandatory, RegridOptSuppPcp, SuppPcpTemporalInterpolation, among other updates. For testing, this delivery added keys to supp precip expected test data and removed holdovers from development testing, among other updates. It also added backing var for _input_force_types to avoid potential crash under certain config combinations; optional T0 output for gridded configuration; and overridable output_steps argument to ConfigOptions and BMI model classes, and for scalability, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nextgen-support-scripts",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nextgen-support-scripts",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.0.0",
+    "release_notes": "Most of the work in this delivery is in verification, testing, and documentation. For verification, this delivery added USGS streamflow data assimilation to the AnA and Extended AnA cycles, and moved the codes copying USGS timeslices to the workin directory from the ABS nwm_forecast to the subclass nwm_analyais_assim. The USGS timeslices are only used by AnA and Extended AnA cycles, among other updates. Testing work changed preprocess_usgs_n_evnca to preprocess_usgs. Updated the the performance test script for scalability test and updated the performance test scripts. In documentation, the delivery also added README files for the top level of repository and nwm.v4.0.0 (the operational testbed), and included script and README to generate release notes based on previous release tag date, among other updates. It also created the add_usga_streamflow_da branch for the development-pw branch. Note that for the development-pw branch, because the Python version in the RTE container is 3.11 not 3.12, the paths to the regionalization cat-group and catchment assignment files in the region file (nwm.v4.0.0/ush/nwm-realtime/region.json) are not the same; added dynamic resolution of var INSTALLED_REGIONALIZATION_RESULTS; and removed checkpointing, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-cal-mgr",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-cal-mgr",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.4.0",
+    "release_notes": "Most of the work in this delivery is in containers and builds, verification, and documentation. For containers and builds, this delivery made minor edits to README.md about the docker script and minor comments corrections to docker/run_full_calib_valid_workflow.sh. Verification work made minor adjustments to the metrics keyError fix in search.py, and fixed metrics key error for nselog and nsewt. In documentation, the delivery also updated license and made minor updates to documentation. It also added custom image tag to cicd workflow, removed references to ngwpc, and hardcoded fallback path for log file, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-coastal",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-coastal",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.1.0",
+    "release_notes": "Most of the work in this delivery is in testing, configuration, and hydrofabric. For testing, this delivery updated after testing on cluster, and included edits to spinup time and ramp based on testing, among other updates. Configuration work removed placehold template in license and included removing example run yaml for full domain since that is now covered in alaska demo. In hydrofabric, the delivery also added support to generate ngenReaches and nwmReaches based on SCHISM mesh and hydrofabric (nwmv3 geodatabase or nhf) version, and included script to find ngenReaches.csv from nwmReaches.csv and hydrofabric v 1.2.2 for existing schism meshes. For hydrologic models, this delivery included turning off troute logs so simulation doesn't hang and updated read ngen troute as discharge input. It also added stage to create manning file from ESA Worldcover for SCHISM; Lake Erie SFINCS example; fix sea-level pavbnd default; and exposed a few more options in the sfincs create that hydromt supports (include polygon, setting boundary point distance (bnd_dist), among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-data-assimilation",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-data-assimilation",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.2.0",
+    "release_notes": "Most of the work in this delivery is in data access, geospatial handling, and documentation. For data access, this delivery added the folder name to the NOMADS URL for download to avoid downloading unwanted netcdfs and deleted netcdf_production_sample.py file that was accidentally pushed, among other updates. Geospatial handling work fixed bug with ascending and descending time values. Fixed crs being lost from non-gridded output. Added reservoir type attributes, and included cleaned up diagnostic messages and fixed the issue with crs variable having time dimension. In documentation, the delivery also removed reference to ngwpc-dev in README and updated License, among other updates. It also added all reservoir flags, diagnostic messages for encoding/filer issue, and removed redundant text info, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-eval-mgr",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-eval-mgr",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.2.0",
+    "release_notes": "Most of the work in this delivery is in configuration, data access, and verification. For configuration, this delivery updated documentation for configuration schemas, and config schemas in docs and config_tempalte.yaml, among other updates. Data access work added support for netcdf files and fixed variable types for netcdf files, among other updates. In verification, the delivery also added script to create the metrics.rst file and supported metrics to tech reference. For documentation, this delivery updated README.md and docs/source/user_guide.md, and made minor updates to documentation responding to copilot review, among other updates. It also added helper script for running eval tests; removed development-pw lane from cicd; and deprecated typing modules Dict, List, Optional, Union, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-ewts",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-ewts",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.1.0",
+    "release_notes": "This delivery updated license.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-fcst-mgr",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-fcst-mgr",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery added custom image tag to cicd workflow, removed references to NGWPC, fixed payload when ewts unavailable, included fall back to stdout logging when EWTS is unavailable. Removed hardcoded default paths. Use stdout instead, updated license file, and included specify stdout handler.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-ngencerf-infra",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-ngencerf-infra",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.0.0_add_owp_access",
+    "release_notes": "Most of the work in this delivery is in portability and operations tooling. For portability, this delivery added enable_waf toggle across module and reference envs, and updated EDFS URL to full API path and parameterized AWS region, among other updates. Operations tooling work added support for directly targetting the appropriate specific slurm binaries for helper tasks, and ops.sh and makefile targets for ecs-restart and ecs-status, among other updates. It also updated image / SIFs, updated to most recent containers / SIFS for testing, and updated license file.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-msw-mgr",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-msw-mgr",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.4.0",
+    "release_notes": "Most of the work in this delivery is in configuration, hydrologic models, and documentation. For configuration, this delivery implemented streamflow da configuration with default values and made EDFS API url a configurable input. Hydrologic models work removed setting of max_loop_size in troute, and updated giuh oridinates for sac and lasam. In documentation, the delivery also added license file and additional function documentation throughout, among other updates. It also added reservoir_rfc_forecasts_unavailable_action, included fall back to stdout logging when EWTS is unavailable, and pinned max_loop_size to 8 to allow streamflow da, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-region-mgr",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-region-mgr",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.4.0-pw",
+    "release_notes": "Most of the work in this delivery is in configuration and documentation. For configuration, this delivery made minor fixes to setup_region.sh and sample config files, and updated sample config files and mswm template to support portability, among other updates. Documentation work added a documentation section to user guide; cleaned shcema headings; added comments to input/output dir trees and fixed cross reference issues in documentation, among other updates. It also added logging config in sample file config_eval.yaml, script for environment setup for regionalization, and fixed bug in formulation vpus in manual_pairings.py, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/nwm-rte",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/nwm-rte",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.1.0-pw",
+    "release_notes": "Most of the work in this delivery is in forcing, containers and builds, and EWTS logging. For forcing, this delivery added RTE_EWTS_ENABLED to devcontainer.json. Fix devcontainer debug configurations for coastal forcing and debugger configuration for running forcing engine in gridded mode to produce nwm-coastal inputs, among other updates. Containers and builds work improved portability of Dockerfile.rte, and made additional clean up of run_region.sh and minor addition to dockerignore, among other updates. In EWTS logging, the delivery also fixed logger and made logger honor ewts_enabled config option instead of hardcoded true, among other updates. For code cleanup, this delivery refactored sbatch_run_region.sh for better portability and cleaned up run_region.sh, among other updates. It also added REPO_TAG_ECF_TASK_MGR to config.bashrc, comment to run_coastal.sh re: conus configs, and arg RTE_EWTS_ENABLED to CI, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/bmi-cxx",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/bmi-cxx",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.0.4.0",
+    "release_notes": "This delivery updated license file.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/cfe",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/cfe",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery updated license file and used boost for streaming data to vector.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/evapotranspiration",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/evapotranspiration",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.1.0",
+    "release_notes": "This delivery updated license file, fixed type definition, and used boost for streaming data to vector.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/lgar-c",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/lgar-c",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery included serialize precip_previous_timestep, updated license file, included alternate header buffer, and used boost for archiving into vector.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/lstm",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/lstm",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery removed paper results folder and updated license file.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/noah-owp-modular",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/noah-owp-modular",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.2.0",
+    "release_notes": "This delivery added a note on Message Pack modification, updated license file, moved deallocations outside select type block, and relaxed time validation for single hour runs.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/sac-sma",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/sac-sma",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.2.0",
+    "release_notes": "This delivery added a note on Message Pack modification, updated license file, and moved Deallocations Outside Select Type Block.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/SLoTH",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/SLoTH",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.1.0",
+    "release_notes": "This delivery updated license file, fixed type delcaration, included alternate header padding, and used boost for streaming data to vector.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/snow17",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/snow17",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery added a note on Message Pack modification, updated license file, and moved Deallocations Outside Select Type Block.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/soilfreezethaw",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/soilfreezethaw",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery included GridVarRank Test; updated license file; used boost for streaming data to vector; included updateuntil fix updated; initialized stateptr; and fixed for Grid rank, UpdateUntil and fraction unit.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/soilmoistureprofiles",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/soilmoistureprofiles",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery updated license file and used Boost for Streaming Data to Vector (NGWPC-11629).",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/topmodel",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/topmodel",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.2.0",
+    "release_notes": "This delivery updated license file and used boost for streaming data to vector.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/topoflow-glacier",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/topoflow-glacier",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.1.0",
+    "release_notes": "This delivery updated license file and relaxed time validation for one hour ngen runs.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/t-route",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/t-route",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.4.0",
+    "release_notes": "Most of the work in this delivery is in verification, geospatial handling, and configuration. For verification, this delivery included hold the diversion's last observation for a horizon, read its gage without nudging; and warn on a non-overlapping observation span, among other updates. Geospatial handling work skipped a diversion whose flowpath or gage is not in the domain and included keep the diversion gage on the nudging roster, among other updates. In configuration, the delivery also added the Old River diversion to the production configs and included exercise the configurations production runs, among other updates. For testing, this delivery included run the test suite on python 3.12 with pytest and moved the routing tests into the collected tree. It also added the diversion demonstration notebook, diversion_persist_days to DiversionDA, and dropped unset optional columns before selecting them, among other updates.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/ueb_bmi",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/ueb_bmi",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.3.0",
+    "release_notes": "This delivery updated license file and used boost for streaming data to vector.",
+    "commit_summary": "",
+    "skip": false
+  },
+  {
+    "repo_directory": "~/ngwpc/repositories/ngen",
+    "env": "aws",
+    "upstream_repo": "NOAA-OWP/ngen",
+    "release": "FinalCodeDelivery_20260930",
+    "previous_release_tag": "3.1.2.4.0",
+    "release_notes": "Most of the work in this delivery is in hydrologic models, state serialization and restart, and documentation. For hydrologic models, this delivery updated submodule reference for lstm and t-route submod ref for diversion persistence update, among other updates. State serialization and restart work included Serialization README Documentation and updated LASAM submodule for serialization bug fixes. In documentation, the delivery also updated submod refs for license updates and license file. It also added custom tag name for cicd workflow, allowed ewts tags in the dockerfile ref check, and updated subreferences, among other updates.",
+    "commit_summary": "",
+    "has_submodules": false,
+    "skip": false
+  }
+]
